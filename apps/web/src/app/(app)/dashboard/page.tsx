@@ -1,11 +1,13 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { localeFor, useI18n, useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
-import { visibleNav } from "@/lib/nav";
+import { homeFor, visibleNav } from "@/lib/nav";
 
 function Stat({ label, value, href }: { label: string; value: string | number | undefined; href?: string }) {
   const t = useT();
@@ -27,6 +29,10 @@ interface RegReport {
 export default function Dashboard() {
   const { me, can, features, money } = useMe();
   const { lang, t } = useI18n();
+  const router = useRouter();
+  // Laboratory staff (LIMS manager, technicians, pathologist, radiologist) start on the Laboratory page: their role puts it first in their menu.
+  const home = homeFor(visibleNav(new Set(me.permissions), features, me.roles));
+  useEffect(() => { if (home === "/lims") router.replace("/lims"); }, [home, router]);
   const opd = useQuery({ queryKey: ["dash-opd"], queryFn: () => api.get<{ total: number }>("/reports/opd/daily"), enabled: can("REPORT_READ", "REPORT_OPD") });
   const col = useQuery({ queryKey: ["dash-col"], queryFn: () => api.get<{ totals: { net: string } }>("/reports/collections"), enabled: can("REPORT_READ", "REPORT_FINANCE") });
   const queue = useQuery({ queryKey: ["dash-queue"], queryFn: () => api.get<{ status: string }[]>("/queue"), enabled: can("QUEUE_READ"), refetchInterval: 20_000 });

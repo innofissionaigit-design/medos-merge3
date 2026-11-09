@@ -8,6 +8,8 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // A second copy of the app (another port, another database) can run beside the usual one by giving it its own build folder: NEXT_DIST_DIR=.next-demo.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   // Standalone output is for the Docker image (set NEXT_OUTPUT=standalone); it needs symlinks, which plain Windows disallows.
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone", outputFileTracingRoot: new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1") } : {}),
   async headers() {

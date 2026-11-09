@@ -1,5 +1,7 @@
 # LIS (Laboratory Information System)
 
+> People who hold the laboratory portal permissions (`LIMS_*`, `LAB_VERIFY`, `RAD_REPORT`) now use [`/lims`](lims-portal.md) instead; this page stays for the earlier roles `LAB_TECHNICIAN` and `RADIOGRAPHER`. The portal also carries the *Tests and ranges* screen for people with `LAB_MASTERS`.
+
 One module in the menu, **LIS**, at `/lis`. It has two branches, each with its own screens, and each person sees only the branch their job needs.
 
 | Branch | Address | Who works in it | Screens |

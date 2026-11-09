@@ -358,6 +358,46 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | PUT | `/lab/tests/:serviceId` | LAB_MASTERS |  |
 | GET | `/lab/worklist` | LAB_READ |  |
 
+## Lims
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/encounters/:id/lims` | LIMS_READ |  |
+| GET | `/lims/dashboard` | LIMS_READ |  |
+| GET | `/lims/departments` | LIMS_READ |  |
+| PUT | `/lims/departments/:kind` | LIMS_DEPARTMENTS |  |
+| GET | `/lims/exceptions` | LIMS_READ |  |
+| POST | `/lims/exceptions` | any of LIMS_COLLECT / LIMS_REQUEST / LIMS_ISSUE / LIMS_MANAGE |  |
+| POST | `/lims/exceptions/:id/decide` | LIMS_MANAGE |  |
+| GET | `/lims/instruments` | LIMS_READ |  |
+| POST | `/lims/instruments` | LIMS_MANAGE |  |
+| PUT | `/lims/instruments/:id` | LIMS_MANAGE |  |
+| POST | `/lims/opd/decline` | LIMS_REQUEST |  |
+| POST | `/lims/opd/launch` | LIMS_REQUEST |  |
+| GET | `/lims/opd/pending` | LIMS_REQUEST |  |
+| POST | `/lims/orders` | LIMS_ORDER |  |
+| GET | `/lims/qc` | LIMS_READ |  |
+| POST | `/lims/qc` | LIMS_QC |  |
+| POST | `/lims/qc/:id/review` | LIMS_MANAGE |  |
+| GET | `/lims/reports/billing` | LIMS_REPORTS |  |
+| GET | `/lims/reports/performance` | LIMS_REPORTS |  |
+| GET | `/lims/requests` | LIMS_READ |  |
+| GET | `/lims/requests/:id` | LIMS_READ |  |
+| POST | `/lims/requests/:id/accept` | LAB_RESULT |  |
+| POST | `/lims/requests/:id/assign` | LIMS_ASSIGN |  |
+| POST | `/lims/requests/:id/cancel` | LIMS_MANAGE |  |
+| POST | `/lims/requests/:id/collect` | LIMS_COLLECT |  |
+| POST | `/lims/requests/:id/handover` | LIMS_REQUEST |  |
+| POST | `/lims/requests/:id/issue` | LIMS_ISSUE |  |
+| POST | `/lims/requests/:id/perform` | RAD_PERFORM |  |
+| POST | `/lims/requests/:id/priority` | LIMS_PRIORITY |  |
+| POST | `/lims/requests/:id/reject-sample` | any of LAB_RESULT / RAD_PERFORM |  |
+| GET | `/lims/requests/:id/report` | any of LIMS_REQUEST / LIMS_ISSUE / LIMS_MANAGE |  |
+| POST | `/lims/requests/:id/return` | any of LAB_VERIFY / RAD_REPORT |  |
+| POST | `/lims/requests/:id/submit` | any of LAB_RESULT / RAD_PERFORM |  |
+| GET | `/lims/staff` | any of LIMS_ASSIGN / LIMS_REQUEST |  |
+| GET | `/lims/status` | LIMS_READ |  |
+
 ## Masters
 
 | Method | Path | Access | Module flag |

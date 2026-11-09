@@ -58,6 +58,7 @@ model Encounter {
   labSamples LabSample[]
   labResults LabResult[]
   radStudies RadStudy[]
+  limsRequests LimsRequest[]
   claims     Claim[]
   aiDrafts   AiDraft[]
 

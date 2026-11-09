@@ -102,3 +102,7 @@ Test bills use the bill type **Other**, not OPD. The consultation's own bill ("c
 * No laboratory, radiology or cardiology work list and no results: see `docs/backlog.md`.
 * A test is matched to the price list by its exact name or code; near-spellings ("CBC test" for "CBC") need the Cashier to choose the item.
 * A listed test is billed at its price-list price; a typed price is whatever the Cashier enters (the same trust the Cashier already has when typing a line on an ordinary bill). Discounts follow the normal bill rules after the bill exists.
+
+## Tests that are already in the laboratory (laboratory portal)
+
+A doctor can also order a test straight into the laboratory (`POST /lims/orders`, source `LIMS`), and reception launches an outpatient's advised tests into it once the patient agrees (`docs/lims-portal.md`). The laboratory does **not** wait for billing: the order stays `ORDERED` while the work is done, and this Cashier screen still lists it and bills it as before. Two guards protect laboratory work: a test already in the laboratory cannot be taken off here (*Cancel* answers 409; only the LIMS manager cancels it), and leaving it off a saved bill does not cancel it. Billing for laboratory tests is planned as a separate step (see the Billing section of `lims-portal.md`).

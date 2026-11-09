@@ -11,6 +11,9 @@ import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal,
 import { blankItem, RxRows, toPayload, type RxItem } from "@/components/rx-editor";
 import { AmendMedicine } from "@/components/prescription-extras";
 import { WardStoreCard } from "@/components/ward-store";
+import { VisitLabResults } from "@/components/lab";
+import { LimsVisitCard } from "@/components/lims-order";
+import { VisitRadiology } from "@/components/radiology";
 import { api, ApiError, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 
@@ -355,9 +358,9 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
 
 export default function AdmissionPage() {
   const { id } = useParams<{ id: string }>();
-  const { dateTime } = useMe();
+  const { dateTime, can } = useMe();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "orders" | "nursing" | "discharge">("overview");
+  const [tab, setTab] = useState<"overview" | "orders" | "nursing" | "tests" | "discharge">("overview");
   const adm = useQuery({ queryKey: ["admission", id], queryFn: () => api.get<Admission>(`/admissions/${id}`) });
   const refresh = () => { void qc.invalidateQueries({ queryKey: ["admission", id] }); void qc.invalidateQueries({ queryKey: ["board"] }); };
   if (adm.isLoading) return <Spinner />;
@@ -373,10 +376,11 @@ export default function AdmissionPage() {
           {a.status !== "CANCELLED" && <><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=bn`} target="_blank" rel="noreferrer">বাংলা</a><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=hi`} target="_blank" rel="noreferrer">हिन्दी</a></>}</>}
       />
       {a.reason && <div className="mb-3"><KV label="Reason for admission">{a.reason}</KV></div>}
-      <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "nursing", label: "Nursing and medication" }, { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "nursing", label: "Nursing and medication" }, ...(can("LIMS_READ") ? [{ id: "tests" as const, label: "Lab and imaging" }] : []), { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
       {tab === "overview" && <Overview adm={a} refresh={refresh} />}
       {tab === "orders" && <Orders adm={a} />}
       {tab === "nursing" && <><Nursing adm={a} /><WardStoreCard admissionId={a.id} open={a.status === "ADMITTED"} /></>}
+      {tab === "tests" && <div className="space-y-4"><LimsVisitCard encounterId={a.encounterId} visitType="IPD" active={a.status === "ADMITTED"} /><VisitLabResults encounterId={a.encounterId} /><VisitRadiology encounterId={a.encounterId} /></div>}
       {tab === "discharge" && <DischargePanel adm={a} refresh={refresh} />}
     </Gate>
   );

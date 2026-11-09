@@ -1,6 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { CONFIG, type AppConfig } from "../../common/config";
 import { logJson } from "../../common/logger";
+import { LimsMessagesService } from "../lims/lims-messages.service";
 import { PrescriptionDeliveryService } from "../prescriptions/prescription-delivery.service";
 import { WebhooksService } from "./webhooks.service";
 
@@ -13,7 +14,7 @@ export class OutboundWorker implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | undefined;
   private busy = false;
 
-  constructor(private readonly webhooks: WebhooksService, private readonly deliveries: PrescriptionDeliveryService, @Inject(CONFIG) private readonly config: AppConfig) {}
+  constructor(private readonly webhooks: WebhooksService, private readonly deliveries: PrescriptionDeliveryService, private readonly lims: LimsMessagesService, @Inject(CONFIG) private readonly config: AppConfig) {}
 
   onModuleInit(): void {
     if (this.config.NODE_ENV === "test" || !this.config.REMINDER_WORKER_ENABLED) return;
@@ -31,7 +32,8 @@ export class OutboundWorker implements OnModuleInit, OnModuleDestroy {
     try {
       const w = await this.webhooks.runDue();
       const m = await this.deliveries.runDue();
-      if (w.delivered + w.retried + w.failed + m.sent + m.retried + m.failed > 0) logJson("info", "outbound_processed", { webhooks: w, messages: m });
+      const l = await this.lims.runDue();
+      if (w.delivered + w.retried + w.failed + m.sent + m.retried + m.failed + l.sent + l.retried + l.failed > 0) logJson("info", "outbound_processed", { webhooks: w, messages: m, lims: l });
     } catch (e) {
       logJson("error", "outbound_worker_failed", { errorName: e instanceof Error ? e.name : typeof e, errorMessage: e instanceof Error ? e.message.slice(0, 300) : undefined });
     } finally {

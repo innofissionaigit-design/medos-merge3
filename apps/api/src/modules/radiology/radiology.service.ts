@@ -4,11 +4,12 @@ import type { Prisma } from "@medos/database";
 import { z } from "zod";
 import { actorOf, AuditService } from "../../common/audit.service";
 import { visitScope } from "../../common/data-scope";
-import { PrismaService } from "../../common/prisma.service";
+import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { NumberingService } from "../numbering/numbering.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { IN_LAB_ORDER, LimsCoreService } from "../lims/lims-core.service";
 
 const MODALITIES = ["XRAY", "ULTRASOUND", "CT", "MRI", "MAMMOGRAPHY", "OTHER"] as const;
 
@@ -40,7 +41,7 @@ const nameOf = (p: { firstName: string; lastName: string | null }) => [p.firstNa
  */
 @Injectable()
 export class RadiologyService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly email: EmailService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly email: EmailService, private readonly lims: LimsCoreService) {}
 
   async worklist(ctx: RequestContext, q: z.infer<typeof worklistSchema>) {
     const search: Prisma.TestOrderWhereInput[] = q.q ? [
@@ -53,10 +54,10 @@ export class RadiologyService {
       : q.state === "PERFORMED" ? { radStudy: { is: { status: "PERFORMED" } } }
       : q.state === "REPORTED" ? { radStudy: { is: { status: "REPORTED" } } }
       : q.state === "CRITICAL" ? { radStudy: { is: { hasCritical: true, criticalAckAt: null } } } : {};
-    const where: Prisma.TestOrderWhereInput = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", status: "BILLED", ...(search.length ? { OR: search } : {}), ...stateWhere };
+    const where: Prisma.TestOrderWhereInput = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", AND: [IN_LAB_ORDER], ...(search.length ? { OR: search } : {}), ...stateWhere };
     const [rows, total] = await Promise.all([
       this.prisma.testOrder.findMany({
-        where, orderBy: [{ billedAt: "asc" }, { id: "asc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize,
+        where, orderBy: [{ billedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize,
         select: {
           id: true, name: true, billedAt: true,
           patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } },
@@ -79,9 +80,14 @@ export class RadiologyService {
 
   /** The study is performed for a billed radiology test: it gets its accession number and goes to the radiologist. */
   async perform(ctx: RequestContext, testOrderId: string, input: z.infer<typeof performSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction((tx) => this.performIn(tx, ctx, testOrderId, input));
+  }
+
+  /** The same, inside the caller's transaction (the LIMS technician screen performs the study and moves the request in one step). */
+  async performIn(tx: Db, ctx: RequestContext, testOrderId: string, input: z.infer<typeof performSchema>) {
+    {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`rad:${testOrderId}`}, 0))`;
-      const o = await tx.testOrder.findFirst({ where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", status: "BILLED" }, select: { id: true, name: true, patientId: true, encounterId: true } });
+      const o = await tx.testOrder.findFirst({ where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", AND: [IN_LAB_ORDER] }, select: { id: true, name: true, patientId: true, encounterId: true } });
       if (!o) throw new DomainError("NOT_FOUND", "Resource not found", 404);
       if (await tx.radStudy.count({ where: { tenantId: ctx.tenantId, testOrderId } }) > 0) throw new DomainError("CONFLICT", "This study has already been performed", 409);
       const accessionNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "RAD_ACCESSION");
@@ -90,15 +96,16 @@ export class RadiologyService {
         select: { id: true },
       });
       await this.audit.record(tx, actorOf(ctx), { action: "RAD_STUDY_PERFORMED", entityType: "RadStudy", entityId: s.id, metadata: { accessionNumber, testOrderId, modality: input.modality } });
+      await this.lims.afterPerformed(tx, ctx, testOrderId);
       return { id: s.id, accessionNumber, testOrderId };
-    });
+    }
   }
 
   /** One billed radiology test: the study (if performed) and every report version, newest first. */
   async study(ctx: RequestContext, testOrderId: string, opts: { scoped?: boolean } = {}) {
     const o = await this.prisma.testOrder.findFirst({
-      where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", status: "BILLED", ...(opts.scoped ? { encounter: { AND: [visitScope(ctx)] } } : {}) },
-      select: { id: true, name: true, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
+      where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "RADIOLOGY", AND: [IN_LAB_ORDER], ...(opts.scoped ? { encounter: { AND: [visitScope(ctx)] } } : {}) },
+      select: { id: true, name: true, limsRequest: { select: { status: true } }, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
     });
     if (!o) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     const s = await this.prisma.radStudy.findFirst({ where: { tenantId: ctx.tenantId, testOrderId }, include: { reports: { orderBy: { version: "desc" } } } });
@@ -108,8 +115,14 @@ export class RadiologyService {
       testOrderId: o.id, test: o.name, patient: { id: o.patient.id, name: nameOf(o.patient), gender: o.patient.gender, mrn: o.patient.identifiers[0]?.value ?? null }, encounterId: o.encounter.id, visitNumber: o.encounter.encounterNumber,
       state: stateOf(s),
       study: s ? { id: s.id, accessionNumber: s.accessionNumber, modality: s.modality, bodyPart: s.bodyPart, clinicalNotes: s.clinicalNotes, performedAt: s.performedAt, performedBy: users.get(s.performedById) ?? null, currentVersion: s.currentVersion, hasCritical: s.hasCritical, criticalAcknowledged: !!s.criticalAckAt } : null,
-      reports: (s?.reports ?? []).map((r) => ({ version: r.version, kind: r.kind, findings: r.findings, impression: r.impression, hasCritical: r.hasCritical, reason: r.reason, signedAt: r.signedAt, signedBy: users.get(r.signedById) ?? null })),
+      reports: (this.mayReadReports(ctx, o.limsRequest?.status) ? (s?.reports ?? []) : []).map((r) => ({ version: r.version, kind: r.kind, findings: r.findings, impression: r.impression, hasCritical: r.hasCritical, reason: r.reason, signedAt: r.signedAt, signedBy: users.get(r.signedById) ?? null })),
     };
+  }
+
+  /** A report the technician has not issued yet is shown only to the people who work on it; the doctor and the patient see it after it is issued. */
+  private mayReadReports(ctx: RequestContext, limsStatus: string | undefined): boolean {
+    if (limsStatus === undefined || limsStatus === "ISSUED" || limsStatus === "HANDED_OVER") return true;
+    return (["RAD_PERFORM", "RAD_REPORT", "LIMS_ISSUE", "LIMS_MANAGE"] as const).some((p) => ctx.permissions.has(p));
   }
 
   private async lockStudy(tx: Prisma.TransactionClient, ctx: RequestContext, studyId: string) {
@@ -123,12 +136,14 @@ export class RadiologyService {
     return this.prisma.$transaction(async (tx) => {
       const s = await this.lockStudy(tx, ctx, studyId);
       if (s.status !== "PERFORMED") throw new DomainError("INVALID_STATE", "This study has already been reported", 409);
+      await this.lims.assertCanReview(tx, ctx, s.testOrderId);
       await tx.radReportVersion.create({ data: { tenantId: ctx.tenantId, studyId: s.id, version: 1, kind: "SIGNED", findings: input.findings, impression: input.impression, hasCritical: input.critical, signedById: ctx.userId } });
       await tx.radStudy.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: s.id } }, data: { status: "REPORTED", currentVersion: 1, hasCritical: input.critical } });
       await this.audit.record(tx, actorOf(ctx), { action: "RAD_REPORT_SIGNED", entityType: "RadStudy", entityId: s.id, metadata: { testOrderId: s.testOrderId, version: 1, critical: input.critical } });
       if (input.critical) await this.audit.record(tx, actorOf(ctx), { action: "RAD_CRITICAL_FINDING", entityType: "RadStudy", entityId: s.id, metadata: { testOrderId: s.testOrderId, version: 1 } });
       if (input.critical) await this.notifications.criticalResult(tx, ctx, "RAD", s.testOrderId, s.id, 1);
-      await this.email.reportReadyEmail(tx, ctx, s.testOrderId, s.id, "RadStudy");
+      // A test the LIMS manages is signed here and issued by the technician, who also tells the patient.
+      if (!(await this.lims.afterReviewed(tx, ctx, s.testOrderId))) await this.email.reportReadyEmail(tx, ctx, s.testOrderId, s.id, "RadStudy");
       return { id: s.id, status: "REPORTED" as const, currentVersion: 1, hasCritical: input.critical };
     });
   }
@@ -145,6 +160,7 @@ export class RadiologyService {
       await this.audit.record(tx, actorOf(ctx), { action: "RAD_REPORT_AMENDED", entityType: "RadStudy", entityId: s.id, metadata: { testOrderId: s.testOrderId, version: next, reason: input.reason } });
       if (input.critical) await this.audit.record(tx, actorOf(ctx), { action: "RAD_CRITICAL_FINDING", entityType: "RadStudy", entityId: s.id, metadata: { testOrderId: s.testOrderId, version: next } });
       if (input.critical) await this.notifications.criticalResult(tx, ctx, "RAD", s.testOrderId, s.id, next);
+      await this.lims.afterAmended(tx, ctx, s.testOrderId, next);
       return { id: s.id, status: "REPORTED" as const, currentVersion: next, hasCritical: input.critical };
     });
   }
@@ -176,12 +192,15 @@ export class RadiologyService {
     const enc = await this.prisma.encounter.findFirst({ where: { id: encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, AND: [visitScope(ctx)] }, select: { id: true } });
     if (!enc) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     const orders = await this.prisma.testOrder.findMany({
-      where: { tenantId: ctx.tenantId, encounterId, category: "RADIOLOGY", status: "BILLED" }, orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, radStudy: { select: { id: true, accessionNumber: true, status: true, currentVersion: true, hasCritical: true, criticalAckAt: true, reports: { orderBy: { version: "desc" }, take: 1, select: { version: true, kind: true, findings: true, impression: true, signedAt: true } } } } },
+      where: { tenantId: ctx.tenantId, encounterId, category: "RADIOLOGY", AND: [IN_LAB_ORDER] }, orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, limsRequest: { select: { status: true } }, radStudy: { select: { id: true, accessionNumber: true, status: true, currentVersion: true, hasCritical: true, criticalAckAt: true, reports: { orderBy: { version: "desc" }, take: 1, select: { version: true, kind: true, findings: true, impression: true, signedAt: true } } } } },
     });
-    return orders.map((o) => ({
-      testOrderId: o.id, test: o.name, state: stateOf(o.radStudy), accessionNumber: o.radStudy?.accessionNumber ?? null, studyId: o.radStudy?.id ?? null,
-      critical: o.radStudy?.hasCritical === true && !o.radStudy.criticalAckAt, amended: (o.radStudy?.currentVersion ?? 0) > 1, report: o.radStudy?.reports[0] ?? null,
-    }));
+    return orders.map((o) => {
+      const released = this.mayReadReports(ctx, o.limsRequest?.status);
+      return {
+        testOrderId: o.id, test: o.name, state: released ? stateOf(o.radStudy) : stateOf(o.radStudy ? { status: "PERFORMED" } : null), accessionNumber: o.radStudy?.accessionNumber ?? null, studyId: o.radStudy?.id ?? null,
+        critical: o.radStudy?.hasCritical === true && !o.radStudy.criticalAckAt, amended: (o.radStudy?.currentVersion ?? 0) > 1, limsStatus: o.limsRequest?.status ?? null, report: released ? (o.radStudy?.reports[0] ?? null) : null,
+      };
+    });
   }
 }

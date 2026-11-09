@@ -6,7 +6,7 @@
 export const LANGUAGES = ["en", "bn", "hi"] as const;
 export type EmailLanguage = (typeof LANGUAGES)[number];
 
-export const TEMPLATE_KEYS = ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST"] as const;
+export const TEMPLATE_KEYS = ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST_SCHEDULED", "TEST"] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 export interface TemplateDef {
@@ -62,6 +62,15 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       en: { subject: "Your report is ready — {facility}", body: "Dear {name},\n\nA report for you is ready at {facility}. Please collect it from the hospital or sign in to the patient app to see it. For your privacy, test results are not sent by email.\n\n{facility}" },
       bn: { subject: "আপনার রিপোর্ট প্রস্তুত — {facility}", body: "প্রিয় {name},\n\n{facility}-এ আপনার একটি রিপোর্ট প্রস্তুত। অনুগ্রহ করে হাসপাতাল থেকে সংগ্রহ করুন বা রোগীর অ্যাপে সাইন ইন করে দেখুন। আপনার গোপনীয়তার জন্য পরীক্ষার ফলাফল ইমেইলে পাঠানো হয় না।\n\n{facility}" },
       hi: { subject: "आपकी रिपोर्ट तैयार है — {facility}", body: "प्रिय {name},\n\n{facility} में आपकी एक रिपोर्ट तैयार है। कृपया अस्पताल से ले लें या रोगी ऐप में साइन इन करके देखें। आपकी गोपनीयता के लिए जाँच के परिणाम ईमेल से नहीं भेजे जाते।\n\n{facility}" },
+    },
+  },
+  TEST_SCHEDULED: {
+    key: "TEST_SCHEDULED", label: "Test booked", description: "Sent to the patient when laboratory or imaging tests are booked at reception: when to come and what to do beforehand. It never carries a result.",
+    vars: { name: "Asha", departments: "Pathology", when: "12 Nov 2026, 9:00 am", instructions: "Come fasting for 8 hours; water is allowed.", facility: "City Hospital" },
+    defaults: {
+      en: { subject: "Your test at {facility}", body: "Dear {name},\n\nYour {departments} test at {facility} is booked. Time: {when}.\n\nBefore you come: {instructions}\n\nYour report will be ready at the reception desk.\n\n{facility}" },
+      bn: { subject: "{facility}-এ আপনার পরীক্ষা", body: "প্রিয় {name},\n\n{facility}-এ আপনার {departments} পরীক্ষা নির্ধারিত হয়েছে। সময়: {when}।\n\nআসার আগে: {instructions}\n\nরিপোর্ট প্রস্তুত হলে রিসেপশন ডেস্ক থেকে সংগ্রহ করুন।\n\n{facility}" },
+      hi: { subject: "{facility} में आपकी जाँच", body: "प्रिय {name},\n\n{facility} में आपकी {departments} जाँच तय हो गई है। समय: {when}।\n\nआने से पहले: {instructions}\n\nआपकी रिपोर्ट रिसेप्शन डेस्क पर तैयार मिलेगी।\n\n{facility}" },
     },
   },
   TEST: {

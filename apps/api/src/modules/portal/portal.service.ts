@@ -16,6 +16,7 @@ import { SettingsService } from "../settings/settings.service";
 import { joinWindow, LIVE_APPOINTMENT } from "../telemedicine/telemedicine.domain";
 import { indianMobile, MESSAGE_PROVIDER, type MessageProvider } from "../prescriptions/message.provider";
 import { assertUnlocked, makeProof, type PortalSession, readProofs } from "./portal.access";
+import { RELEASED_ORDER } from "../lims/lims-core.service";
 
 export const OTP_MINUTES = 5;
 export const OTP_MAX_ATTEMPTS = 5;
@@ -268,8 +269,8 @@ export class PortalService {
     await this.patient(p, patientId);
     const released = { OR: [{ hasCritical: false }, { criticalAckAt: { not: null } }] };
     const [labs, rads, heldLab, heldRad] = await Promise.all([
-      this.prisma.labResult.findMany({ where: { tenantId: p.tenantId, patientId, status: "VERIFIED", ...released }, orderBy: { updatedAt: "desc" }, take: 30, select: { id: true, name: true, specimen: true, versions: { orderBy: { version: "desc" }, take: 1, select: { values: true, comment: true, verifiedAt: true } } } }),
-      this.prisma.radStudy.findMany({ where: { tenantId: p.tenantId, patientId, status: "REPORTED", ...released }, orderBy: { updatedAt: "desc" }, take: 30, select: { id: true, modality: true, bodyPart: true, testOrder: { select: { name: true } }, reports: { orderBy: { version: "desc" }, take: 1, select: { findings: true, impression: true, signedAt: true } } } }),
+      this.prisma.labResult.findMany({ where: { tenantId: p.tenantId, patientId, status: "VERIFIED", testOrder: RELEASED_ORDER, ...released }, orderBy: { updatedAt: "desc" }, take: 30, select: { id: true, name: true, specimen: true, versions: { orderBy: { version: "desc" }, take: 1, select: { values: true, comment: true, verifiedAt: true } } } }),
+      this.prisma.radStudy.findMany({ where: { tenantId: p.tenantId, patientId, status: "REPORTED", testOrder: RELEASED_ORDER, ...released }, orderBy: { updatedAt: "desc" }, take: 30, select: { id: true, modality: true, bodyPart: true, testOrder: { select: { name: true } }, reports: { orderBy: { version: "desc" }, take: 1, select: { findings: true, impression: true, signedAt: true } } } }),
       this.prisma.labResult.count({ where: { tenantId: p.tenantId, patientId, status: "VERIFIED", hasCritical: true, criticalAckAt: null } }),
       this.prisma.radStudy.count({ where: { tenantId: p.tenantId, patientId, status: "REPORTED", hasCritical: true, criticalAckAt: null } }),
     ]);

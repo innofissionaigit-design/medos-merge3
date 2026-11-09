@@ -64,7 +64,9 @@ test("LIS is one module with Pathology and Radiology branches, each person seein
   const canOf = (...have: string[]) => (...p: string[]) => p.some((x) => have.includes(x));
   // Navigation: one LIS entry, no separate Laboratory / Radiology entries
   const nav = (...have: string[]) => visibleNav(new Set([...have, "PATIENT_READ"]), ALL_ON, []).map((n) => n.href);
-  assert.ok(nav("LAB_RESULT").includes("/lis") && nav("RAD_REPORT").includes("/lis"));
+  assert.ok(nav("LAB_RESULT").includes("/lis") && nav("RAD_PERFORM").includes("/lis"));
+  // People who have the laboratory portal (docs/lims-portal.md) get that instead of the earlier LIS page.
+  assert.ok(nav("RAD_REPORT").includes("/lims") && !nav("RAD_REPORT").includes("/lis") && nav("LAB_VERIFY").includes("/lims") && !nav("LAB_VERIFY").includes("/lis"));
   assert.ok(!nav("LAB_RESULT", "RAD_REPORT").includes("/lab") && !nav("LAB_RESULT", "RAD_REPORT").includes("/radiology"));
   assert.ok(!nav("INVOICE_READ").includes("/lis"), "billing staff do not see LIS");
   // Branches by role

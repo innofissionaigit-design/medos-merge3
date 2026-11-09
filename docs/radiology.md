@@ -1,5 +1,7 @@
 # Radiology
 
+> **Laboratory portal.** For a scan the portal manages the radiology technician performs it from the portal, the radiologist signs, and the technician issues the report (`lims-portal.md`); the doctor sees it only after it is issued.
+
 ## Purpose
 Runs the imaging department's reporting: a billed radiology test (X-ray, ultrasound, CT, MRI, mammography) is performed, then reported and signed by a radiologist. It sits on the existing test orders: the doctor advises a scan, the cashier bills it, and then it reaches radiology.
 

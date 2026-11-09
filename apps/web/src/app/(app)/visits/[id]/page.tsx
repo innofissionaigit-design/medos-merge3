@@ -9,6 +9,7 @@ import { AmendModal, VersionHistory, type VersionRow } from "@/components/amend-
 import { FollowUpCard } from "@/components/follow-up-extras";
 import { VitalsCard } from "@/components/ipd-extras";
 import { VisitLabResults } from "@/components/lab";
+import { LimsVisitCard } from "@/components/lims-order";
 import { AiAssist } from "@/components/ai";
 import { VisitRadiology } from "@/components/radiology";
 import { HandwrittenCard, InvestigationsPicker, RxPreview, ShareCard, StopMedicinesCard, TemplatesBar } from "@/components/prescription-extras";
@@ -141,6 +142,7 @@ export default function VisitPage() {
         <div className="space-y-4">
           {/* Same card as the ward: history of readings, and wrong ones marked "entered in error" rather than deleted. */}
           <VitalsCard encounterId={id} open={h.visitStatus === "ACTIVE"} />
+          <LimsVisitCard encounterId={id} visitType="OPD" active={h.visitStatus === "ACTIVE"} />
           <VisitLabResults encounterId={id} />
           <VisitRadiology encounterId={id} />
           <AiAssist encounterId={id} />

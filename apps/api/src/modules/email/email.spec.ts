@@ -215,7 +215,7 @@ describe("email", () => {
     it("a hospital can reword an email in one language, see it first, and go back to the built-in wording", async () => {
       const list = await t.api("get", "/email/templates", a.admin.token);
       assert.equal(list.status, 200);
-      assert.deepEqual(list.body.data.map((x: { key: string }) => x.key), ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST"]);
+      assert.deepEqual(list.body.data.map((x: { key: string }) => x.key), ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST_SCHEDULED", "TEST"]);
       assert.ok(list.body.data.every((x: { languages: { language: string; custom: unknown }[] }) => x.languages.length === 3 && x.languages.every((l) => l.custom === null)));
       const put = (key: string, lang: string, body: Record<string, unknown>, tok = a.admin.token) => t.api("put", `/email/templates/${key}/${lang}`, tok).send(body);
       assert.equal((await put("APPOINTMENT_BOOKED", "en", { subject: "Booked!", body: "Hi {patientMrn}" })).status, 400, "unknown placeholder");

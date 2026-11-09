@@ -20,6 +20,7 @@ import { toHtml, type Block, type Doc } from "./doc";
 import type { PrintHeader } from "./html";
 import { FORM_TEXT, type FormLang } from "./admission-form-text";
 import { toPdf } from "./pdf";
+import { RELEASED_ORDER } from "../lims/lims-core.service";
 
 type DocType = "INVOICE" | "RECEIPT" | "ADVANCE_RECEIPT" | "PRESCRIPTION" | "DISCHARGE_SUMMARY" | "PATIENT_LABEL" | "ADMISSION_FORM" | "PAYOUT_VOUCHER" | "LAB_REPORT" | "LAB_LABEL" | "RAD_REPORT" | "CLAIM_FORM" | "PAYSLIP";
 export type PrintFormat = "html" | "pdf";
@@ -177,8 +178,8 @@ export class PrintService {
     const base = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId };
     const released = { OR: [{ hasCritical: false }, { criticalAckAt: { not: null } }] };
     const [labs, rads, heldLab, heldRad] = await Promise.all([
-      this.prisma.labResult.findMany({ where: { ...base, status: "VERIFIED", ...released }, orderBy: { updatedAt: "asc" }, take: 50, select: { name: true, versions: { orderBy: { version: "desc" }, take: 1, select: { values: true, comment: true, verifiedAt: true } } } }),
-      this.prisma.radStudy.findMany({ where: { ...base, status: "REPORTED", ...released }, orderBy: { updatedAt: "asc" }, take: 50, select: { bodyPart: true, testOrder: { select: { name: true } }, reports: { orderBy: { version: "desc" }, take: 1, select: { findings: true, impression: true, signedAt: true } } } }),
+      this.prisma.labResult.findMany({ where: { ...base, status: "VERIFIED", testOrder: RELEASED_ORDER, ...released }, orderBy: { updatedAt: "asc" }, take: 50, select: { name: true, versions: { orderBy: { version: "desc" }, take: 1, select: { values: true, comment: true, verifiedAt: true } } } }),
+      this.prisma.radStudy.findMany({ where: { ...base, status: "REPORTED", testOrder: RELEASED_ORDER, ...released }, orderBy: { updatedAt: "asc" }, take: 50, select: { bodyPart: true, testOrder: { select: { name: true } }, reports: { orderBy: { version: "desc" }, take: 1, select: { findings: true, impression: true, signedAt: true } } } }),
       this.prisma.labResult.count({ where: { ...base, status: "VERIFIED", hasCritical: true, criticalAckAt: null } }),
       this.prisma.radStudy.count({ where: { ...base, status: "REPORTED", hasCritical: true, criticalAckAt: null } }),
     ]);

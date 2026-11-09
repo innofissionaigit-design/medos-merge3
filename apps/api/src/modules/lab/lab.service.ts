@@ -9,6 +9,7 @@ import type { RequestContext } from "../../common/request-context";
 import { NumberingService } from "../numbering/numbering.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { IN_LAB_ORDER, LimsCoreService } from "../lims/lims-core.service";
 import { flagNumber, isCritical, parseNumber, rangeFor, rangeText, type LabFlag, type ParamFacts } from "./lab.domain";
 
 const uuid = z.string().uuid();
@@ -66,7 +67,7 @@ type ParamRow = ParamFacts & { id: string; name: string; unit: string | null; li
  */
 @Injectable()
 export class LabService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly email: EmailService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly email: EmailService, private readonly lims: LimsCoreService) {}
 
   // ───── test definitions ─────
 
@@ -135,10 +136,10 @@ export class LabService {
       : q.state === "SAMPLE_TAKEN" ? { labSamples: { some: { status: "COLLECTED" } }, NOT: { labResult: { is: { status: "VERIFIED" } } } }
       : q.state === "REPORTED" ? { labResult: { is: { status: "VERIFIED" } } }
       : q.state === "CRITICAL" ? { labResult: { is: { hasCritical: true, criticalAckAt: null } } } : {};
-    const where: Prisma.TestOrderWhereInput = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", status: "BILLED", ...(search.length ? { OR: search } : {}), ...stateWhere };
+    const where: Prisma.TestOrderWhereInput = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", AND: [IN_LAB_ORDER], ...(search.length ? { OR: search } : {}), ...stateWhere };
     const [rows, total] = await Promise.all([
       this.prisma.testOrder.findMany({
-        where, orderBy: [{ billedAt: "asc" }, { id: "asc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize,
+        where, orderBy: [{ billedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize,
         select: {
           id: true, name: true, billedAt: true, serviceId: true,
           patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } },
@@ -166,14 +167,19 @@ export class LabService {
   // ───── samples ─────
 
   private async billedOrder(db: Db | PrismaService, ctx: RequestContext, testOrderId: string) {
-    const o = await db.testOrder.findFirst({ where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", status: "BILLED" }, select: { id: true, name: true, serviceId: true, patientId: true, encounterId: true } });
+    const o = await db.testOrder.findFirst({ where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", AND: [IN_LAB_ORDER] }, select: { id: true, name: true, serviceId: true, patientId: true, encounterId: true } });
     if (!o) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     return o;
   }
 
   /** A sample is taken for a billed laboratory test: it gets an accession number (the number on the label) and the result form opens. */
   async collect(ctx: RequestContext, testOrderId: string, input: z.infer<typeof collectSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction((tx) => this.collectIn(tx, ctx, testOrderId, input));
+  }
+
+  /** The same, inside the caller's transaction (the LIMS nurse screen takes the sample and moves the request in one step). */
+  async collectIn(tx: Db, ctx: RequestContext, testOrderId: string, input: z.infer<typeof collectSchema>) {
+    {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`lab:${testOrderId}`}, 0))`;
       const o = await this.billedOrder(tx, ctx, testOrderId);
       const verified = await tx.labResult.findFirst({ where: { tenantId: ctx.tenantId, testOrderId, status: "VERIFIED" }, select: { id: true } });
@@ -190,13 +196,18 @@ export class LabService {
       if (have) await tx.labResult.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: have.id } }, data: { sampleId: sample.id, specimen } });
       else await tx.labResult.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: o.patientId, encounterId: o.encounterId, testOrderId, sampleId: sample.id, definitionId: def?.id ?? null, name: o.name, specimen } });
       await this.audit.record(tx, actorOf(ctx), { action: "LAB_SAMPLE_COLLECTED", entityType: "LabSample", entityId: sample.id, metadata: { accessionNumber, testOrderId, specimen } });
+      await this.lims.afterSampleCollected(tx, ctx, testOrderId);
       return { id: sample.id, accessionNumber, specimen, testOrderId };
-    });
+    }
   }
 
   /** A sample that cannot be used is rejected with a reason; another can be taken. */
   async rejectSample(ctx: RequestContext, sampleId: string, input: z.infer<typeof rejectSampleSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction((tx) => this.rejectSampleIn(tx, ctx, sampleId, input));
+  }
+
+  async rejectSampleIn(tx: Db, ctx: RequestContext, sampleId: string, input: z.infer<typeof rejectSampleSchema>) {
+    {
       const s = await tx.labSample.findFirst({ where: { id: sampleId, tenantId: ctx.tenantId, facilityId: ctx.facilityId } });
       if (!s) throw new DomainError("NOT_FOUND", "Resource not found", 404);
       if (s.status !== "COLLECTED") throw new DomainError("INVALID_STATE", "This sample was already rejected", 409);
@@ -205,8 +216,9 @@ export class LabService {
       await tx.labSample.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: s.id } }, data: { status: "REJECTED", rejectReason: input.reason, rejectedAt: new Date(), rejectedById: ctx.userId } });
       await tx.labResult.updateMany({ where: { tenantId: ctx.tenantId, testOrderId: s.testOrderId, sampleId: s.id }, data: { sampleId: null } });
       await this.audit.record(tx, actorOf(ctx), { action: "LAB_SAMPLE_REJECTED", entityType: "LabSample", entityId: s.id, metadata: { accessionNumber: s.accessionNumber, reason: input.reason } });
+      await this.lims.afterSampleRejected(tx, ctx, s.testOrderId, input.reason);
       return { id: s.id, accessionNumber: s.accessionNumber, status: "REJECTED" as const };
-    });
+    }
   }
 
   // ───── results ─────
@@ -244,8 +256,8 @@ export class LabService {
   /** The result of one billed laboratory test: what to fill in (with the ranges for this patient), what has been typed, and the reports so far. */
   async result(ctx: RequestContext, testOrderId: string, opts: { scoped?: boolean } = {}) {
     const o = await this.prisma.testOrder.findFirst({
-      where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", status: "BILLED", ...(opts.scoped ? { encounter: { AND: [visitScope(ctx)] } } : {}) },
-      select: { id: true, name: true, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
+      where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", AND: [IN_LAB_ORDER], ...(opts.scoped ? { encounter: { AND: [visitScope(ctx)] } } : {}) },
+      select: { id: true, name: true, limsRequest: { select: { status: true } }, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
     });
     if (!o) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     const r = await this.prisma.labResult.findFirst({ where: { tenantId: ctx.tenantId, testOrderId }, include: { versions: { orderBy: { version: "desc" } } } });
@@ -263,8 +275,22 @@ export class LabService {
         return { id: p.id, name: p.name, unit: p.unit, type: p.type, choices: p.choices, decimals: p.decimals, rangeText: rangeText(low, high, p.decimals), criticalLow: p.criticalLow == null ? null : new Decimal(p.criticalLow.toString()).toFixed(p.decimals), criticalHigh: p.criticalHigh == null ? null : new Decimal(p.criticalHigh.toString()).toFixed(p.decimals) };
       }),
       draft: { values: draft.values ?? [], comment: draft.comment ?? "" },
-      reports: (r?.versions ?? []).map((v) => ({ version: v.version, kind: v.kind, values: v.values as unknown as SnapshotValue[], comment: v.comment, reason: v.reason, hasCritical: v.hasCritical, verifiedAt: v.verifiedAt, verifiedBy: users.get(v.verifiedById) ?? null })),
+      reports: (this.mayReadReports(ctx, o.limsRequest?.status) ? (r?.versions ?? []) : []).map((v) => ({ version: v.version, kind: v.kind, values: v.values as unknown as SnapshotValue[], comment: v.comment, reason: v.reason, hasCritical: v.hasCritical, verifiedAt: v.verifiedAt, verifiedBy: users.get(v.verifiedById) ?? null })),
     };
+  }
+
+  /** A report the technician has not issued yet is shown only to the people who work on it; the doctor and the patient see it after it is issued. */
+  private mayReadReports(ctx: RequestContext, limsStatus: string | undefined): boolean {
+    if (limsStatus === undefined || limsStatus === "ISSUED" || limsStatus === "HANDED_OVER") return true;
+    return (["LAB_RESULT", "LAB_VERIFY", "LIMS_ISSUE", "LIMS_MANAGE"] as const).some((p) => ctx.permissions.has(p));
+  }
+
+  /** Before a test is sent for review every value must be filled in and valid, exactly as verifying will check it. */
+  async assertDraftReady(tx: Db, ctx: RequestContext, testOrderId: string): Promise<void> {
+    const r = await tx.labResult.findFirst({ where: { tenantId: ctx.tenantId, testOrderId }, include: { patient: { select: { gender: true } } } });
+    if (!r || r.status !== "DRAFT" || !r.sampleId) throw new DomainError("INVALID_STATE", "There is no sample result to send for review", 409);
+    const draft = (r.draft ?? {}) as Draft;
+    this.build(await this.paramsFor(tx, ctx.tenantId, r.definitionId, r.name), r.patient.gender, draft.values ?? []);
   }
 
   private async lockResult(tx: Db, ctx: RequestContext, resultId: string) {
@@ -278,6 +304,7 @@ export class LabService {
     return this.prisma.$transaction(async (tx) => {
       const r = await this.lockResult(tx, ctx, resultId);
       if (r.status !== "DRAFT") throw new DomainError("INVALID_STATE", "This result has been verified. A correction is made as an amendment", 409);
+      await this.lims.assertCanEnterResult(tx, ctx, r.testOrderId);
       if (!r.sampleId) throw new DomainError("INVALID_STATE", "Collect a sample first: there is no live sample for this test", 409);
       if (r.version !== input.version) throw new DomainError("STALE_VERSION", "Someone else changed this result. Reload it first", 409, { currentVersion: r.version });
       const params = await this.paramsFor(tx, ctx.tenantId, r.definitionId, r.name);
@@ -294,6 +321,7 @@ export class LabService {
     return this.prisma.$transaction(async (tx) => {
       const r = await this.lockResult(tx, ctx, resultId);
       if (r.status !== "DRAFT") throw new DomainError("INVALID_STATE", "This result has already been verified", 409);
+      await this.lims.assertCanReview(tx, ctx, r.testOrderId);
       if (!r.sampleId) throw new DomainError("INVALID_STATE", "Collect a sample first: there is no live sample for this test", 409);
       if (r.version !== input.version) throw new DomainError("STALE_VERSION", "Someone else changed this result. Reload it first", 409, { currentVersion: r.version });
       const draft = (r.draft ?? {}) as Draft;
@@ -304,8 +332,8 @@ export class LabService {
       await this.audit.record(tx, actorOf(ctx), { action: "LAB_RESULT_VERIFIED", entityType: "LabResult", entityId: r.id, metadata: { testOrderId: r.testOrderId, version: 1, abnormal: values.filter((v) => v.flag !== "NORMAL").length } });
       if (hasCritical) await this.audit.record(tx, actorOf(ctx), { action: "LAB_CRITICAL_RESULT", entityType: "LabResult", entityId: r.id, metadata: { testOrderId: r.testOrderId, parameters: values.filter((v) => isCritical(v.flag)).map((v) => v.name) } });
       if (hasCritical) await this.notifications.criticalResult(tx, ctx, "LAB", r.testOrderId, r.id, 1);
-      // The patient is told a report is ready, never what it says (docs/email.md).
-      await this.email.reportReadyEmail(tx, ctx, r.testOrderId, r.id, "LabResult");
+      // A test the LIMS manages is passed here and issued by the technician, who also tells the patient; any other report tells the patient now. The patient is told a report is ready, never what it says (docs/email.md).
+      if (!(await this.lims.afterReviewed(tx, ctx, r.testOrderId))) await this.email.reportReadyEmail(tx, ctx, r.testOrderId, r.id, "LabResult");
       return { id: r.id, status: "VERIFIED" as const, currentVersion: 1, hasCritical };
     });
   }
@@ -324,6 +352,7 @@ export class LabService {
       await this.audit.record(tx, actorOf(ctx), { action: "LAB_RESULT_AMENDED", entityType: "LabResult", entityId: r.id, metadata: { testOrderId: r.testOrderId, version: next, reason: input.reason } });
       if (hasCritical) await this.audit.record(tx, actorOf(ctx), { action: "LAB_CRITICAL_RESULT", entityType: "LabResult", entityId: r.id, metadata: { testOrderId: r.testOrderId, version: next } });
       if (hasCritical) await this.notifications.criticalResult(tx, ctx, "LAB", r.testOrderId, r.id, next);
+      await this.lims.afterAmended(tx, ctx, r.testOrderId, next);
       return { id: r.id, status: "VERIFIED" as const, currentVersion: next, hasCritical };
     });
   }
@@ -356,14 +385,15 @@ export class LabService {
     const enc = await this.prisma.encounter.findFirst({ where: { id: encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, AND: [visitScope(ctx)] }, select: { id: true } });
     if (!enc) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     const orders = await this.prisma.testOrder.findMany({
-      where: { tenantId: ctx.tenantId, encounterId, category: "LABORATORY", status: "BILLED" }, orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, labSamples: { where: { status: "COLLECTED" }, select: { accessionNumber: true } }, labResult: { select: { id: true, status: true, currentVersion: true, hasCritical: true, criticalAckAt: true, versions: { orderBy: { version: "desc" }, take: 1, select: { version: true, kind: true, values: true, comment: true, verifiedAt: true } } } } },
+      where: { tenantId: ctx.tenantId, encounterId, category: "LABORATORY", AND: [IN_LAB_ORDER] }, orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, limsRequest: { select: { status: true } }, labSamples: { where: { status: "COLLECTED" }, select: { accessionNumber: true } }, labResult: { select: { id: true, status: true, currentVersion: true, hasCritical: true, criticalAckAt: true, versions: { orderBy: { version: "desc" }, take: 1, select: { version: true, kind: true, values: true, comment: true, verifiedAt: true } } } } },
     });
     return orders.map((o) => {
-      const v = o.labResult?.versions[0];
+      const released = this.mayReadReports(ctx, o.limsRequest?.status);
+      const v = released ? o.labResult?.versions[0] : undefined;
       return {
-        testOrderId: o.id, test: o.name, state: this.stateOf(o.labSamples.length > 0, o.labResult?.status === "VERIFIED"), accessionNumber: o.labSamples[0]?.accessionNumber ?? null,
-        resultId: o.labResult?.id ?? null, critical: o.labResult?.hasCritical === true && !o.labResult.criticalAckAt, amended: (o.labResult?.currentVersion ?? 0) > 1,
+        testOrderId: o.id, test: o.name, state: this.stateOf(o.labSamples.length > 0, released && o.labResult?.status === "VERIFIED"), accessionNumber: o.labSamples[0]?.accessionNumber ?? null,
+        resultId: o.labResult?.id ?? null, critical: o.labResult?.hasCritical === true && !o.labResult.criticalAckAt, amended: (o.labResult?.currentVersion ?? 0) > 1, limsStatus: o.limsRequest?.status ?? null,
         report: v ? { version: v.version, kind: v.kind, values: v.values as unknown as SnapshotValue[], comment: v.comment, verifiedAt: v.verifiedAt } : null,
       };
     });

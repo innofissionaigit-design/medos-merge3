@@ -19,6 +19,13 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   BOOKING_FROM_OUTSIDE: { text: "A booking came in from the patient app or another system", href: "/appointments" },
   TELECONSULT_PATIENT_WAITING: { text: "A patient is waiting for the video call", href: "/teleconsult" },
   BOOKING_AUTO_CANCELLED: { text: "A booking was cancelled because its fee was not paid", href: "/appointments" },
+  LIMS_COLLECTION_WAITING: { text: "A sample is waiting to be taken", href: "/lims" },
+  LIMS_ASSIGNED: { text: "Laboratory work was given to you", href: "/lims" },
+  LIMS_SAMPLE_READY: { text: "A sample is ready for the technician", href: "/lims" },
+  LIMS_REVIEW_WAITING: { text: "A report is waiting for your review", href: "/lims" },
+  LIMS_READY_TO_ISSUE: { text: "A passed report is ready to issue", href: "/lims" },
+  LIMS_REPORT_ISSUED: { text: "A laboratory or imaging report was issued", href: "/dashboard" },
+  LIMS_EXCEPTION_RAISED: { text: "A laboratory exception or failed check needs your attention", href: "/lims" },
 };
 const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 

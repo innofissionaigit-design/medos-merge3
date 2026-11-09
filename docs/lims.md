@@ -1,5 +1,7 @@
 # Laboratory (LIMS)
 
+> **Laboratory portal.** The queue, assignments, priorities, turnaround, quality control and the patient messages that sit on top of this module are in [`lims-portal.md`](lims-portal.md). For a test the portal manages, passing a report (verify) no longer releases it: the technician issues it, and the doctor, the patient app and the printed summary show it only then. The older screens below still work and obey the same order of steps.
+
 ## Purpose
 Runs the in-house laboratory: which tests exist and what they measure, taking samples, typing in results, pathologist verification, critical values, and the printed report. It sits on top of the existing test orders: a doctor advises a laboratory test, the cashier bills it, and only then does it reach the lab.
 

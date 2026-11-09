@@ -108,3 +108,12 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Home care and connected remote monitoring (devices, readings, alerts).
 - Per-department video fee; paying the fee online from the patient app (needs a payment gateway account); an email or text when a video consultation is moved.
 - A telemedicine practice checklist (advice limits for certain medicines, patient location) if the hospital's policy needs it.
+
+## Laboratory portal follow-ups (docs/lims-portal.md)
+
+- **Billing for laboratory and imaging tests** (planned next): outpatient pay-first option, inpatient charges at order, collection or issue, package pricing, and what happens to a bill when a sample is rejected, a test is cancelled or a report is amended. The decisions to make and the hook points are listed in the Billing section of `lims-portal.md`.
+- Analyser and modality interfaces (HL7, ASTM, DICOM worklist), reagent and consumable stock, barcode scanning of sample tubes, several samples for one test (for example culture and sensitivity), external-lab referral.
+- Result trends over time for a patient, report templates and structured measurements for imaging, and a preliminary-report step.
+- Per-technician workload balancing and shift rosters; a staffing view for the LIMS manager.
+- Patient messages for admitted patients (for example a family contact) and in Bengali and Hindi (the email template has all three; the WhatsApp and SMS text is English only).
+- Cardiology (ECG, echo) and other procedures are not run through the LIMS.

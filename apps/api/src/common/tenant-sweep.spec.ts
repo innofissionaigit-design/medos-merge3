@@ -70,6 +70,7 @@ const SEED: Record<string, Json> = {
   "PUT /policies/:id/copay": { copayPercent: "10", deductible: "1.00", deductibleUsed: "0.00" },
   "POST /cashier/patients/:patientId/collect": { invoiceIds: ["__ID__"], payments: [{ method: "CASH", amount: "1.00" }] },
   "POST /users/:id/reset-password": { password: "Sweepvalue12345" },
+  "POST /lims/requests/:id/assign": { techId: randomUUID() },
 };
 /** Fields to try, one by one, when a change route answers "no changes supplied" (a field the route does not know is removed again from the next answer). */
 const CHANGE_FIELDS = ["name", "displayName", "title", "description", "notes", "label", "phone", "address", "fullName", "email", "specialty", "remarks", "code", "city", "contactPhone"];

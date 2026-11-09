@@ -94,7 +94,9 @@ async function main(): Promise<void> {
     doctors.push(pr.id);
   }
   for (let i = 0; i < COUNTS.nurses; i++) await mkUser(`nurse${i + 1}`, `Nurse ${pick(FIRST_NAMES_F)} ${pick(LAST_NAMES)}`, "NURSE");
-  for (const [u, n, r] of [["reception1", "Reception One", "RECEPTIONIST"], ["reception2", "Reception Two", "RECEPTIONIST"], ["cashier1", "Cashier One", "CASHIER"], ["cashier2", "Cashier Two", "CASHIER"], ["pharmacist1", "Pharmacist One", "PHARMACIST"], ["manager1", "Manager One", "MANAGER"]] as const) await mkUser(u, n, r);
+  for (const [u, n, r] of [["reception1", "Reception One", "RECEPTIONIST"], ["reception2", "Reception Two", "RECEPTIONIST"], ["cashier1", "Cashier One", "CASHIER"], ["cashier2", "Cashier Two", "CASHIER"], ["pharmacist1", "Pharmacist One", "PHARMACIST"], ["manager1", "Manager One", "MANAGER"],
+    // The laboratory portal (docs/lims-portal.md): one login for each role.
+    ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
   const [reception, cashier, pharmacist] = await Promise.all([login("reception1"), login("cashier1"), login("pharmacist1")]);
 
   step(`registering ${COUNTS.patients} patients`);
@@ -134,9 +136,11 @@ async function main(): Promise<void> {
     const room = await call("POST", "/rooms", admin, { wardId: ward["id"], name: wi === 0 ? "Ward hall" : "Private block", code: `RM${wi + 1}` });
     for (let b = 0; b < COUNTS.beds / 2; b++) beds.push((await call("POST", "/beds", admin, { roomId: room["id"], code: `${wi === 0 ? "G" : "P"}${b + 1}`, dailyRate: wi === 0 ? "800.00" : "2500.00" }))["id"] as string);
   }
+  const admissions: { encounterId: string; doctor: string }[] = [];
   const reasons = ["Fever with breathing difficulty", "Post-operative care", "Dehydration needing IV fluids", "Chest pain under observation", "Fracture management"];
   for (let i = 0; i < COUNTS.admissions; i++) {
-    await call("POST", "/admissions", reception, { patientId: patients[COUNTS.admAt + i], consultantId: doctors[i % doctors.length], bedId: beds[i], reason: `${pick(reasons)} (synthetic)` }, { "idempotency-key": randomUUID() });
+    const adm = await call("POST", "/admissions", reception, { patientId: patients[COUNTS.admAt + i], consultantId: doctors[i % doctors.length], bedId: beds[i], reason: `${pick(reasons)} (synthetic)` }, { "idempotency-key": randomUUID() });
+    admissions.push({ encounterId: adm["encounterId"] as string, doctor: `doctor${(i % doctors.length) + 1}` });
   }
 
   step(`stocking ${COUNTS.medicines} medicines`);
@@ -162,6 +166,24 @@ async function main(): Promise<void> {
   for (const [c, n, price] of [["CBC", "CBC (complete blood count)", "250"], ["ESR", "ESR", "100"], ["LFT", "Liver function test (LFT)", "600"], ["KFT", "Kidney function test (KFT)", "550"], ["RBS", "Random blood sugar", "80"], ["FBS", "Fasting blood sugar", "80"], ["HBA1C", "HbA1c", "450"], ["LIPID", "Lipid profile", "700"], ["TSH", "TSH", "350"], ["CRP", "CRP", "400"], ["URINE", "Urine routine", "120"], ["XRAYCH", "Chest X-ray", "400"], ["USGAB", "USG abdomen", "900"], ["ECHO", "2D echo", "1500"]] as const) {
     await call("POST", "/services", admin, { code: c, name: n, category: "INVESTIGATION", price, taxPercent: 0 });
   }
+  step("laboratory: test set-up and a few orders");
+  const pathologist = await login("pathologist1");
+  const cbc = ((await call("GET", "/lab/tests", pathologist)) as unknown as Json[]).find((t) => t["code"] === "CBC");
+  if (cbc) {
+    await call("PUT", `/lab/tests/${cbc["serviceId"]}`, pathologist, {
+      specimen: "Blood (EDTA)", turnaroundHours: 4, instructions: "No special preparation is needed.",
+      parameters: [
+        { name: "Haemoglobin", unit: "g/dL", type: "NUMERIC", decimals: 1, lowMale: 13.5, highMale: 17.5, lowFemale: 12, highFemale: 15.5, criticalLow: 7, criticalHigh: 20 },
+        { name: "Total WBC count", unit: "x10^3/uL", type: "NUMERIC", decimals: 1, low: 4, high: 11, criticalHigh: 30 },
+        { name: "Platelet count", unit: "x10^3/uL", type: "NUMERIC", decimals: 0, low: 150, high: 450, criticalLow: 20 },
+      ],
+    });
+  }
+  // Admitted patients' tests go straight to the laboratory; the first one is an emergency so the queue shows what that looks like.
+  for (const [i, a] of admissions.slice(0, 3).entries()) {
+    const doctor = await login(a.doctor);
+    await call("POST", "/lims/orders", doctor, { encounterId: a.encounterId, priority: i === 0 ? "EMERGENCY" : "ROUTINE", clinicalNote: "Synthetic demo order", tests: [{ name: "CBC (complete blood count)", category: "LABORATORY" }, ...(i === 1 ? [{ name: "X-ray chest", category: "RADIOLOGY" as const }] : [])] });
+  }
   await call("POST", "/shifts/open", cashier, { openingCash: "2000" });
   for (let i = 0; i < COUNTS.invoices; i++) {
     const inv = await call("POST", "/invoices", cashier, { patientId: patients[COUNTS.invAt + i], lines: [{ serviceId: pick(services), quantity: 1 }, ...(i % 3 === 0 ? [{ serviceId: pick(services), quantity: 2 }] : [])] });
@@ -176,7 +198,7 @@ async function main(): Promise<void> {
   }
 
   await app.close();
-  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\n`);
+  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
   process.stdout.write(generated ? `Password (generated, shown once): ${password}\n` : "Password: the value of SEED_PASSWORD\n");
 }
 

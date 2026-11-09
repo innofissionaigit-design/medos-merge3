@@ -437,6 +437,7 @@ model TestOrder {
   labSamples LabSample[]
   labResult  LabResult?
   radStudy   RadStudy?
+  limsRequest LimsRequest?
 
   @@unique([tenantId, id])
   @@index([tenantId, facilityId, status, createdAt])

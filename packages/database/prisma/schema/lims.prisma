@@ -1,0 +1,282 @@
+// LIMS portal (docs/lims-portal.md): the laboratory floor on top of the existing laboratory (docs/lims.md) and radiology (docs/radiology.md) work.
+// A LimsRequest follows one test order through the laboratory: queue -> sample taken (or patient ready) -> accepted by the technician -> sent for review ->
+// passed by the pathologist or radiologist -> issued by the technician -> (OPD) handed over at reception. The clinical records themselves (samples, results,
+// studies, signed reports) stay in LabSample / LabResult / RadStudy; nothing clinical is copied here.
+
+enum LimsDepartmentKind {
+  PATHOLOGY
+  RADIOLOGY
+}
+
+enum LimsOrigin {
+  OPD
+  IPD
+}
+
+/// Declared most urgent first, so sorting by it ascending puts an emergency at the top of the queue.
+enum LimsPriority {
+  EMERGENCY
+  URGENT
+  ROUTINE
+}
+
+enum LimsConsent {
+  /// An admitted patient: the test goes ahead without asking for a separate consent.
+  NOT_REQUIRED
+  /// An OPD patient who agreed at reception.
+  GIVEN
+}
+
+enum LimsStatus {
+  PENDING_COLLECTION
+  COLLECTED
+  IN_PROCESS
+  PENDING_REVIEW
+  PASSED
+  ISSUED
+  HANDED_OVER
+  CANCELLED
+}
+
+enum LimsInstrumentStatus {
+  ACTIVE
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+enum LimsQcResult {
+  PASS
+  FAIL
+}
+
+enum LimsExceptionKind {
+  QUEUE_JUMP
+  COMPROMISED_SAMPLE
+  DELAYED_REPORT
+  OTHER
+}
+
+enum LimsExceptionStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+/// A laboratory department of a facility: Pathology or Radiology. Holds the turnaround targets and the default patient instructions.
+model LimsDepartment {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String             @db.Uuid
+  facilityId          String             @db.Uuid
+  kind                LimsDepartmentKind
+  name                String
+  status              ActiveStatus       @default(ACTIVE)
+  routineTatMinutes   Int                @default(1440)
+  urgentTatMinutes    Int                @default(360)
+  emergencyTatMinutes Int                @default(120)
+  /// What the patient is told to do before coming, unless the test has its own instructions.
+  defaultInstructions String?
+  createdAt           DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(3)
+
+  facility    Facility         @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
+  requests    LimsRequest[]
+  instruments LimsInstrument[]
+  qcRecords   LimsQcRecord[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, facilityId, kind])
+}
+
+/// One test order inside the laboratory.
+model LimsRequest {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String       @db.Uuid
+  facilityId    String       @db.Uuid
+  patientId     String       @db.Uuid
+  encounterId   String       @db.Uuid
+  testOrderId   String       @db.Uuid
+  departmentId  String       @db.Uuid
+  /// The number on the queue slip, for example LRQ-2026-000123.
+  requestNumber String
+  /// All the tests launched together for one patient share a batch (one message to the patient).
+  batchId       String       @db.Uuid
+  origin        LimsOrigin
+  priority      LimsPriority @default(ROUTINE)
+  status        LimsStatus   @default(PENDING_COLLECTION)
+  consent       LimsConsent
+  /// When the patient is asked to come (OPD).
+  scheduledFor  DateTime?    @db.Timestamptz(3)
+  /// What the patient was told to do before coming.
+  instructions  String?
+  /// Why the doctor wants the test (shown to the technician and the specialist).
+  clinicalNote  String?
+  assignedNurseId String?    @db.Uuid
+  assignedTechId  String?    @db.Uuid
+  requestedById String       @db.Uuid
+  /// The report is due by this time (the department's target for the priority, or the test's own turnaround).
+  dueAt         DateTime     @db.Timestamptz(3)
+  recollectCount Int         @default(0)
+  needsRecollection Boolean  @default(false)
+  returnedCount Int          @default(0)
+  /// The manager approved using a sample that did not meet the usual standard (an approved COMPROMISED_SAMPLE exception).
+  compromisedSampleApproved Boolean @default(false)
+  collectedAt   DateTime?    @db.Timestamptz(3)
+  collectedById String?      @db.Uuid
+  acceptedAt    DateTime?    @db.Timestamptz(3)
+  acceptedById  String?      @db.Uuid
+  submittedAt   DateTime?    @db.Timestamptz(3)
+  submittedById String?      @db.Uuid
+  passedAt      DateTime?    @db.Timestamptz(3)
+  passedById    String?      @db.Uuid
+  issuedAt      DateTime?    @db.Timestamptz(3)
+  issuedById    String?      @db.Uuid
+  handedOverAt  DateTime?    @db.Timestamptz(3)
+  handedOverById String?     @db.Uuid
+  handedOverTo  String?
+  cancelledAt   DateTime?    @db.Timestamptz(3)
+  cancelReason  String?
+  version       Int          @default(1)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+
+  patient    Patient        @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter  Encounter      @relation(fields: [tenantId, encounterId], references: [tenantId, id], onDelete: Restrict)
+  testOrder  TestOrder      @relation(fields: [tenantId, testOrderId], references: [tenantId, id], onDelete: Restrict)
+  department LimsDepartment @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+  events     LimsRequestEvent[]
+  exceptions LimsException[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, testOrderId])
+  @@unique([tenantId, facilityId, requestNumber])
+  @@index([tenantId, facilityId, departmentId, status, priority, createdAt])
+  @@index([tenantId, facilityId, status, dueAt])
+  @@index([tenantId, assignedNurseId, status])
+  @@index([tenantId, assignedTechId, status])
+  @@index([tenantId, encounterId])
+  @@index([tenantId, batchId])
+}
+
+/// The history of a request: every step with who did it and when. Never changed or deleted. It is what turnaround times and investigations are worked out from.
+model LimsRequestEvent {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String      @db.Uuid
+  requestId  String      @db.Uuid
+  kind       String
+  fromStatus LimsStatus?
+  toStatus   LimsStatus?
+  actorUserId String?    @db.Uuid
+  note       String?
+  at         DateTime    @default(now()) @db.Timestamptz(3)
+
+  request LimsRequest @relation(fields: [tenantId, requestId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, requestId, at])
+  @@index([tenantId, kind, at])
+}
+
+/// A machine or modality (analyser, X-ray unit, ultrasound...).
+model LimsInstrument {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String               @db.Uuid
+  facilityId       String               @db.Uuid
+  departmentId     String               @db.Uuid
+  name             String
+  model            String?
+  serialNumber     String?
+  status           LimsInstrumentStatus @default(ACTIVE)
+  lastCalibratedAt DateTime?            @db.Timestamptz(3)
+  nextCalibrationDue DateTime?          @db.Timestamptz(3)
+  createdById      String               @db.Uuid
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+
+  department LimsDepartment @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+  qcRecords  LimsQcRecord[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, facilityId, name])
+  @@index([tenantId, facilityId, departmentId, status])
+}
+
+/// One quality-control run. Written once; only the manager's review is added afterwards.
+model LimsQcRecord {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String        @db.Uuid
+  facilityId   String        @db.Uuid
+  departmentId String        @db.Uuid
+  instrumentId String?       @db.Uuid
+  /// What was checked: an analyte or control material, or a modality check such as "Daily image-quality check".
+  subject      String
+  level        String?
+  unit         String?
+  expected     Decimal?      @db.Decimal(12, 3)
+  observed     Decimal?      @db.Decimal(12, 3)
+  lowLimit     Decimal?      @db.Decimal(12, 3)
+  highLimit    Decimal?      @db.Decimal(12, 3)
+  result       LimsQcResult
+  note         String?
+  recordedById String        @db.Uuid
+  recordedAt   DateTime      @default(now()) @db.Timestamptz(3)
+  reviewedById String?       @db.Uuid
+  reviewedAt   DateTime?     @db.Timestamptz(3)
+  reviewNote   String?
+  /// True when the manager says the failure needs action before the instrument is used again.
+  actionRequired Boolean     @default(false)
+
+  department LimsDepartment  @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+  instrument LimsInstrument? @relation(fields: [tenantId, instrumentId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, facilityId, departmentId, recordedAt(sort: Desc)])
+  @@index([tenantId, facilityId, result, reviewedAt])
+}
+
+/// A request for a one-off departure from the usual rules, decided by the LIMS manager.
+model LimsException {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String              @db.Uuid
+  facilityId  String              @db.Uuid
+  requestId   String              @db.Uuid
+  kind        LimsExceptionKind
+  reason      String
+  status      LimsExceptionStatus @default(PENDING)
+  raisedById  String              @db.Uuid
+  raisedAt    DateTime            @default(now()) @db.Timestamptz(3)
+  decidedById String?             @db.Uuid
+  decidedAt   DateTime?           @db.Timestamptz(3)
+  decisionNote String?
+
+  request LimsRequest @relation(fields: [tenantId, requestId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, facilityId, status, raisedAt])
+  @@index([tenantId, requestId])
+}
+
+/// A WhatsApp or SMS to the patient about their tests (when to come and what to do beforehand, or that a report is ready). The text and the full number are never kept.
+model LimsMessage {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String        @db.Uuid
+  facilityId        String        @db.Uuid
+  patientId         String        @db.Uuid
+  batchId           String        @db.Uuid
+  /// SCHEDULED (when to come) or REPORT_READY.
+  kind              String
+  channel           String
+  toMask            String
+  status            MessageStatus @default(PENDING)
+  attempts          Int           @default(0)
+  nextAttemptAt     DateTime      @default(now()) @db.Timestamptz(3)
+  providerName      String?
+  providerMessageId String?
+  lastError         String?
+  createdById       String        @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?     @db.Timestamptz(3)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, batchId, kind, channel])
+  @@index([status, nextAttemptAt])
+}

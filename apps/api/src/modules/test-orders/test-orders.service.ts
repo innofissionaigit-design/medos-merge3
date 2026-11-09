@@ -93,9 +93,10 @@ export class TestOrdersService {
   async syncFromConsultation(tx: Db, ctx: RequestContext, enc: { id: string; patientId: string }, content: AdvisedContent, version: number): Promise<void> {
     const wanted = new Map<string, { category: TestCategory; name: string }>();
     for (const [field, cat] of LISTS) for (const raw of content[field] ?? []) { const name = raw.trim().replace(/\s+/g, " "); if (name && !wanted.has(key(cat, name))) wanted.set(key(cat, name), { category: cat, name }); }
-    const existing = await tx.testOrder.findMany({ where: { tenantId: ctx.tenantId, encounterId: enc.id, source: "DIGITAL", status: { in: ["ORDERED", "BILLED"] } }, select: { id: true, category: true, name: true, status: true } });
+    const existing = await tx.testOrder.findMany({ where: { tenantId: ctx.tenantId, encounterId: enc.id, source: "DIGITAL", status: { in: ["ORDERED", "BILLED"] } }, select: { id: true, category: true, name: true, status: true, limsRequest: { select: { status: true } } } });
     const have = new Set(existing.map((o) => key(o.category, o.name)));
-    const toCancel = existing.filter((o) => o.status === "ORDERED" && !wanted.has(key(o.category, o.name)));
+    // A test the laboratory has taken in is not cancelled here: once it is in the LIMS only the LIMS manager can cancel it (docs/lims-portal.md).
+    const toCancel = existing.filter((o) => o.status === "ORDERED" && !o.limsRequest && !wanted.has(key(o.category, o.name)));
     const toCreate = [...wanted.entries()].filter(([k]) => !have.has(k)).map(([, v]) => v);
 
     if (toCancel.length) {
@@ -375,7 +376,8 @@ export class TestOrdersService {
     }
     // Tests taken off the bill: the doctor's order is closed as "taken off at billing" (its wording is unchanged); the line is kept as the record.
     const takenOrders = taken.flatMap((d) => (d.testOrderId ? [d.testOrderId] : []));
-    if (takenOrders.length) await tx.testOrder.updateMany({ where: { id: { in: takenOrders }, tenantId: ctx.tenantId, status: "ORDERED" }, data: { status: "CANCELLED", cancelReason: "Taken off the bill by the Cashier" } });
+    // A test already in the laboratory (the LIMS) is not cancelled by leaving it off a bill: only the LIMS manager cancels it there.
+    if (takenOrders.length) await tx.testOrder.updateMany({ where: { id: { in: takenOrders }, tenantId: ctx.tenantId, status: "ORDERED", limsRequest: { is: null } }, data: { status: "CANCELLED", cancelReason: "Taken off the bill by the Cashier" } });
     if (taken.length) await tx.testBillingLine.updateMany({ where: { id: { in: taken.map((d) => d.id) }, tenantId: ctx.tenantId, status: "DRAFT" }, data: { status: "DROPPED", updatedById: ctx.userId } });
     // A handwritten picture whose tests were billed is dealt with.
     for (const scanId of [...new Set(active.flatMap((d) => (d.scanId ? [d.scanId] : [])))]) {
@@ -388,6 +390,7 @@ export class TestOrdersService {
   /** The Cashier takes a test off (the patient will not have it done here). Billed tests cannot be taken off: they are reversed through the bill. */
   async cancel(ctx: RequestContext, id: string, input: z.infer<typeof cancelTestSchema>) {
     return this.prisma.$transaction(async (tx) => {
+      if (await tx.limsRequest.count({ where: { tenantId: ctx.tenantId, testOrderId: id } }) > 0) throw new DomainError("INVALID_STATE", "This test is already in the laboratory. Ask the LIMS manager to cancel it there", 409);
       const res = await tx.testOrder.updateMany({ where: { id, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ORDERED" }, data: { status: "CANCELLED", cancelReason: input.reason } });
       if (res.count !== 1) {
         const exists = await tx.testOrder.findFirst({ where: { id, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { status: true } });
