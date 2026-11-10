@@ -10,7 +10,7 @@ import { api, ApiError, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 
 interface QItem { suggestedQuantity?: number | null; id: string; lineNo: number; medicineId: string | null; genericName: string; brandName: string | null; strength: string | null; dosage: string; frequency: string; durationDays: number | null; quantity: number | null; dispensedQuantity: number; remaining: number | null; status: string }
-interface QOrder { visitType?: "OPD" | "IPD" | "EMERGENCY"; testsAdvised?: { name: string; category: string; status: string }[]; id: string; orderNumber: string | null; source?: string; handwrittenPages?: { pageNo: number; fileId: string; fileName: string; contentType: string }[]; signedAt: string; patientId: string; patientName: string; mrn: string | null; doctorName: string | null; status: string; allergyWarnings: { allergen: string; matchedItem: string; severity: string }[]; items: QItem[] }
+interface QOrder { admission?: { admissionNumber: string } | null; visitType?: "OPD" | "IPD" | "EMERGENCY"; testsAdvised?: { name: string; category: string; status: string }[]; id: string; orderNumber: string | null; source?: string; handwrittenPages?: { pageNo: number; fileId: string; fileName: string; contentType: string }[]; signedAt: string; patientId: string; patientName: string; mrn: string | null; doctorName: string | null; status: string; allergyWarnings: { allergen: string; matchedItem: string; severity: string }[]; items: QItem[] }
 interface StockRow { medicineId: string; brandName: string; genericName: string; strength: string | null; sellableQuantity: number; expiredQuantity: number; nearExpiryQuantity: number; blockedQuantity: number; reorderLevel: number; lowStock: boolean; batches: { id: string; batchNo: string; expiryDate: string; quantity: number; sellingPrice: string }[] }
 interface DispenseResult { dispense: { dispenseNumber: string; total: string; invoiceId: string | null } }
 interface Med { id: string; brandName: string; genericName: string; strength: string | null }
@@ -45,13 +45,15 @@ function Dispense({ order, onClose }: { order: QOrder; onClose: () => void }) {
   const [rows, setRows] = useState(() => order.items.filter((i) => i.status === "ACTIVE" && (i.remaining === null || i.remaining > 0)).map((i) => ({ item: i, med: i.medicineId ? ({ id: i.medicineId, brandName: i.brandName ?? i.genericName, genericName: i.genericName, strength: i.strength } as Med) : null, qty: String(i.remaining ?? i.suggestedQuantity ?? "") })));
   const [ack, setAck] = useState(false);
   const [needAck, setNeedAck] = useState(false);
+  // An admitted patient's medicines go on the admission's bill by default, so they are paid with the final bill instead of at the counter.
+  const [toAdmission, setToAdmission] = useState(!!order.admission);
   const [key] = useState(newKey);
   const [done, setDone] = useState<DispenseResult | null>(null);
   const dispense = useMutation({
     mutationFn: () => api.post<DispenseResult>("/pharmacy/dispenses", {
       patientId: order.patientId, medicationOrderId: order.id,
       items: rows.filter((r) => r.med && Number(r.qty) > 0).map((r) => ({ medicationOrderItemId: r.item.id, medicineId: r.med!.id, quantity: Number(r.qty) })),
-      ...(ack ? { acknowledgeAllergyWarnings: true } : {}),
+      ...(ack ? { acknowledgeAllergyWarnings: true } : {}), ...(order.admission && toAdmission ? { chargeToAdmission: true } : {}),
     }, key),
     onSuccess: (r) => { setDone(r); void qc.invalidateQueries({ queryKey: ["pharmacy-queue"] }); void qc.invalidateQueries({ queryKey: ["pharmacy-stock"] }); },
     onError: (e) => { if (e instanceof ApiError && e.code === "ALLERGY_CONFLICT") setNeedAck(true); },
@@ -107,6 +109,7 @@ function Dispense({ order, onClose }: { order: QOrder; onClose: () => void }) {
         </Table>
         {needAck && <label className="flex items-center gap-2 text-sm text-amber-900"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I have checked the allergy warning with the prescriber and want to continue.</label>}
         {rows.every((r) => !r.med) && <Notice tone="info">Choose the medicine from the list for at least one line to dispense. Prescribed names typed by the doctor may differ from the pharmacy list.</Notice>}
+        {order.admission && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={toAdmission} onChange={(e) => setToAdmission(e.target.checked)} /> Add to the bill of admission {order.admission.admissionNumber} (paid with the final bill), not at the counter</label>}
         <ErrorNote error={dispense.error instanceof ApiError && dispense.error.code === "ALLERGY_CONFLICT" ? null : dispense.error} />
         <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={rows.every((r) => !r.med || !Number(r.qty)) || (needAck && !ack)} loading={dispense.isPending} onClick={() => dispense.mutate()}>Dispense</Button></div>
       </div>

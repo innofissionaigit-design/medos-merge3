@@ -285,6 +285,33 @@ describe("emergency ward: arrival, triage, treatment, billing and the decision",
     });
   });
 
+  describe("after the move to the OT or ICU", () => {
+    it("medicines ordered in the emergency ward go on the admission's bill when dispensed later, and the cashier is never asked to bill the emergency test", async () => {
+      await freeBeds();
+      const { patient, id, encounterId } = await arrive();
+      await t.api("post", `/emergency/cases/${id}/accept`, doc.token);
+      await t.api("put", `/encounters/${encounterId}/prescription`, doc.token).send({ items: [{ medicineId: medicine.id, genericName: medicine.genericName, strength: "500 mg", dosage: "1 tablet", route: "ORAL", frequency: "TDS", durationDays: 2, quantity: 6 }] });
+      const sign = await t.api("post", `/encounters/${encounterId}/prescription/sign`, doc.token).send({});
+      assert.equal(sign.status, 200, JSON.stringify(sign.body));
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId, tests: [{ name: cbc.name, category: "LABORATORY" }] })).status, 201);
+      assert.equal((await decide(id, { disposition: "ICU", bedId: await freeBed("ICU") })).status, 201);
+      // The cashier's list does not count the laboratory test as one to bill.
+      const entry = ((await get("/cashier/prescriptions", cashier.token)).patients as { patientId: string; testsToBill: number }[]).find((x) => x.patientId === patient.id);
+      assert.ok(entry, "the emergency patient is on the cashier's list (the medicines are waiting)");
+      assert.equal(entry.testsToBill, 0, "the laboratory test is charged to the admission, not billed at the Cashier");
+      // The pharmacy queue says the patient is admitted; dispensing onto the admission leaves no counter bill.
+      const q = await get("/pharmacy/queue", pharm.token);
+      const queue = (Array.isArray(q) ? q : q.items).find((o: { id: string }) => o.id === sign.body.data.id);
+      assert.ok(queue.admission.admissionNumber.startsWith("ADM-"));
+      const d = await t.api("post", "/pharmacy/dispenses", pharm.token).set("Idempotency-Key", key()).send({ patientId: patient.id, medicationOrderId: sign.body.data.id, chargeToAdmission: true, items: [{ medicationOrderItemId: sign.body.data.items[0].id, medicineId: medicine.id, quantity: 6 }] });
+      assert.equal(d.status, 201, JSON.stringify(d.body));
+      assert.equal(d.body.data.dispense.invoiceId, null);
+      const adm = await t.prisma.admission.findFirstOrThrow({ where: { encounterId } });
+      assert.equal(await t.prisma.charge.count({ where: { admissionId: adm.id, type: "MEDICINE" } }), 1);
+      assert.equal((await t.prisma.invoice.findMany({ where: { encounterId, kind: { in: ["PHARMACY", "EMERGENCY"] } } })).every((i) => i.kind !== "PHARMACY"), true);
+    });
+  });
+
   describe("who may do what, and what the database keeps", () => {
     it("each step belongs to one role", async () => {
       const patient = await registerPatient(t, desk.token);

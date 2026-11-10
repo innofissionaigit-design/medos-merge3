@@ -24,7 +24,7 @@ export function VitalsCard({ encounterId, open, onChange }: { encounterId: strin
   });
   // A wrong reading is kept in the history and hidden; the person says why before it is marked.
   const [fix, setFix] = useState<{ id: string; reason: string } | null>(null);
-  const wrong = useMutation({ mutationFn: (v: { id: string; reason: string }) => api.post(`/observations/${v.id}/enter-in-error`, { reason: v.reason.trim() }), onSuccess: async () => { setFix(null); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); } });
+  const wrong = useMutation({ mutationFn: (v: { id: string; reason: string }) => api.post(`/observations/${v.id}/enter-in-error`, { reason: v.reason.trim() }), onSuccess: async () => { setFix(null); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); onChange?.(); } });
   const rows = (list.data?.items ?? []).filter((o) => o.status === "FINAL").slice(0, 12);
   return (
     <Card title="Vitals">

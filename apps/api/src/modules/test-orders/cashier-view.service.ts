@@ -4,7 +4,7 @@ import { visitScope } from "../../common/data-scope";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { balanceDue, fmt } from "../billing/billing.domain";
-import { TestOrdersService } from "./test-orders.service";
+import { NOT_ADMITTED_LAB, TestOrdersService } from "./test-orders.service";
 
 /** How far back a prescription is looked at for the Cashier's view. Tests still waiting to be billed are shown whatever their age. */
 const WINDOW_DAYS = 30;
@@ -27,7 +27,7 @@ export class CashierViewService {
 
     // 1. Visits with something still to do, from every source.
     const [orderedTests, scans, signedOrders, dueBills] = await Promise.all([
-      this.prisma.testOrder.findMany({ where: { ...base, status: "ORDERED" }, select: { encounterId: true }, take: CAP }),
+      this.prisma.testOrder.findMany({ where: { ...base, status: "ORDERED", ...NOT_ADMITTED_LAB }, select: { encounterId: true }, take: CAP }),
       this.prisma.prescriptionScan.findMany({ where: { ...base, createdAt: { gte: since }, OR: notSentBack }, select: { id: true, encounterId: true, pharmacyOutcome: true }, take: CAP }),
       this.prisma.medicationOrder.findMany({
         where: { ...base, status: "SIGNED", signedAt: { gte: since }, items: { some: { status: "ACTIVE", OR: [{ quantity: null, dispensedQuantity: 0 }, { quantity: { gt: 0 } }] } } },
@@ -59,7 +59,7 @@ export class CashierViewService {
         where: { tenantId: ctx.tenantId, encounterId: { in: visible } }, orderBy: { createdAt: "asc" },
         select: { id: true, encounterId: true, pharmacyOutcome: true, createdAt: true, file: { select: { id: true, fileName: true, contentType: true, status: true } }, pages: { orderBy: { pageNo: "asc" }, select: { pageNo: true, file: { select: { id: true, fileName: true, contentType: true, status: true } } } } },
       }),
-      this.prisma.testOrder.findMany({ where: { tenantId: ctx.tenantId, encounterId: { in: visible } }, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, serviceId: true, source: true, status: true, invoiceId: true } }),
+      this.prisma.testOrder.findMany({ where: { tenantId: ctx.tenantId, encounterId: { in: visible } }, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, serviceId: true, source: true, status: true, invoiceId: true, limsRequest: { select: { origin: true } } } }),
       this.prisma.invoice.findMany({
         where: { tenantId: ctx.tenantId, encounterId: { in: visible }, kind: { in: ["PHARMACY", "OTHER"] }, status: { notIn: ["DRAFT", "CANCELLED"] } }, orderBy: { createdAt: "asc" },
         select: { id: true, encounterId: true, invoiceNumber: true, kind: true, status: true, total: true, paidTotal: true, refundedTotal: true, creditedTotal: true, lines: { orderBy: { lineNo: "asc" }, take: 30, select: { description: true, quantity: true, lineTotal: true } } },
@@ -101,7 +101,7 @@ export class CashierViewService {
       });
       const visitTests = (byTests.get(e.id) ?? []).map((t) => {
         const s = t.serviceId ? svc.get(t.serviceId) : undefined;
-        if (t.status === "ORDERED") p.testsToBill++;
+        if (t.status === "ORDERED" && t.limsRequest?.origin !== "IPD" && t.limsRequest?.origin !== "EMERGENCY") p.testsToBill++;
         return { id: t.id, category: t.category, name: t.name, source: t.source, status: t.status, price: s ? fmt(s.price.toString()) : null, taxPercent: s ? s.taxPercent.toString() : null, invoiceNumber: t.invoiceId ? invNumber.get(t.invoiceId) ?? null : null };
       });
       const bills = (byInvoices.get(e.id) ?? []).map((i) => {

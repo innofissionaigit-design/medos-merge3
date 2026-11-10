@@ -84,7 +84,7 @@ export class DispensingService {
     };
     const rows = await this.prisma.medicationOrder.findMany({
       where, orderBy: { signedAt: "asc" }, take: 500,
-      include: { encounter: { select: { type: true } }, items: { orderBy: { lineNo: "asc" } }, scans: { select: { file: { select: { id: true, fileName: true, contentType: true, status: true } }, pages: { orderBy: { pageNo: "asc" }, select: { pageNo: true, file: { select: { id: true, fileName: true, contentType: true, status: true } } } } } }, patient: { select: { firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } } },
+      include: { encounter: { select: { type: true, admission: { select: { admissionNumber: true, status: true, finalInvoiceId: true } } } }, items: { orderBy: { lineNo: "asc" } }, scans: { select: { file: { select: { id: true, fileName: true, contentType: true, status: true } }, pages: { orderBy: { pageNo: "asc" }, select: { pageNo: true, file: { select: { id: true, fileName: true, contentType: true, status: true } } } } } }, patient: { select: { firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } } },
     });
     const open = rows.filter((o) => o.items.some((i) => i.status === "ACTIVE" && (i.quantity === null ? i.dispensedQuantity === 0 : i.dispensedQuantity < i.quantity)));
     const page = open.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
@@ -95,6 +95,8 @@ export class DispensingService {
       const warnings = findAllergyMatches(await this.allergies.activeForMatching(this.prisma, ctx, o.patientId), o.items.flatMap((i) => [i.genericName, ...(i.brandName ? [i.brandName] : [])]));
       return {
         id: o.id, orderNumber: o.orderNumber, source: o.source, visitType: o.encounter.type,
+        /** The patient is admitted (for example sent from the emergency ward to the OT or ICU) and the final bill is not issued yet: the medicines can go on the admission's bill. */
+        admission: o.encounter.admission && o.encounter.admission.status === "ADMITTED" && !o.encounter.admission.finalInvoiceId ? { admissionNumber: o.encounter.admission.admissionNumber } : null,
         /** The doctor's tests for the same visit, so the pharmacy sees the whole prescription (the Cashier bills them). */
         testsAdvised: (testsByVisit.get(o.encounterId) ?? []).filter((x) => x.status !== "CANCELLED"),
         /** For a handwritten prescription: the doctor's original pages, so the pharmacist can compare them with the approved medicines. */

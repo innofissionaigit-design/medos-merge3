@@ -11,7 +11,7 @@ import { InvoicesService } from "../billing/invoices.service";
 
 const uuid = z.string().uuid();
 /** A test of an admitted patient that the laboratory runs is charged to the admission when its report is issued (docs/lims-portal.md), so the Cashier does not bill it as a separate bill. */
-const NOT_ADMITTED_LAB: Prisma.TestOrderWhereInput = { NOT: { limsRequest: { is: { origin: { in: ["IPD", "EMERGENCY"] } } } } };
+export const NOT_ADMITTED_LAB: Prisma.TestOrderWhereInput = { NOT: { limsRequest: { is: { origin: { in: ["IPD", "EMERGENCY"] } } } } };
 const category = z.enum(["LABORATORY", "RADIOLOGY", "CARDIOLOGY", "PROCEDURE"]);
 
 // A price the Cashier types: any test can be billed even when the hospital's price list has no item for it. The amounts are checked here and the bill is worked out on the server.
@@ -432,16 +432,16 @@ export class TestOrdersService {
   }
 
   /** The tests of each visit, newest first, with the bill number once billed. Used by the pharmacy queue as well. */
-  async listFor(db: Db | PrismaService, ctx: RequestContext, encounterIds: string[]): Promise<Map<string, { id: string; category: TestCategory; name: string; status: string; source: string; invoiceNumber: string | null }[]>> {
-    const out = new Map<string, { id: string; category: TestCategory; name: string; status: string; source: string; invoiceNumber: string | null }[]>();
+  async listFor(db: Db | PrismaService, ctx: RequestContext, encounterIds: string[]): Promise<Map<string, { id: string; category: TestCategory; name: string; status: string; source: string; invoiceNumber: string | null; /** Run by the laboratory for an admitted or emergency patient: charged to the admission or the emergency bill, never billed at the Cashier. */ viaLab: boolean }[]>> {
+    const out = new Map<string, { id: string; category: TestCategory; name: string; status: string; source: string; invoiceNumber: string | null; viaLab: boolean }[]>();
     if (!encounterIds.length) return out;
-    const rows = await db.testOrder.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: { in: encounterIds } } as Prisma.TestOrderWhereInput, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, status: true, source: true, invoiceId: true } });
+    const rows = await db.testOrder.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: { in: encounterIds } } as Prisma.TestOrderWhereInput, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, status: true, source: true, invoiceId: true, limsRequest: { select: { origin: true } } } });
     const invoiceIds = [...new Set(rows.flatMap((r) => (r.invoiceId ? [r.invoiceId] : [])))];
     const invs = invoiceIds.length ? await db.invoice.findMany({ where: { tenantId: ctx.tenantId, id: { in: invoiceIds } }, select: { id: true, invoiceNumber: true } }) : [];
     const num = new Map(invs.map((i) => [i.id, i.invoiceNumber]));
     for (const r of rows) {
       const list = out.get(r.encounterId) ?? [];
-      list.push({ id: r.id, category: r.category, name: r.name, status: r.status, source: r.source, invoiceNumber: r.invoiceId ? num.get(r.invoiceId) ?? null : null });
+      list.push({ id: r.id, category: r.category, name: r.name, status: r.status, source: r.source, invoiceNumber: r.invoiceId ? num.get(r.invoiceId) ?? null : null, viaLab: r.limsRequest?.origin === "IPD" || r.limsRequest?.origin === "EMERGENCY" });
       out.set(r.encounterId, list);
     }
     return out;
