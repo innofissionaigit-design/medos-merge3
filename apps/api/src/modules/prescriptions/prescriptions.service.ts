@@ -263,7 +263,7 @@ export class PrescriptionsService {
     if (n !== ids.length) throw new DomainError("VALIDATION_FAILED", "A selected medicine does not exist or is inactive", 400, [{ path: "items", message: "Unknown medicine" }]);
   }
 
-  private async assertOpenForPrescribing(tx: Db, ctx: RequestContext, type: "OPD" | "IPD", encounterId: string): Promise<void> {
+  private async assertOpenForPrescribing(tx: Db, ctx: RequestContext, type: "OPD" | "IPD" | "EMERGENCY", encounterId: string): Promise<void> {
     if (type !== "OPD") return;
     const doc = await tx.clinicalDocument.findFirst({ where: { tenantId: ctx.tenantId, encounterId, kind: "CONSULTATION" }, select: { status: true } });
     if (doc && doc.status !== "DRAFT") throw new DomainError("CONSULTATION_SIGNED", "The consultation is signed. Use an amendment to change the prescription.", 409);

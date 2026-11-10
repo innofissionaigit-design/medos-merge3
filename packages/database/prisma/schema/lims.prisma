@@ -11,6 +11,7 @@ enum LimsDepartmentKind {
 enum LimsOrigin {
   OPD
   IPD
+  EMERGENCY
 }
 
 /// Declared most urgent first, so sorting by it ascending puts an emergency at the top of the queue.

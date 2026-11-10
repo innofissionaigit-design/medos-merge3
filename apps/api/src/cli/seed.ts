@@ -78,6 +78,7 @@ async function main(): Promise<void> {
   };
 
   step("settings, departments and staff");
+  await call("PUT", "/settings/EMERGENCY_FEE_AMOUNT", admin, { value: "500.00" });
   await call("PUT", "/settings/PRINT_HEADER", admin, { value: { hospitalName: "Demo City Hospital", tagline: "Care you can trust", address: "12 Synthetic Road, Kolkata 700091", phone: "033-5550123" } });
   const deptNames = ["General Medicine", "Paediatrics", "Obstetrics and Gynaecology", "Orthopaedics", "General Surgery", "ENT", "Dermatology", "Cardiology"];
   const departments: Json[] = [];
@@ -94,6 +95,12 @@ async function main(): Promise<void> {
     doctors.push(pr.id);
   }
   for (let i = 0; i < COUNTS.nurses; i++) await mkUser(`nurse${i + 1}`, `Nurse ${pick(FIRST_NAMES_F)} ${pick(LAST_NAMES)}`, "NURSE");
+  // The emergency ward (docs/emergency.md): a doctor of the Emergency Medicine department, an emergency nurse and the emergency receptionist. The OT and ICU wards come with the hospital.
+  const emDept = await prisma.department.findFirst({ where: { tenantId: prov.tenantId, facilityId: prov.facilityId, code: "EM" } });
+  const erDoctorUser = await mkUser("er_doctor1", "Dr. Emergency Doctor One", "DOCTOR");
+  await prisma.practitioner.create({ data: { tenantId: prov.tenantId, facilityId: prov.facilityId, userId: erDoctorUser, departmentId: emDept?.id ?? null, displayName: "Dr. Emergency Doctor One", specialty: "Emergency Medicine" } });
+  await mkUser("er_nurse1", "Emergency Nurse One", "EMERGENCY_NURSE");
+  await mkUser("er_reception1", "Emergency Desk One", "EMERGENCY_RECEPTIONIST");
   for (const [u, n, r] of [["reception1", "Reception One", "RECEPTIONIST"], ["reception2", "Reception Two", "RECEPTIONIST"], ["cashier1", "Cashier One", "CASHIER"], ["cashier2", "Cashier Two", "CASHIER"], ["pharmacist1", "Pharmacist One", "PHARMACIST"], ["manager1", "Manager One", "MANAGER"],
     // The laboratory portal (docs/lims-portal.md): one login for each role.
     ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
@@ -159,7 +166,7 @@ async function main(): Promise<void> {
 
   step(`billing: ${COUNTS.invoices} invoices`);
   const services: string[] = [];
-  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"]] as const) {
+  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"]] as const) {
     services.push((await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0 }))["id"] as string);
   }
   // The hospital's lab-test and investigation list, which feeds the Lab test dropdown of the prescription and the Cashier's test billing (synthetic prices).
@@ -198,7 +205,7 @@ async function main(): Promise<void> {
   }
 
   await app.close();
-  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
+  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nEmergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_doctor1 (doctor).\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
   process.stdout.write(generated ? `Password (generated, shown once): ${password}\n` : "Password: the value of SEED_PASSWORD\n");
 }
 

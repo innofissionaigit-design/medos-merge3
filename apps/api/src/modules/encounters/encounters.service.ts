@@ -21,18 +21,18 @@ export const ENCOUNTER_TRANSITIONS: Record<EncounterStatusName, readonly Encount
 export const listEncountersSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
-  type: z.enum(["OPD", "IPD"]).optional(),
+  type: z.enum(["OPD", "IPD", "EMERGENCY"]).optional(),
 }).strict();
 
 const VIEW = {
   id: true, encounterNumber: true, type: true, status: true, patientId: true, facilityId: true,
   departmentId: true, practitionerId: true, startedAt: true, endedAt: true,
-  department: { select: { name: true } }, practitioner: { select: { displayName: true } },
+  department: { select: { name: true } }, practitioner: { select: { displayName: true } }, emergencyCase: { select: { id: true } },
 } satisfies Prisma.EncounterSelect;
 
 export function toEncounterView(e: Prisma.EncounterGetPayload<{ select: typeof VIEW }>) {
-  const { department, practitioner, ...rest } = e;
-  return { ...rest, departmentName: department?.name ?? null, practitionerName: practitioner?.displayName ?? null };
+  const { department, practitioner, emergencyCase, ...rest } = e;
+  return { ...rest, departmentName: department?.name ?? null, practitionerName: practitioner?.displayName ?? null, emergencyCaseId: emergencyCase?.id ?? null };
 }
 
 @Injectable()
@@ -57,6 +57,19 @@ export class EncountersService {
     return e;
   }
 
+  /** Opens an emergency visit inside the caller's transaction (the emergency desk registering an arriving patient). The visit number is the case number. */
+  async openEmergency(tx: Db, ctx: RequestContext, input: { patientId: string; practitionerId: string; departmentId: string | null; encounterNumber: string }) {
+    const e = await tx.encounter.create({
+      data: {
+        tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, encounterNumber: input.encounterNumber, type: "EMERGENCY",
+        practitionerId: input.practitionerId, departmentId: input.departmentId, createdById: ctx.userId,
+      },
+      select: VIEW,
+    });
+    await this.audit.record(tx, actorOf(ctx), { action: "ENCOUNTER_OPENED", entityType: "Encounter", entityId: e.id, metadata: { type: "EMERGENCY", encounterNumber: input.encounterNumber } });
+    return e;
+  }
+
   /** Compare-and-set transition: only succeeds if the encounter is still in the expected state. */
   async transition(tx: Db, ctx: RequestContext, encounterId: string, to: Exclude<EncounterStatusName, "ACTIVE">, reason?: string): Promise<void> {
     const existing = await tx.encounter.findFirst({ where: { id: encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { status: true } });
@@ -74,7 +87,7 @@ export class EncountersService {
   }
 
   /** Throws unless the encounter exists in this tenant/facility and is ACTIVE. Used by clinical writers. */
-  async assertActive(tx: Db, ctx: RequestContext, encounterId: string): Promise<{ id: string; patientId: string; type: "OPD" | "IPD"; practitionerId: string | null }> {
+  async assertActive(tx: Db, ctx: RequestContext, encounterId: string): Promise<{ id: string; patientId: string; type: "OPD" | "IPD" | "EMERGENCY"; practitionerId: string | null }> {
     const e = await tx.encounter.findFirst({ where: { id: encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { id: true, status: true, patientId: true, type: true, practitionerId: true } });
     if (!e) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     if (e.status !== "ACTIVE") throw new DomainError("INVALID_STATE", "This visit is no longer active", 409);

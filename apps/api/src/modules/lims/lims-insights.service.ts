@@ -111,7 +111,7 @@ export class LimsInsightsService {
         samples: { collected: collectedEver + rejected, rejected, rejectionPercent: collectedEver + rejected > 0 ? Math.round((rejected / (collectedEver + rejected)) * 1000) / 10 : null },
         returnedForCorrection: r.reduce((a, x) => a + x.returnedCount, 0),
         priority: { emergency: r.filter((x) => x.priority === "EMERGENCY").length, urgent: r.filter((x) => x.priority === "URGENT").length, routine: r.filter((x) => x.priority === "ROUTINE").length },
-        origin: { opd: r.filter((x) => x.origin === "OPD").length, ipd: r.filter((x) => x.origin === "IPD").length },
+        origin: { opd: r.filter((x) => x.origin === "OPD").length, ipd: r.filter((x) => x.origin === "IPD").length, emergency: r.filter((x) => x.origin === "EMERGENCY").length },
       };
     };
     const names = new Map(rows.map((r) => [r.department.kind, r.department.name]));
@@ -157,20 +157,24 @@ export class LimsInsightsService {
     const admitted = rows.filter((r) => r.origin === "IPD");
     const charges = admitted.length ? await this.prisma.charge.findMany({ where: { tenantId: ctx.tenantId, sourceKey: { in: admitted.map((r) => `LIMS:${r.id}`) }, status: { not: "VOIDED" } }, select: { sourceKey: true, status: true, quantity: true, unitPrice: true, taxPercent: true } }) : [];
     const chargeOf = new Map(charges.map((c) => [c.sourceKey as string, c]));
-    const chargedAmount = (id: string) => { const c = chargeOf.get(`LIMS:${id}`); return c ? chargeAmounts(c).total : null; };
+    // An emergency patient's test is a line on the emergency bill (source LIMS, the request): that line is what has been billed for it.
+    const emergency = rows.filter((r) => r.origin === "EMERGENCY");
+    const erLines = emergency.length ? await this.prisma.invoiceLine.findMany({ where: { tenantId: ctx.tenantId, sourceType: "LIMS", sourceId: { in: emergency.map((r) => r.id) } }, select: { sourceId: true, lineTotal: true } }) : [];
+    const erAmount = new Map(erLines.map((l) => [l.sourceId as string, new Decimal(l.lineTotal.toString())]));
+    const chargedAmount = (id: string) => { const c = chargeOf.get(`LIMS:${id}`); return c ? chargeAmounts(c).total : erAmount.get(id) ?? null; };
     const orderOfLine = new Map(lines.map((l) => [l.id, l.testOrderId as string]));
     const amountOf = new Map<string, Decimal>();
     for (const l of direct) if (l.sourceId) amountOf.set(l.sourceId, (amountOf.get(l.sourceId) ?? new Decimal(0)).plus(new Decimal(l.lineTotal.toString())));
     for (const l of viaLines) { const o = l.sourceId ? orderOfLine.get(l.sourceId) : undefined; if (o) amountOf.set(o, (amountOf.get(o) ?? new Decimal(0)).plus(new Decimal(l.lineTotal.toString()))); }
     const departments = kinds.map((k) => {
       const r = rows.filter((x) => x.department.kind === k);
-      const billed = r.filter((x) => x.testOrder.status === "BILLED" || chargeOf.has(`LIMS:${x.id}`));
+      const billed = r.filter((x) => x.testOrder.status === "BILLED" || chargeOf.has(`LIMS:${x.id}`) || erAmount.has(x.id));
       const total = billed.reduce((a, x) => a.plus(chargedAmount(x.id) ?? amountOf.get(x.testOrderId) ?? new Decimal(0)), new Decimal(0));
       const done = r.filter((x) => x.status === "ISSUED" || x.status === "HANDED_OVER");
       return {
         kind: k, name: r[0]?.department.name ?? (k === "PATHOLOGY" ? "Pathology" : "Radiology"), tests: r.length, billed: billed.length, notBilled: r.length - billed.length,
-        billedAmount: total.toFixed(2), reportsIssued: done.length, issuedNotBilled: done.filter((x) => x.testOrder.status !== "BILLED" && !chargeOf.has(`LIMS:${x.id}`)).length,
-        chargedToAdmissions: r.filter((x) => chargeOf.has(`LIMS:${x.id}`)).length,
+        billedAmount: total.toFixed(2), reportsIssued: done.length, issuedNotBilled: done.filter((x) => x.testOrder.status !== "BILLED" && !chargeOf.has(`LIMS:${x.id}`) && !erAmount.has(x.id)).length,
+        chargedToAdmissions: r.filter((x) => chargeOf.has(`LIMS:${x.id}`)).length, chargedToEmergency: r.filter((x) => erAmount.has(x.id)).length,
       };
     });
     // The charges added to admitted patients' bills, newest first, so the manager and the administrator can follow them.

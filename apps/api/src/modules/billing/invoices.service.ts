@@ -43,7 +43,7 @@ export const listInvoicesSchema = z.object({
   patientId: uuid.optional(), encounterId: uuid.optional(),
   status: z.enum(["DRAFT", "ISSUED", "PARTIALLY_PAID", "PAID", "CANCELLED", "REFUNDED"]).optional(),
   outstanding: z.enum(["true", "false"]).optional().transform((v) => v === "true"),
-  kind: z.enum(["OPD", "IPD", "PHARMACY", "OTHER", "REGISTRATION"]).optional(),
+  kind: z.enum(["OPD", "IPD", "PHARMACY", "OTHER", "REGISTRATION", "EMERGENCY"]).optional(),
   q: z.string().trim().max(40).optional(),
   page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
@@ -220,26 +220,29 @@ export class InvoicesService {
 
   /** DRAFT -> ISSUED: assigns the number, recomputes totals from the stored lines, and freezes the invoice. */
   async issue(ctx: RequestContext, id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const inv = await this.ledger.lock(tx, ctx, id);
-      if (inv.status !== "DRAFT") throw new DomainError("INVOICE_ALREADY_ISSUED", "This invoice is already issued", 409);
-      const lines = await tx.invoiceLine.findMany({ where: { tenantId: ctx.tenantId, invoiceId: id }, orderBy: { lineNo: "asc" } });
-      if (lines.length === 0) throw new DomainError("VALIDATION_FAILED", "Add at least one line before issuing", 400);
-      const amounts = lines.map((l) => computeLine({ quantity: l.quantity, unitPrice: l.unitPrice, discountAmount: l.discountAmount, taxPercent: l.taxPercent }, { split: inv.taxSplit }));
-      const totals = computeTotals(amounts, { roundToRupee: inv.roundsToRupee });
-      if (!totals.total.gt(0)) throw new DomainError("INVALID_AMOUNT", "An invoice must have a total greater than zero", 400);
-      const invoiceNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "INVOICE");
-      const res = await tx.invoice.updateMany({
-        where: { id, tenantId: ctx.tenantId, status: "DRAFT" },
-        data: {
-          status: "ISSUED", invoiceNumber, issuedAt: new Date(), issuedById: ctx.userId, version: { increment: 1 },
-          subtotal: totals.subtotal.toFixed(2), discountTotal: totals.discountTotal.toFixed(2), taxTotal: totals.taxTotal.toFixed(2), total: totals.total.toFixed(2), roundOff: totals.roundOff.toFixed(2),
-        },
-      });
-      if (res.count !== 1) throw new DomainError("INVOICE_ALREADY_ISSUED", "This invoice was issued by someone else", 409);
-      await this.audit.record(tx, actorOf(ctx), { action: "INVOICE_ISSUED", entityType: "Invoice", entityId: id, metadata: { invoiceNumber, total: fmt(totals.total), discount: fmt(totals.discountTotal) } });
-      return this.view(tx, ctx, id);
+    return this.prisma.$transaction((tx) => this.issueInTx(tx, ctx, id));
+  }
+
+  /** The same, inside the caller's transaction (the emergency desk issues the open emergency bill as part of its own step). */
+  async issueInTx(tx: Db, ctx: RequestContext, id: string) {
+    const inv = await this.ledger.lock(tx, ctx, id);
+    if (inv.status !== "DRAFT") throw new DomainError("INVOICE_ALREADY_ISSUED", "This invoice is already issued", 409);
+    const lines = await tx.invoiceLine.findMany({ where: { tenantId: ctx.tenantId, invoiceId: id }, orderBy: { lineNo: "asc" } });
+    if (lines.length === 0) throw new DomainError("VALIDATION_FAILED", "Add at least one line before issuing", 400);
+    const amounts = lines.map((l) => computeLine({ quantity: l.quantity, unitPrice: l.unitPrice, discountAmount: l.discountAmount, taxPercent: l.taxPercent }, { split: inv.taxSplit }));
+    const totals = computeTotals(amounts, { roundToRupee: inv.roundsToRupee });
+    if (!totals.total.gt(0)) throw new DomainError("INVALID_AMOUNT", "An invoice must have a total greater than zero", 400);
+    const invoiceNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "INVOICE");
+    const res = await tx.invoice.updateMany({
+      where: { id, tenantId: ctx.tenantId, status: "DRAFT" },
+      data: {
+        status: "ISSUED", invoiceNumber, issuedAt: new Date(), issuedById: ctx.userId, version: { increment: 1 },
+        subtotal: totals.subtotal.toFixed(2), discountTotal: totals.discountTotal.toFixed(2), taxTotal: totals.taxTotal.toFixed(2), total: totals.total.toFixed(2), roundOff: totals.roundOff.toFixed(2),
+      },
     });
+    if (res.count !== 1) throw new DomainError("INVOICE_ALREADY_ISSUED", "This invoice was issued by someone else", 409);
+    await this.audit.record(tx, actorOf(ctx), { action: "INVOICE_ISSUED", entityType: "Invoice", entityId: id, metadata: { invoiceNumber, total: fmt(totals.total), discount: fmt(totals.discountTotal) } });
+    return this.view(tx, ctx, id);
   }
 
   // ───── cancel ─────

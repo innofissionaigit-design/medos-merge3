@@ -117,3 +117,9 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Per-technician workload balancing and shift rosters; a staffing view for the LIMS manager.
 - Patient messages for admitted patients (for example a family contact) and in Bengali and Hindi (the email template has all three; the WhatsApp and SMS text is English only).
 - Cardiology (ECG, echo) and other procedures are not run through the LIMS.
+
+## Emergency ward follow-ups (docs/emergency.md)
+
+- Emergency bed board, medico-legal case (MLC) record, ambulance and arrival log, resuscitation and emergency order sets, emergency reports.
+- More decisions: admit to an ordinary ward, refer to another hospital, left against advice; changing the doctor called after registration.
+- A nurse's medication chart during the emergency stay (it starts once the patient is admitted).

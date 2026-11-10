@@ -65,6 +65,7 @@ model Facility {
   doctorPayouts   DoctorPayout[]
   labDefinitions  LabTestDefinition[]
   limsDepartments LimsDepartment[]
+  emergencyCases  EmergencyCase[]
   stockTransfers  StockTransfer[]
   prescriptionTemplates PrescriptionTemplate[]
   prescriptionScans PrescriptionScan[]

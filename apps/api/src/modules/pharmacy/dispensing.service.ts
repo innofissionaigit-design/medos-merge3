@@ -10,6 +10,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import type { RequestContext } from "../../common/request-context";
 import { chartPatientIds } from "../patients/patient-links";
 import { fmt, round2 } from "../billing/billing.domain";
+import { EmergencyBillService } from "../billing/emergency-bill.service";
 import { InvoicesService } from "../billing/invoices.service";
 import { TestOrdersService } from "../test-orders/test-orders.service";
 import { LedgerService } from "../billing/ledger.service";
@@ -69,6 +70,7 @@ export class DispensingService {
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly stock: StockService,
     private readonly numbering: NumberingService, private readonly idempotency: IdempotencyService, private readonly invoices: InvoicesService,
     private readonly notifications: NotificationsService, private readonly ledger: LedgerService, private readonly allergies: AllergiesService, private readonly testOrders: TestOrdersService,
+    private readonly emergencyBill: EmergencyBillService,
   ) {}
 
   // ───── prescription queue ─────
@@ -82,7 +84,7 @@ export class DispensingService {
     };
     const rows = await this.prisma.medicationOrder.findMany({
       where, orderBy: { signedAt: "asc" }, take: 500,
-      include: { items: { orderBy: { lineNo: "asc" } }, scans: { select: { file: { select: { id: true, fileName: true, contentType: true, status: true } }, pages: { orderBy: { pageNo: "asc" }, select: { pageNo: true, file: { select: { id: true, fileName: true, contentType: true, status: true } } } } } }, patient: { select: { firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } } },
+      include: { encounter: { select: { type: true } }, items: { orderBy: { lineNo: "asc" } }, scans: { select: { file: { select: { id: true, fileName: true, contentType: true, status: true } }, pages: { orderBy: { pageNo: "asc" }, select: { pageNo: true, file: { select: { id: true, fileName: true, contentType: true, status: true } } } } } }, patient: { select: { firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } } },
     });
     const open = rows.filter((o) => o.items.some((i) => i.status === "ACTIVE" && (i.quantity === null ? i.dispensedQuantity === 0 : i.dispensedQuantity < i.quantity)));
     const page = open.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
@@ -92,7 +94,7 @@ export class DispensingService {
     const items = await Promise.all(page.map(async (o) => {
       const warnings = findAllergyMatches(await this.allergies.activeForMatching(this.prisma, ctx, o.patientId), o.items.flatMap((i) => [i.genericName, ...(i.brandName ? [i.brandName] : [])]));
       return {
-        id: o.id, orderNumber: o.orderNumber, source: o.source,
+        id: o.id, orderNumber: o.orderNumber, source: o.source, visitType: o.encounter.type,
         /** The doctor's tests for the same visit, so the pharmacy sees the whole prescription (the Cashier bills them). */
         testsAdvised: (testsByVisit.get(o.encounterId) ?? []).filter((x) => x.status !== "CANCELLED"),
         /** For a handwritten prescription: the doctor's original pages, so the pharmacist can compare them with the approved medicines. */
@@ -191,7 +193,10 @@ export class DispensingService {
       // Medicine prices are MRP-inclusive of GST: the bill is exactly qty x selling price; the GST component is recorded for reporting.
       const total = lines.reduce((a, l) => a.plus(l.total), new Decimal(0));
       const gstIncluded = lines.reduce((a, l) => a.plus(round2(l.total.times(l.gst).div(new Decimal(100).plus(l.gst)))), new Decimal(0));
-      let invoice: { id: string; invoiceNumber: string } | null = null;
+      let invoice: { id: string; invoiceNumber: string | null } | null = null;
+      // Medicines for a patient who is in the emergency ward are added to the emergency bill (docs/emergency.md), not sold at the counter.
+      const visitId = order?.encounterId ?? scan?.encounterId ?? null;
+      const emergencyVisit = visitId && !input.chargeToAdmission ? await tx.encounter.findFirst({ where: { id: visitId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "EMERGENCY", status: "ACTIVE" }, select: { id: true, patientId: true } }) : null;
       if (input.chargeToAdmission) {
         const adm = await tx.admission.findFirst({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, status: "ADMITTED" }, select: { id: true, finalInvoiceId: true } });
         if (!adm) throw new DomainError("INVALID_STATE", "The patient is not currently admitted, so medicines cannot be charged to an admission", 409);
@@ -204,6 +209,15 @@ export class DispensingService {
         });
         await tx.charge.createMany({
           data: lines.map((l) => ({ tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, admissionId: adm.id, type: "MEDICINE" as const, description: `${l.label} x${l.quantity} (${dispenseNumber})`, quantity: l.quantity.toString(), unitPrice: l.unitPrice.toFixed(2), taxPercent: "0", sourceKey: `DISPENSE_ITEM:${l.id}`, chargedById: ctx.userId })),
+        });
+      } else if (emergencyVisit) {
+        const added = await this.emergencyBill.addLines(tx, ctx, emergencyVisit, lines.map((l) => ({ description: l.label, quantity: new Decimal(l.quantity), unitPrice: l.unitPrice, taxPercent: new Decimal(0), sourceType: "DISPENSE", sourceId: l.id, hsnSac: l.hsn })));
+        invoice = { id: added.invoiceId, invoiceNumber: null };
+        await tx.dispense.create({
+          data: { id: header.id, tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, medicationOrderId: order?.id ?? null, encounterId: visitId, prescriptionScanId: scan?.id ?? null, dispenseNumber, invoiceId: invoice.id, subtotal: total.minus(gstIncluded).toFixed(2), taxTotal: gstIncluded.toFixed(2), total: total.toFixed(2), notes: input.notes ?? null, dispensedById: ctx.userId },
+        });
+        await tx.dispenseItem.createMany({
+          data: lines.map((l, idx) => ({ id: l.id, tenantId: ctx.tenantId, dispenseId: header.id, lineNo: idx + 1, medicationOrderItemId: l.medicationOrderItemId, medicineId: l.medicineId, batchId: l.batchId, quantity: l.quantity, unitPrice: l.unitPrice.toFixed(2), taxPercent: l.gst.toFixed(2), lineTotal: l.total.toFixed(2) })),
         });
       } else {
         const created = await this.invoices.createIssuedFromSource(tx, ctx, {
@@ -226,7 +240,7 @@ export class DispensingService {
         const done = await tx.prescriptionScan.updateMany({ where: { id: scan.id, tenantId: ctx.tenantId, pharmacyOutcome: null }, data: { pharmacyOutcome: "DISPENSED", pharmacyAt: new Date(), pharmacyById: ctx.userId } });
         if (done.count !== 1) throw new DomainError("INVALID_STATE", "This handwritten prescription was already dealt with by the pharmacy", 409);
       }
-      await this.audit.record(tx, actorOf(ctx), { action: "PHARMACY_DISPENSED", entityType: "Dispense", entityId: header.id, metadata: { scanId: scan?.id ?? null, handwrittenVerified: scan ? true : undefined, completesPrescription: scan ? input.completesPrescription !== false : undefined, dispenseNumber, lines: lines.length, total: fmt(total), orderNumber: order?.orderNumber ?? null, invoiceNumber: invoice?.invoiceNumber ?? null, chargedToAdmission: !!input.chargeToAdmission } });
+      await this.audit.record(tx, actorOf(ctx), { action: "PHARMACY_DISPENSED", entityType: "Dispense", entityId: header.id, metadata: { scanId: scan?.id ?? null, handwrittenVerified: scan ? true : undefined, completesPrescription: scan ? input.completesPrescription !== false : undefined, dispenseNumber, lines: lines.length, total: fmt(total), orderNumber: order?.orderNumber ?? null, invoiceNumber: invoice?.invoiceNumber ?? null, chargedToAdmission: !!input.chargeToAdmission, chargedToEmergencyBill: !!emergencyVisit } });
       if (warnings.length) await this.audit.record(tx, actorOf(ctx), { action: "DISPENSE_ALLERGY_ACKNOWLEDGED", entityType: "Dispense", entityId: header.id, metadata: { allergyIds: warnings.map((w) => w.allergyId), severities: warnings.map((w) => w.severity) } });
       return { dispense: await this.view(tx, ctx, header.id) };
     });
@@ -283,6 +297,8 @@ export class DispensingService {
       const d = await tx.dispense.findFirst({ where: { id: dispenseId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, include: { items: true } });
       if (!d) throw new DomainError("NOT_FOUND", "Resource not found", 404);
       if (!d.invoiceId) return this.returnChargedItems(tx, ctx, d, input, dispenseId);
+      const onBill = await tx.invoice.findFirst({ where: { id: d.invoiceId, tenantId: ctx.tenantId }, select: { status: true, kind: true } });
+      if (onBill?.kind === "EMERGENCY" && onBill.status === "DRAFT") return this.returnFromOpenEmergencyBill(tx, ctx, d, input, dispenseId);
       const merged = new Map<string, number>();
       for (const i of input.items) merged.set(i.dispenseItemId, (merged.get(i.dispenseItemId) ?? 0) + i.quantity);
       const inv = await this.ledger.lock(tx, ctx, d.invoiceId);
@@ -302,6 +318,27 @@ export class DispensingService {
       await this.audit.record(tx, actorOf(ctx), { action: "PHARMACY_RETURN", entityType: "Dispense", entityId: dispenseId, metadata: { value: fmt(value), reason: input.reason, creditNoteNumber: credit.row.creditNoteNumber, status } });
       return { creditNoteNumber: credit.row.creditNoteNumber, creditedAmount: fmt(value), dispense: await this.view(tx, ctx, dispenseId) };
     });
+  }
+
+  /** Return of medicines that are on an emergency bill that has not been issued yet: restock, and take them off the bill (nothing was paid for them). */
+  private async returnFromOpenEmergencyBill(tx: Db, ctx: RequestContext, d: Prisma.DispenseGetPayload<{ include: { items: true } }>, input: z.infer<typeof dispenseReturnSchema>, dispenseId: string) {
+    const merged = new Map<string, number>();
+    for (const i of input.items) merged.set(i.dispenseItemId, (merged.get(i.dispenseItemId) ?? 0) + i.quantity);
+    let value = new Decimal(0);
+    for (const [itemId, quantity] of [...merged.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const item = d.items.find((x) => x.id === itemId);
+      if (!item) throw new DomainError("VALIDATION_FAILED", "An item does not belong to this dispense", 400, [{ path: "items", message: "Unknown dispense item" }]);
+      const cap = await tx.dispenseItem.updateMany({ where: { id: itemId, tenantId: ctx.tenantId, returnedQuantity: { lte: item.quantity - quantity } }, data: { returnedQuantity: { increment: quantity } } });
+      if (cap.count !== 1) throw new DomainError("INVALID_AMOUNT", `Only ${item.quantity - item.returnedQuantity} unit(s) of this item can still be returned`, 409);
+      await this.stock.move(tx, ctx, { batchId: item.batchId, medicineId: item.medicineId, type: "PATIENT_RETURN", direction: "IN", quantity, sourceType: "DISPENSE_RETURN", sourceId: dispenseId, reason: input.reason });
+      if (!(await this.emergencyBill.takeOff(tx, ctx, "DISPENSE", itemId, quantity))) throw new DomainError("INVALID_STATE", "These medicines are already on an issued bill. Raise a credit note through billing.", 409);
+      value = value.plus(round2(new Decimal(item.unitPrice.toString()).times(quantity)));
+    }
+    const after = await tx.dispenseItem.findMany({ where: { tenantId: ctx.tenantId, dispenseId } });
+    const status = after.every((i) => i.returnedQuantity === i.quantity) ? "RETURNED" : "PARTIALLY_RETURNED";
+    await tx.dispense.updateMany({ where: { id: dispenseId, tenantId: ctx.tenantId }, data: { status } });
+    await this.audit.record(tx, actorOf(ctx), { action: "PHARMACY_RETURN", entityType: "Dispense", entityId: dispenseId, metadata: { value: fmt(value), reason: input.reason, status, takenOffEmergencyBill: true } });
+    return { creditNoteNumber: null, creditedAmount: fmt(value), dispense: await this.view(tx, ctx, dispenseId) };
   }
 
   /** Return of medicines that were charged to an admission: restock, then void and re-post the (still unbilled) charge for what remains. */

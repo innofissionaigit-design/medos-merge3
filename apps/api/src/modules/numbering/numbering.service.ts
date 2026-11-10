@@ -5,7 +5,7 @@ import { AuditService, actorOf } from "../../common/audit.service";
 import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 
-export type SequenceType = "MRN" | "OPD_VISIT" | "ADMISSION" | "INVOICE" | "RECEIPT" | "PRESCRIPTION" | "CREDIT_NOTE" | "REFUND" | "PURCHASE" | "PURCHASE_RETURN" | "PHARMACY_RECEIPT" | "STOCK_TRANSFER" | "DOCTOR_PAYOUT" | "LAB_ACCESSION" | "RAD_ACCESSION" | "LIMS_REQUEST" | "CLAIM" | "EMPLOYEE";
+export type SequenceType = "MRN" | "OPD_VISIT" | "ADMISSION" | "INVOICE" | "RECEIPT" | "PRESCRIPTION" | "CREDIT_NOTE" | "REFUND" | "PURCHASE" | "PURCHASE_RETURN" | "PHARMACY_RECEIPT" | "STOCK_TRANSFER" | "DOCTOR_PAYOUT" | "LAB_ACCESSION" | "RAD_ACCESSION" | "LIMS_REQUEST" | "CLAIM" | "EMPLOYEE" | "EMERGENCY";
 export type ResetPolicy = "NEVER" | "YEARLY" | "FINANCIAL_YEAR";
 
 export interface SequenceDefault { type: SequenceType; pattern: string; padding: number; resetPolicy: ResetPolicy }
@@ -29,6 +29,7 @@ export const DEFAULT_SEQUENCES: readonly SequenceDefault[] = [
   { type: "LIMS_REQUEST", pattern: "LRQ-{YEAR}-{SEQ}", padding: 6, resetPolicy: "YEARLY" },
   { type: "CLAIM", pattern: "CLM-{YEAR}-{SEQ}", padding: 6, resetPolicy: "YEARLY" },
   { type: "EMPLOYEE", pattern: "EMP-{SEQ}", padding: 4, resetPolicy: "NEVER" },
+  { type: "EMERGENCY", pattern: "ER-{YEAR}-{SEQ}", padding: 6, resetPolicy: "YEARLY" },
 ];
 
 const TYPES = DEFAULT_SEQUENCES.map((d) => d.type) as [SequenceType, ...SequenceType[]];

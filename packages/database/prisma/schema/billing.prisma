@@ -56,6 +56,8 @@ enum InvoiceKind {
   OTHER
   /// The one-time patient registration fee (docs/registration-fee.md).
   REGISTRATION
+  /// The running bill of an emergency patient (docs/emergency.md): the doctor's fee, medicines and tests are added to it, then it is issued and paid at the emergency desk.
+  EMERGENCY
 }
 
 model Invoice {

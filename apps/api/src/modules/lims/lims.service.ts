@@ -37,7 +37,8 @@ const testItem = z.object({ serviceId: uuid.optional(), name: z.string().trim().
 
 export const orderSchema = z.object({
   encounterId: uuid,
-  priority: priority.default("ROUTINE"),
+  /** Left out, the test is routine, or an emergency when the patient is in the emergency ward (docs/emergency.md). */
+  priority: priority.optional(),
   clinicalNote: z.string().trim().min(3).max(600).optional(),
   tests: z.array(testItem).min(1).max(20),
 }).strict();
@@ -76,7 +77,7 @@ export const declineSchema = z.object({ encounterId: uuid, testOrderIds: z.array
 export const listSchema = z.object({
   status: z.string().trim().max(200).optional(),
   department: z.enum(["PATHOLOGY", "RADIOLOGY"]).optional(),
-  origin: z.enum(["OPD", "IPD"]).optional(),
+  origin: z.enum(["OPD", "IPD", "EMERGENCY"]).optional(),
   priority: priority.optional(),
   q: z.string().trim().min(2).max(60).optional(),
   mine: bool.optional(),
@@ -230,7 +231,7 @@ export class LimsService {
   }
 
   /** Builds the request for a test order: department, number, due time, history, audit. */
-  private async createRequest(tx: Db, ctx: RequestContext, o: { testOrderId: string; category: TestCategory; serviceId: string | null; patientId: string; encounterId: string; origin: "OPD" | "IPD" }, i: {
+  private async createRequest(tx: Db, ctx: RequestContext, o: { testOrderId: string; category: TestCategory; serviceId: string | null; patientId: string; encounterId: string; origin: "OPD" | "IPD" | "EMERGENCY" }, i: {
     batchId: string; priority: LimsPriority; scheduledFor: Date | null; instructions: string | null; clinicalNote: string | null; assignedNurseId: string | null; consent: "NOT_REQUIRED" | "GIVEN";
   }) {
     const kind = departmentKindOf(o.category);
@@ -268,11 +269,14 @@ export class LimsService {
    * The nurse for an admitted patient's sample, chosen automatically: of the nurses who take samples at this facility, the one with the fewest samples waiting (then by name), so
    * the work is shared. The LIMS manager can still change it. Returns null when no nurse is set up, and the nurses are asked together instead.
    */
-  private async autoNurse(tx: Db, ctx: RequestContext): Promise<string | null> {
-    const nurses = await tx.user.findMany({
-      where: { tenantId: ctx.tenantId, status: "ACTIVE", isService: false, facilities: { some: { facilityId: ctx.facilityId } }, roles: { some: { role: { permissions: { some: { permission: "LIMS_COLLECT" } } } } } },
+  private async autoNurse(tx: Db, ctx: RequestContext, prefer?: "ER_TRIAGE"): Promise<string | null> {
+    const pool = (extra: Prisma.UserWhereInput[]) => tx.user.findMany({
+      where: { tenantId: ctx.tenantId, status: "ACTIVE", isService: false, facilities: { some: { facilityId: ctx.facilityId } }, AND: [{ roles: { some: { role: { permissions: { some: { permission: "LIMS_COLLECT" } } } } } }, ...extra] },
       select: { id: true, fullName: true }, orderBy: [{ fullName: "asc" }, { id: "asc" }], take: 200,
     });
+    // An emergency patient's sample is taken by an emergency nurse when there is one; otherwise by any nurse who takes samples.
+    const preferred = prefer ? await pool([{ roles: { some: { role: { permissions: { some: { permission: prefer } } } } } }]) : [];
+    const nurses = preferred.length > 0 ? preferred : await pool([]);
     if (nurses.length === 0) return null;
     const load = await tx.limsRequest.groupBy({ by: ["assignedNurseId"], where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "PENDING_COLLECTION", assignedNurseId: { in: nurses.map((n) => n.id) } }, _count: { _all: true } });
     const waiting = new Map(load.map((l) => [l.assignedNurseId as string, l._count._all]));
@@ -284,10 +288,13 @@ export class LimsService {
    * mark them urgent or emergency so they come to the top of the queue. For an outpatient the order waits at reception, which launches it once the patient agrees.
    */
   async order(ctx: RequestContext, input: z.infer<typeof orderSchema>) {
-    if (input.priority !== "ROUTINE" && !ctx.permissions.has("LIMS_PRIORITY")) throw new DomainError("FORBIDDEN", "You may not mark a test urgent or emergency", 403);
+    if (input.priority !== undefined && input.priority !== "ROUTINE" && !ctx.permissions.has("LIMS_PRIORITY")) throw new DomainError("FORBIDDEN", "You may not mark a test urgent or emergency", 403);
     return this.prisma.$transaction(async (tx) => {
       await assertEncounterVisible(tx, ctx, input.encounterId);
       const enc = await this.encounters.assertActive(tx, ctx, input.encounterId);
+      // The tests of a patient in the emergency ward are tagged emergency unless the doctor chose otherwise.
+      const prio: LimsPriority = input.priority ?? (enc.type === "EMERGENCY" ? "EMERGENCY" : "ROUTINE");
+      const toLab = enc.type === "IPD" || enc.type === "EMERGENCY";
       await this.clinicians.requireActive(tx, ctx);
       const wanted = new Map((await this.resolveTests(tx, ctx, input.tests)).map((t) => [`${t.category}|${norm(t.name)}`, t]));
       // A test already on its way for this visit is not ordered twice. A test that was finished earlier may be ordered again (a repeat).
@@ -300,22 +307,22 @@ export class LimsService {
       const made: { id: string; priority: LimsPriority }[] = [];
       const orders: { id: string; name: string; category: TestCategory }[] = [];
       // An admitted patient is never held back by how busy the lab is, and the nurse is chosen at once (the LIMS manager can change it).
-      const nurseId = enc.type === "IPD" ? await this.autoNurse(tx, ctx) : null;
+      const nurseId = toLab ? await this.autoNurse(tx, ctx, enc.type === "EMERGENCY" ? "ER_TRIAGE" : undefined) : null;
       for (const t of wanted.values()) {
         const m = { serviceId: t.serviceId, name: t.name };
         const order = await tx.testOrder.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: enc.patientId, encounterId: enc.id, category: t.category, name: m.name, serviceId: m.serviceId, source: "LIMS", orderedById: ctx.userId }, select: { id: true, name: true, category: true } });
         orders.push(order);
-        if (enc.type === "IPD") {
-          const r = await this.createRequest(tx, ctx, { testOrderId: order.id, category: order.category, serviceId: m.serviceId, patientId: enc.patientId, encounterId: enc.id, origin: "IPD" }, {
-            batchId, priority: input.priority, scheduledFor: null, instructions: null, clinicalNote: input.clinicalNote ?? null, assignedNurseId: nurseId, consent: "NOT_REQUIRED",
+        if (toLab) {
+          const r = await this.createRequest(tx, ctx, { testOrderId: order.id, category: order.category, serviceId: m.serviceId, patientId: enc.patientId, encounterId: enc.id, origin: enc.type === "EMERGENCY" ? "EMERGENCY" : "IPD" }, {
+            batchId, priority: prio, scheduledFor: null, instructions: null, clinicalNote: input.clinicalNote ?? null, assignedNurseId: nurseId, consent: "NOT_REQUIRED",
           });
           if (nurseId) await this.core.event(tx, ctx.tenantId, r.id, "NURSE_ASSIGNED", ctx.userId, { note: "assigned automatically" });
-          made.push({ id: r.id, priority: input.priority });
+          made.push({ id: r.id, priority: prio });
         }
       }
-      await this.audit.record(tx, actorOf(ctx), { action: "LIMS_TESTS_ORDERED", entityType: "Encounter", entityId: enc.id, metadata: { tests: orders.length, visitType: enc.type, priority: input.priority } });
+      await this.audit.record(tx, actorOf(ctx), { action: "LIMS_TESTS_ORDERED", entityType: "Encounter", entityId: enc.id, metadata: { tests: orders.length, visitType: enc.type, priority: prio } });
       await this.announce(tx, ctx, made, nurseId);
-      return { encounterId: enc.id, visitType: enc.type, routedToLab: enc.type === "IPD", nurseAssigned: nurseId, tests: orders.map((o) => ({ testOrderId: o.id, name: o.name, category: o.category })) };
+      return { encounterId: enc.id, visitType: enc.type, priority: prio, routedToLab: toLab, nurseAssigned: nurseId, tests: orders.map((o) => ({ testOrderId: o.id, name: o.name, category: o.category })) };
     });
   }
 
@@ -684,6 +691,8 @@ export class LimsService {
       if (doctor) await this.core.notify(tx, ctx, [doctor], "LIMS_REPORT_ISSUED", req, "v1");
       // An admitted patient's test is charged to the admission now that the report is out (the final bill takes it from there).
       if (req.origin === "IPD") await this.billing.chargeAdmitted(tx, ctx, req);
+      // An emergency patient's test goes on the emergency bill (or, once the patient has been sent to the OT or ICU, on the admission).
+      if (req.origin === "EMERGENCY") await this.billing.chargeEmergency(tx, ctx, req);
       if (req.origin === "OPD") await this.messages.queueReportReady(tx, ctx, req.patientId, req.batchId);
       return this.done(req, "ISSUED");
     });

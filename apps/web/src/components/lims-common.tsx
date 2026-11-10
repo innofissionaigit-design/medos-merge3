@@ -6,7 +6,7 @@ import { useMe } from "@/lib/me";
 import { Badge, Button, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, Select, Spinner, Table, Td, Textarea } from "./ui";
 
 export interface Req {
-  id: string; requestNumber: string; status: string; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD"; department: "PATHOLOGY" | "RADIOLOGY"; departmentName: string;
+  id: string; requestNumber: string; status: string; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD" | "EMERGENCY"; department: "PATHOLOGY" | "RADIOLOGY"; departmentName: string;
   test: string; testOrderId: string; patient: { id: string; name: string; gender: string; mrn: string | null }; encounterId: string; visitNumber: string; doctor: string | null; batchId: string;
   createdAt: string; scheduledFor: string | null; arrivedAt: string | null; bed: { code: string; ward: string } | null; dueAt: string; delayed: boolean; assignedNurse: { id: string; name: string | null } | null; assignedTech: { id: string; name: string | null } | null;
   needsRecollection: boolean; recollectCount: number; returnedCount: number; compromisedSampleApproved: boolean; instructions: string | null; clinicalNote: string | null; billed: boolean; version: number;
@@ -71,7 +71,7 @@ export function RequestTable({ rows, empty, actions, onOpen, columns = ["patient
         const cell: Record<string, ReactNode> = {
           patient: <Td key="patient"><button className="text-left" onClick={() => onOpen?.(r)}><span className="font-medium">{r.patient.name}</span> <span className="text-slate-500">· {r.patient.mrn}{r.bed ? ` · Bed ${r.bed.code} (${r.bed.ward})` : ""}</span></button></Td>,
           test: <Td key="test">{r.test} <span className="text-xs text-slate-500">({r.requestNumber})</span> <PriorityBadge p={r.priority} />{r.critical && <> <Badge tone="red">critical</Badge></>}{r.scheduledFor && r.status === "PENDING_COLLECTION" && <div className="text-xs text-slate-500">Come at {dateTime(r.scheduledFor)}</div>}</Td>,
-          origin: <Td key="origin">{r.origin === "IPD" ? "Admitted" : "Outpatient"}</Td>,
+          origin: <Td key="origin">{r.origin === "IPD" ? "Admitted" : r.origin === "EMERGENCY" ? "Emergency" : "Outpatient"}</Td>,
           status: <Td key="status"><StageBadge r={r} />{r.origin === "OPD" && r.status === "PENDING_COLLECTION" && <> <Badge tone={r.arrivedAt ? "green" : "amber"}>{r.arrivedAt ? "reported at reception" : "not here yet"}</Badge></>}{r.returnedCount > 0 && <> <Badge tone="amber">returned</Badge></>}{r.compromisedSampleApproved && <> <Badge tone="amber">by exception</Badge></>}</Td>,
           due: <Td key="due" className={r.delayed ? "font-medium text-red-700" : ""}>{dateTime(r.dueAt)}{r.delayed && " · late"}</Td>,
           who: <Td key="who" className="text-slate-600">{[r.assignedNurse && `Nurse: ${r.assignedNurse.name ?? "—"}`, r.assignedTech && `Tech: ${r.assignedTech.name ?? "—"}`].filter(Boolean).join(" · ") || "—"}</Td>,
@@ -112,12 +112,12 @@ export function DetailModal({ id, onClose }: { id: string; onClose: () => void }
         <div className="space-y-4">
           <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
             <KV label="Request number">{r.requestNumber}</KV><KV label="Department">{r.departmentName}</KV>
-            <KV label="Patient">{r.patient.name} · {r.patient.mrn} · {r.patient.gender.toLowerCase()}</KV><KV label="Visit">{r.visitNumber} ({r.origin === "IPD" ? "admitted" : "outpatient"}){r.doctor ? ` · ${r.doctor}` : ""}</KV>
+            <KV label="Patient">{r.patient.name} · {r.patient.mrn} · {r.patient.gender.toLowerCase()}</KV><KV label="Visit">{r.visitNumber} ({r.origin === "IPD" ? "admitted" : r.origin === "EMERGENCY" ? "emergency ward" : "outpatient"}){r.doctor ? ` · ${r.doctor}` : ""}</KV>
             <KV label="Stage"><StageBadge r={r} /> <PriorityBadge p={r.priority} /></KV><KV label="Due">{dateTime(r.dueAt)}{r.delayed ? " · late" : ""}</KV>
             <KV label="Nurse">{r.assignedNurse?.name ?? "—"}</KV><KV label="Technician">{r.assignedTech?.name ?? "—"}</KV>
             {r.accessionNumber && <KV label="Sample / study number">{r.accessionNumber}</KV>}
             {r.scheduledFor && <KV label="Patient asked to come at">{dateTime(r.scheduledFor)}</KV>}
-            <KV label="Billing">{r.billed ? "Billed" : r.origin === "IPD" ? "Charged to the admission when the report is issued" : "Not billed yet"}</KV>
+            <KV label="Billing">{r.billed ? "Billed" : r.origin === "IPD" ? "Charged to the admission when the report is issued" : r.origin === "EMERGENCY" ? "Added to the emergency bill when the report is issued" : "Not billed yet"}</KV>
             {r.origin === "OPD" && <KV label="At reception">{r.arrivedAt ? dateTime(r.arrivedAt) : "Not here yet"}</KV>}
             {r.bed && <KV label="Bed">{r.bed.code} ({r.bed.ward})</KV>}
             {r.recollectCount > 0 && <KV label="Samples rejected">{r.recollectCount}</KV>}

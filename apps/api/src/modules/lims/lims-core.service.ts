@@ -15,7 +15,7 @@ export const RELEASED_ORDER: Prisma.TestOrderWhereInput = { OR: [{ limsRequest: 
 
 export interface RequestRow {
   id: string; tenantId: string; facilityId: string; patientId: string; encounterId: string; testOrderId: string; departmentId: string;
-  requestNumber: string; status: LimsStatus; version: number; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD";
+  requestNumber: string; status: LimsStatus; version: number; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD" | "EMERGENCY";
   assignedNurseId: string | null; assignedTechId: string | null; batchId: string; dueAt: Date; recollectCount: number; returnedCount: number; arrivedAt: Date | null;
   department: { kind: DepartmentKind };
 }

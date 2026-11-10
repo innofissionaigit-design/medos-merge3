@@ -10,7 +10,7 @@ import { api, ApiError, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 
 interface QItem { suggestedQuantity?: number | null; id: string; lineNo: number; medicineId: string | null; genericName: string; brandName: string | null; strength: string | null; dosage: string; frequency: string; durationDays: number | null; quantity: number | null; dispensedQuantity: number; remaining: number | null; status: string }
-interface QOrder { testsAdvised?: { name: string; category: string; status: string }[]; id: string; orderNumber: string | null; source?: string; handwrittenPages?: { pageNo: number; fileId: string; fileName: string; contentType: string }[]; signedAt: string; patientId: string; patientName: string; mrn: string | null; doctorName: string | null; status: string; allergyWarnings: { allergen: string; matchedItem: string; severity: string }[]; items: QItem[] }
+interface QOrder { visitType?: "OPD" | "IPD" | "EMERGENCY"; testsAdvised?: { name: string; category: string; status: string }[]; id: string; orderNumber: string | null; source?: string; handwrittenPages?: { pageNo: number; fileId: string; fileName: string; contentType: string }[]; signedAt: string; patientId: string; patientName: string; mrn: string | null; doctorName: string | null; status: string; allergyWarnings: { allergen: string; matchedItem: string; severity: string }[]; items: QItem[] }
 interface StockRow { medicineId: string; brandName: string; genericName: string; strength: string | null; sellableQuantity: number; expiredQuantity: number; nearExpiryQuantity: number; blockedQuantity: number; reorderLevel: number; lowStock: boolean; batches: { id: string; batchNo: string; expiryDate: string; quantity: number; sellingPrice: string }[] }
 interface DispenseResult { dispense: { dispenseNumber: string; total: string; invoiceId: string | null } }
 interface Med { id: string; brandName: string; genericName: string; strength: string | null }
@@ -77,7 +77,7 @@ function Dispense({ order, onClose }: { order: QOrder; onClose: () => void }) {
         <p className="text-sm text-slate-500">Prescription {order.orderNumber} by {order.doctorName ?? "doctor"}</p>
         {(order.testsAdvised?.length ?? 0) > 0 && (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-sm" data-testid="tests-advised">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Tests the doctor advised (billed at the Cashier, not here)</div>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{order.visitType === "OPD" || !order.visitType ? "Tests the doctor advised (billed at the Cashier, not here)" : "Tests the doctor ordered (charged to the patient's bill when the report is issued, not here)"}</div>
             <ul className="flex flex-wrap gap-x-4 gap-y-1">{order.testsAdvised!.map((x, i) => <li key={i}>{x.name} <span className="text-xs text-slate-500">({x.category.toLowerCase()}{x.status === "BILLED" ? ", billed" : ""})</span></li>)}</ul>
           </div>
         )}

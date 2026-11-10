@@ -10,6 +10,8 @@ const LIMS_NAV = ["LIMS_MANAGE", "LIMS_REPORTS", "LIMS_DEPARTMENTS", "LIMS_ISSUE
 
 export const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
+  // The emergency ward (docs/emergency.md): the desk, the emergency nurse and the doctor who was called work from one board.
+  { href: "/emergency", label: "Emergency", anyOf: ["ER_READ"] },
   { href: "/patients", label: "Patients", anyOf: ["PATIENT_READ"] },
   { href: "/appointments", label: "Appointments", anyOf: ["APPOINTMENT_READ"] },
   { href: "/queue", label: "OPD queue", anyOf: ["QUEUE_READ"] },
@@ -32,7 +34,9 @@ export const NAV: NavItem[] = [
 /** CLAUDE.md §24: what each role sees first. */
 const ROLE_ORDER: Record<string, string[]> = {
   RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/lims", "/ipd", "/billing"],
-  DOCTOR: ["/queue", "/patients", "/appointments", "/ipd", "/dashboard"],
+  DOCTOR: ["/queue", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
+  EMERGENCY_RECEPTIONIST: ["/emergency", "/patients", "/billing", "/dashboard"],
+  EMERGENCY_NURSE: ["/emergency", "/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   NURSE: ["/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   PHARMACIST: ["/pharmacy", "/billing", "/patients", "/dashboard"],
   PAYROLL_OFFICER: ["/payroll", "/patients", "/dashboard"],

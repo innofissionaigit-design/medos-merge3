@@ -170,7 +170,7 @@ function BillingInner() {
         <div className="lg:col-span-2">
           <Card title="Bills" actions={<>
             <Input placeholder="Bill number" aria-label="Bill number" className="w-36" value={qNum} onChange={(e) => setQNum(e.target.value)} />
-            <Select aria-label="Bill type" className="w-36" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All types</option><option value="OPD">OPD</option><option value="REGISTRATION">Registration</option><option value="PHARMACY">Pharmacy</option><option value="IPD">Admission</option><option value="OTHER">Other</option></Select>
+            <Select aria-label="Bill type" className="w-36" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All types</option><option value="OPD">OPD</option><option value="REGISTRATION">Registration</option><option value="PHARMACY">Pharmacy</option><option value="IPD">Admission</option><option value="EMERGENCY">Emergency</option><option value="OTHER">Other</option></Select>
             <Select aria-label="Status" className="w-40" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All</option><option value="OUTSTANDING">Outstanding</option><option value="DRAFT">Draft</option><option value="PAID">Paid</option><option value="CANCELLED">Cancelled</option></Select>
           </>}>
             {list.isLoading ? <Spinner /> : (

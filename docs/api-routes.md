@@ -253,6 +253,24 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/email/test` | EMAIL_MANAGE |  |
 | POST | `/invoices/:id/email-receipt` | INVOICE_READ |  |
 
+## Emergency
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/emergency/alerts` | ER_READ |  |
+| GET | `/emergency/beds` | ER_READ |  |
+| GET | `/emergency/cases` | ER_READ |  |
+| POST | `/emergency/cases` | ER_REGISTER |  |
+| GET | `/emergency/cases/:id` | ER_READ |  |
+| POST | `/emergency/cases/:id/accept` | ER_TREAT |  |
+| POST | `/emergency/cases/:id/bill/charges` | ER_BILL |  |
+| POST | `/emergency/cases/:id/bill/issue` | ER_BILL |  |
+| POST | `/emergency/cases/:id/cancel` | ER_REGISTER |  |
+| POST | `/emergency/cases/:id/decision` | ER_TREAT |  |
+| POST | `/emergency/cases/:id/notes` | ER_TREAT |  |
+| POST | `/emergency/cases/:id/triage` | ER_TRIAGE |  |
+| GET | `/emergency/doctors` | ER_REGISTER |  |
+
 ## Encounters
 
 | Method | Path | Access | Module flag |

@@ -91,6 +91,31 @@ export class AdmissionsService {
     });
   }
 
+  /**
+   * The emergency doctor sends the patient to the operation theatre or the ICU (docs/emergency.md), in the caller's transaction. The emergency visit becomes the inpatient visit,
+   * so the vitals, prescriptions and tests of the emergency stay on the same record, and the bed is allocated with its row locked. The registration-fee gate does not apply:
+   * an emergency patient is never held up for it.
+   */
+  async admitFromEmergency(tx: Db, ctx: RequestContext, input: { encounterId: string; patientId: string; consultantId: string; bedId: string; reason: string }) {
+    const consultant = await tx.practitioner.findFirst({ where: { id: input.consultantId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { id: true, departmentId: true } });
+    if (!consultant) throw new DomainError("VALIDATION_FAILED", "Consultant not found or inactive at this facility", 400, [{ path: "consultantId", message: "Unknown consultant" }]);
+    const existing = await tx.admission.findFirst({ where: { tenantId: ctx.tenantId, patientId: input.patientId, status: "ADMITTED" }, select: { admissionNumber: true } });
+    if (existing) throw new DomainError("CONFLICT", `This patient is already admitted (${existing.admissionNumber})`, 409);
+    const bed = await this.lockBed(tx, ctx, input.bedId);
+    this.assertAllocatable(bed);
+    const admissionNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "ADMISSION");
+    const converted = await tx.encounter.updateMany({ where: { id: input.encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "EMERGENCY", status: "ACTIVE" }, data: { type: "IPD" } });
+    if (converted.count !== 1) throw new DomainError("INVALID_STATE", "This emergency visit is no longer open", 409);
+    const admission = await tx.admission.create({
+      data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, encounterId: input.encounterId, admissionNumber, consultantId: consultant.id, departmentId: consultant.departmentId, reason: input.reason, createdById: ctx.userId },
+      select: { id: true },
+    });
+    await this.openAssignment(tx, ctx, admission.id, bed, "From the emergency ward", new Date());
+    await this.audit.record(tx, actorOf(ctx), { action: "ENCOUNTER_BECAME_INPATIENT", entityType: "Encounter", entityId: input.encounterId, metadata: { from: "EMERGENCY", to: "IPD", admissionNumber } });
+    await this.audit.record(tx, actorOf(ctx), { action: "ADMISSION_CREATED", entityType: "Admission", entityId: admission.id, metadata: { admissionNumber, bedId: bed.id, consultantId: consultant.id, source: "EMERGENCY" } });
+    return { id: admission.id, admissionNumber, bedCode: bed.code };
+  }
+
   // ───── transfer ─────
 
   /** Moves the patient to another bed, closing the current assignment and opening a new one so the full path is preserved. */

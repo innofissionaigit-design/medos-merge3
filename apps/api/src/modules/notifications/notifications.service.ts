@@ -127,13 +127,13 @@ export class NotificationsService {
     if (ids.length === 0) return items;
     const rows = await this.prisma.limsRequest.findMany({
       where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, id: { in: ids } },
-      select: { id: true, requestNumber: true, encounterId: true, testOrder: { select: { name: true } }, patient: { select: { firstName: true, lastName: true } }, encounter: { select: { admission: { select: { id: true, assignments: { where: { releasedAt: null }, select: { bed: { select: { code: true, ward: { select: { name: true } } } } }, take: 1 } } } } } },
+      select: { id: true, requestNumber: true, encounterId: true, testOrder: { select: { name: true } }, patient: { select: { firstName: true, lastName: true } }, encounter: { select: { emergencyCase: { select: { id: true } }, admission: { select: { id: true, assignments: { where: { releasedAt: null }, select: { bed: { select: { code: true, ward: { select: { name: true } } } } }, take: 1 } } } } } },
     });
     const by = new Map(rows.map((r) => {
       const bed = r.encounter.admission?.assignments[0]?.bed;
       const who = ctx.permissions.has("PATIENT_READ") ? [r.patient.firstName, r.patient.lastName].filter(Boolean).join(" ") : null;
       const detail = [r.testOrder.name, who, bed ? `Bed ${bed.code} (${bed.ward.name})` : null].filter(Boolean).join(" · ");
-      return [r.id, { detail, href: r.encounter.admission ? `/ipd/${r.encounter.admission.id}` : `/visits/${r.encounterId}` }] as const;
+      return [r.id, { detail, href: r.encounter.admission ? `/ipd/${r.encounter.admission.id}` : r.encounter.emergencyCase ? `/emergency/${r.encounter.emergencyCase.id}` : `/visits/${r.encounterId}` }] as const;
     }));
     return items.map((n) => (n.entityType === "LimsRequest" && n.entityId ? { ...n, detail: by.get(n.entityId)?.detail ?? null, href: by.get(n.entityId)?.href ?? null } : n));
   }

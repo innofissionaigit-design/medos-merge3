@@ -13,14 +13,14 @@ const VITALS: { type: string; label: string; unit: string }[] = [
 interface Obs { id: string; type: string; value: string; unit: string; recordedAt: string; status: string }
 
 /** Vitals for an inpatient: record a set of readings and see the recent ones. Wrong readings are marked in error, never deleted. */
-export function VitalsCard({ encounterId, open }: { encounterId: string; open: boolean }) {
+export function VitalsCard({ encounterId, open, onChange }: { encounterId: string; open: boolean; onChange?: () => void }) {
   const { can, dateTime } = useMe();
   const qc = useQueryClient();
   const [vit, setVit] = useState<Record<string, string>>({});
   const list = useQuery({ queryKey: ["ipd-vitals", encounterId], queryFn: () => api.get<{ items: Obs[] }>(`/encounters/${encounterId}/observations`), enabled: can("VITALS_READ") });
   const add = useMutation({
     mutationFn: () => api.post(`/encounters/${encounterId}/observations`, { observations: Object.entries(vit).filter(([, v]) => v.trim() !== "").map(([type, v]) => ({ type, value: Number(v) })) }),
-    onSuccess: async () => { setVit({}); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); },
+    onSuccess: async () => { setVit({}); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); onChange?.(); },
   });
   // A wrong reading is kept in the history and hidden; the person says why before it is marked.
   const [fix, setFix] = useState<{ id: string; reason: string } | null>(null);

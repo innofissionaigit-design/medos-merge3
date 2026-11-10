@@ -426,11 +426,12 @@ describe("IPD: wards, beds, admission, transfer, charges", () => {
       await t.prisma.bed.update({ where: { id: beds[2].id }, data: { status: "MAINTENANCE" } });
       await t.api("post", `/beds/${beds[3].id}/status`, adm2.token).send({ status: "RESERVED" });
       const board = (await t.api("get", "/beds/board", adm2.token)).body.data;
-      assert.deepEqual(board.summary, { total: 5, AVAILABLE: 1, OCCUPIED: 1, RESERVED: 1, CLEANING: 1, MAINTENANCE: 1 });
-      const bed0 = board.wards[0].rooms[0].beds.find((x: { code: string }) => x.code === "S1A");
+      // Every hospital also has the operation theatre (2 beds) and the ICU (3 beds), all free.
+      assert.deepEqual(board.summary, { total: 10, AVAILABLE: 6, OCCUPIED: 1, RESERVED: 1, CLEANING: 1, MAINTENANCE: 1 });
+      const bed0 = board.wards.find((w: { name: string }) => w.name === "Surgical").rooms[0].beds.find((x: { code: string }) => x.code === "S1A");
       assert.equal(bed0.occupant.mrn, p.mrn);
       assert.ok(bed0.occupant.admissionNumber.startsWith("ADM-"));
-      assert.equal(board.wards[0].rooms[0].beds.find((x: { code: string }) => x.code === "S1E").occupant, null);
+      assert.equal(board.wards.find((w: { name: string }) => w.name === "Surgical").rooms[0].beds.find((x: { code: string }) => x.code === "S1E").occupant, null);
       const noRead3 = await makeUserWithPermissions(t, t2, ["PATIENT_READ"]);
       assert.equal((await t.api("get", "/beds/board", noRead3.token)).status, 403);
       assert.equal((await t.api("get", "/beds/board", rec.token)).body.data.wards.every((x: { name: string }) => x.name !== "Surgical"), true, "no cross-tenant wards on the board");

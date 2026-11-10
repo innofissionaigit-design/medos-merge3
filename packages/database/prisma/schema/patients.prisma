@@ -75,6 +75,7 @@ model Patient {
   labResults   LabResult[]
   radStudies   RadStudy[]
   limsRequests LimsRequest[]
+  emergencyCases EmergencyCase[]
   policies     PatientPolicy[]
   appointmentRequests AppointmentRequest[]
   teleconsults Teleconsult[]

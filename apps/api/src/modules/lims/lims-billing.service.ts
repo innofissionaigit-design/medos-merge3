@@ -10,6 +10,7 @@ import { balanceDue, computeLine, fmt } from "../billing/billing.domain";
 import { LedgerService } from "../billing/ledger.service";
 import { payInvoiceSchema } from "../billing/payments.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { EmergencyBillService } from "../billing/emergency-bill.service";
 import { TestOrdersService } from "../test-orders/test-orders.service";
 import { LimsCoreService } from "./lims-core.service";
 
@@ -30,6 +31,7 @@ export class LimsBillingService {
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly idempotency: IdempotencyService, private readonly ledger: LedgerService,
     private readonly advances: AdvancesService, private readonly tests: TestOrdersService, private readonly core: LimsCoreService, private readonly notifications: NotificationsService,
+    private readonly emergencyBill: EmergencyBillService,
   ) {}
 
   private async batch(db: Db | PrismaService, ctx: RequestContext, batchId: string) {
@@ -153,6 +155,31 @@ export class LimsBillingService {
       }
       return { batchId, arrivedAt: now, billed, owed: fmt(owed), advanceUsed: fmt(advanceUsed), collected: fmt(tendered), receipts };
     });
+  }
+
+  /**
+   * An emergency patient's report was issued: the test goes on the emergency bill, once. After the doctor has sent the patient to the OT or the ICU it is charged to the admission instead.
+   * A test with no price on the price list is not charged here and the history says why, so the emergency desk can add the charge by hand.
+   */
+  async chargeEmergency(tx: Db, ctx: RequestContext, req: { id: string; requestNumber: string; encounterId: string; patientId: string; testOrderId: string }): Promise<{ posted: boolean; reason?: string }> {
+    const admitted = await tx.admission.findFirst({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: req.encounterId }, select: { id: true } });
+    if (admitted) return this.chargeAdmitted(tx, ctx, req);
+    const order = await tx.testOrder.findFirst({ where: { id: req.testOrderId, tenantId: ctx.tenantId }, select: { name: true, serviceId: true } });
+    const svc = order?.serviceId ? await tx.service.findFirst({ where: { id: order.serviceId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { id: true, price: true, taxPercent: true, sacCode: true } }) : null;
+    if (!order || !svc) {
+      const reason = "The test has no price on the price list: add its charge to the emergency bill by hand";
+      await this.core.event(tx, ctx.tenantId, req.id, "CHARGE_NOT_POSTED", ctx.userId, { note: reason });
+      await this.audit.record(tx, actorOf(ctx), { action: "LIMS_CHARGE_NOT_POSTED", entityType: "LimsRequest", entityId: req.id, metadata: { requestNumber: req.requestNumber, reason } });
+      return { posted: false, reason };
+    }
+    const r = await this.emergencyBill.addLines(tx, ctx, { id: req.encounterId, patientId: req.patientId }, [{
+      description: `${order.name} (${req.requestNumber})`, quantity: new Decimal(1), unitPrice: new Decimal(svc.price.toString()), taxPercent: new Decimal(svc.taxPercent.toString()), sourceType: "LIMS", sourceId: req.id, serviceId: svc.id, hsnSac: svc.sacCode,
+    }]);
+    if (r.added === 1) {
+      await this.core.event(tx, ctx.tenantId, req.id, "CHARGED", ctx.userId, { note: "added to the emergency bill" });
+      await this.audit.record(tx, actorOf(ctx), { action: "CHARGE_POSTED", entityType: "Invoice", entityId: r.invoiceId, metadata: { source: "LIMS", requestNumber: req.requestNumber, target: "EMERGENCY_BILL" } });
+    }
+    return { posted: true };
   }
 
   /**

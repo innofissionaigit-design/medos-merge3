@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { visibleNav } from "@/lib/nav";
 import { NotificationBell } from "./notifications";
+import { EmergencyAlertBar } from "./emergency-alert";
 import { useDebounced } from "./ui";
 
 export interface PatientRow { id: string; mrn: string | null; firstName: string; lastName: string | null; gender: string; age: AgeValue; mobile: string | null }
@@ -106,6 +107,7 @@ export function Shell({ children }: { children: ReactNode }) {
             {nav.map((n) => <Link key={n.href} onClick={() => setMenu(false)} href={n.href} className="block rounded px-3 py-2 text-sm hover:bg-slate-100">{t(n.label)}</Link>)}
           </nav>
         )}
+        <EmergencyAlertBar />
         <main className="min-w-0 flex-1 p-4 md:p-6">
           {me.dataScope && me.dataScope.kind !== "ALL" && (
             <p className="mb-3 rounded border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-slate-700" data-testid="scope-note">

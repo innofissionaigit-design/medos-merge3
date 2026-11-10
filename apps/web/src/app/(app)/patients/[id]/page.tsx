@@ -8,6 +8,7 @@ import { ConsentCard } from "@/components/privacy-extras";
 import { AppointmentHistoryCard } from "@/components/follow-up-extras";
 import { Gate } from "@/components/gate";
 import { AdvanceCard } from "@/components/advance-extras";
+import { PatientReports } from "@/components/patient-reports";
 import { DuplicateBookingNotice, isDuplicateBooking } from "@/components/booking-guard";
 import { LedgerCard } from "@/components/ledger-extras";
 import { MergeCard } from "@/components/patient-merge";
@@ -27,7 +28,7 @@ interface Patient {
   mergedInto?: { id: string; mrn: string | null } | null; mergedFrom?: { id: string; mrn: string | null }[];
 }
 interface Allergy { id: string; allergen: string; type: string; severity: string; reaction: string | null; status: string }
-interface Encounter { id: string; encounterNumber: string; type: string; status: string; startedAt: string; practitionerName?: string | null; departmentName?: string | null }
+interface Encounter { id: string; encounterNumber: string; type: string; status: string; startedAt: string; practitionerName?: string | null; departmentName?: string | null; emergencyCaseId?: string | null }
 interface InvoiceRow { id: string; invoiceNumber: string | null; status: string; total: string; balanceDue: string; createdAt: string; kind: string }
 interface ConsultPay { required: boolean; status: "NOT_REQUIRED" | "PAID" | "NEEDS_PAYMENT" | "NEEDS_BILL"; invoiceId?: string; invoiceNumber?: string | null; invoiceStatus?: string; total?: string; due?: string }
 interface Practitioner { id: string; displayName: string; specialty?: string | null }
@@ -149,13 +150,14 @@ export default function PatientPage() {
               <Table head={["Visit", "Type", "Status", "Doctor", "Started"]} {...(enc.data?.data.length === 0 ? { empty: "No visits yet." } : {})}>
                 {enc.data?.data.map((e) => (
                   <tr key={e.id} className="hover:bg-slate-50">
-                    <Td>{e.type === "OPD" && can("CONSULTATION_READ") ? <Link className="font-medium text-brand-700 hover:underline" href={`/visits/${e.id}`}>{e.encounterNumber}</Link> : e.encounterNumber}</Td>
+                    <Td>{e.type === "OPD" && can("CONSULTATION_READ") ? <Link className="font-medium text-brand-700 hover:underline" href={`/visits/${e.id}`}>{e.encounterNumber}</Link> : e.emergencyCaseId && can("ER_READ") ? <Link className="font-medium text-brand-700 hover:underline" href={`/emergency/${e.emergencyCaseId}`}>{e.encounterNumber}</Link> : e.encounterNumber}</Td>
                     <Td>{e.type}</Td><Td><StatusBadge value={e.status} /></Td><Td>{e.practitionerName ?? "—"}</Td><Td>{dateTime(e.startedAt)}</Td>
                   </tr>
                 ))}
               </Table>
             )}
           </Card>
+          <PatientReports patientId={pt.id} />
           {can("APPOINTMENT_READ") && <AppointmentHistoryCard patientId={pt.id} />}
           {can("INVOICE_READ") && (
             <Card title="Bills">

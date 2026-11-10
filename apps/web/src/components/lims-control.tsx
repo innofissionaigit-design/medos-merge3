@@ -62,7 +62,7 @@ export function RequestsExplorer({ preset, title, columns }: { preset?: Record<s
       <div className="mb-3 flex flex-wrap gap-2">
         <Select aria-label="Department" className="w-40" value={dept} onChange={(e) => setDept(e.target.value)}><option value="">Both departments</option><option value="PATHOLOGY">Pathology</option><option value="RADIOLOGY">Radiology</option></Select>
         {!preset?.["status"] && <Select aria-label="Stage" className="w-52" value={status} onChange={(e) => setStatus(e.target.value)}>{STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>}
-        <Select aria-label="From" className="w-40" value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">Admitted and outpatients</option><option value="IPD">Admitted</option><option value="OPD">Outpatients</option></Select>
+        <Select aria-label="From" className="w-40" value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">All patients</option><option value="IPD">Admitted</option><option value="EMERGENCY">Emergency ward</option><option value="OPD">Outpatients</option></Select>
         <Select aria-label="Priority" className="w-36" value={priority} onChange={(e) => setPriority(e.target.value)}><option value="">Any priority</option><option value="EMERGENCY">Emergency</option><option value="URGENT">Urgent</option><option value="ROUTINE">Routine</option></Select>
         <Input aria-label="Search" className="min-w-52 flex-1" placeholder="Search name, MRN, request or sample number" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
@@ -286,7 +286,7 @@ export function Exceptions() {
 
 interface Perf {
   from: string; to: string; totals: { ordered: number; issued: number; open: number; pendingReview: number; cancelled: number };
-  departments: { kind: string; name: string; ordered: number; performed: number; reported: number; issued: number; open: number; cancelled: number; overdueOpen: number; lateIssued: number; tat: { averageMinutes: number | null; medianMinutes: number | null; p90Minutes: number | null; withinTargetPercent: number | null }; stages: Record<string, number | null>; samples: { collected: number; rejected: number; rejectionPercent: number | null }; returnedForCorrection: number; priority: { emergency: number; urgent: number; routine: number }; origin: { opd: number; ipd: number } }[];
+  departments: { kind: string; name: string; ordered: number; performed: number; reported: number; issued: number; open: number; cancelled: number; overdueOpen: number; lateIssued: number; tat: { averageMinutes: number | null; medianMinutes: number | null; p90Minutes: number | null; withinTargetPercent: number | null }; stages: Record<string, number | null>; samples: { collected: number; rejected: number; rejectionPercent: number | null }; returnedForCorrection: number; priority: { emergency: number; urgent: number; routine: number }; origin: { opd: number; ipd: number; emergency?: number } }[];
   days: { date: string; ordered: number; issued: number }[]; technicians: { id: string; name: string; accepted: number; issued: number }[];
 }
 interface AdmittedCharge { requestNumber: string; test: string; department: string; patient: string; admissionNumber: string | null; status: string; amount: string }

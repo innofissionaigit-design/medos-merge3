@@ -1,0 +1,136 @@
+// ───────────────────────── Emergency ward (docs/emergency.md) ─────────────────────────
+// A patient who comes to the emergency ward gets an Encounter of type EMERGENCY (so vitals, prescriptions and laboratory tests attach to it like any other visit) and one
+// EmergencyCase that follows the patient from arrival to the doctor's decision. The triage record and the doctor's notes are append-only: a new assessment is a new row.
+
+enum EmergencyStatus {
+  ARRIVED
+  TRIAGED
+  IN_TREATMENT
+  HANDED_OVER
+  DISCHARGED
+  CANCELLED
+}
+
+enum EmergencyArrival {
+  WALK_IN
+  AMBULANCE
+  POLICE
+  REFERRED
+  OTHER
+}
+
+/// Where the doctor sends the patient: the operation theatre, the intensive care unit, or home.
+enum EmergencyDisposition {
+  OT
+  ICU
+  DISCHARGE
+}
+
+/// The urgency colour the nurse gives at triage: red is immediate, blue is not urgent.
+enum TriageLevel {
+  RED
+  ORANGE
+  YELLOW
+  GREEN
+  BLUE
+}
+
+enum TriageConsciousness {
+  ALERT
+  VOICE
+  PAIN
+  UNRESPONSIVE
+}
+
+enum EmergencyNoteKind {
+  ASSESSMENT
+  PROGRESS
+}
+
+model EmergencyCase {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String           @db.Uuid
+  facilityId      String           @db.Uuid
+  patientId       String           @db.Uuid
+  encounterId     String           @unique @db.Uuid
+  caseNumber      String
+  status          EmergencyStatus  @default(ARRIVED)
+  arrivalMode     EmergencyArrival @default(WALK_IN)
+  chiefComplaint  String
+  broughtBy       String?
+  /// The doctor the desk called for this patient (also the doctor of the visit).
+  doctorId        String           @db.Uuid
+  arrivedAt       DateTime         @default(now()) @db.Timestamptz(3)
+  registeredById  String           @db.Uuid
+  /// The most urgent colour given so far; the triage records themselves are kept in full.
+  triageLevel     TriageLevel?
+  doctorAcceptedAt DateTime?       @db.Timestamptz(3)
+  doctorAcceptedById String?       @db.Uuid
+  disposition     EmergencyDisposition?
+  dispositionNote String?
+  dispositionAt   DateTime?        @db.Timestamptz(3)
+  dispositionById String?          @db.Uuid
+  admissionId     String?          @unique @db.Uuid
+  cancelReason    String?
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+
+  facility  Facility     @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
+  patient   Patient      @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter Encounter    @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  doctor    Practitioner @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  admission Admission?   @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+  triages   EmergencyTriage[]
+  notes     EmergencyNote[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, facilityId, id])
+  @@unique([tenantId, facilityId, caseNumber])
+  @@index([tenantId, facilityId, status, arrivedAt(sort: Desc)])
+  @@index([tenantId, patientId, arrivedAt(sort: Desc)])
+  @@index([tenantId, doctorId, status])
+}
+
+/// The emergency triage record: what the emergency nurse found when she first saw the patient, and at every later re-assessment. Never edited or deleted.
+model EmergencyTriage {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String              @db.Uuid
+  facilityId    String              @db.Uuid
+  caseId        String              @db.Uuid
+  level         TriageLevel
+  consciousness TriageConsciousness
+  /// Airway, breathing and circulation as the nurse found them.
+  airwayClear   Boolean
+  breathingOk   Boolean
+  circulationOk Boolean
+  /// 0 (none) to 10 (worst).
+  painScore     Int?
+  complaint     String
+  note          String?
+  triagedById   String              @db.Uuid
+  triagedAt     DateTime            @default(now()) @db.Timestamptz(3)
+
+  emergencyCase EmergencyCase @relation(fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, caseId, triagedAt(sort: Desc)])
+}
+
+/// The doctor's assessment and progress notes. Append-only.
+model EmergencyNote {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String            @db.Uuid
+  facilityId  String            @db.Uuid
+  caseId      String            @db.Uuid
+  kind        EmergencyNoteKind
+  text        String
+  diagnosis   String?
+  authorId    String            @db.Uuid
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+
+  emergencyCase EmergencyCase @relation(fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, caseId, createdAt(sort: Desc)])
+}

@@ -41,6 +41,7 @@ export default function Dashboard() {
   const low = useQuery({ queryKey: ["dash-low"], queryFn: () => api.get<{ rows: unknown[] }>("/reports/pharmacy/low-stock"), enabled: can("REPORT_READ", "REPORT_PHARMACY") && features.PHARMACY_ENABLED });
   // Registrations and their fees, live: refreshed every 15 seconds for the Cashier, Manager and Administrator.
   const reg = useQuery({ queryKey: ["dash-reg"], queryFn: () => api.get<RegReport>("/reports/registrations"), enabled: can("REPORT_READ", "REPORT_FINANCE"), refetchInterval: 15_000 });
+  const er = useQuery({ queryKey: ["dash-er"], queryFn: () => api.page<unknown>("/emergency/cases", { view: "active", pageSize: 1 }), enabled: can("ER_READ"), refetchInterval: 15_000 });
   const nav = visibleNav(new Set(me.permissions), features, me.roles).filter((n) => n.href !== "/dashboard");
   const waiting = queue.data?.filter((q) => q.status === "WAITING" || q.status === "CALLED").length;
 
@@ -48,6 +49,7 @@ export default function Dashboard() {
     <>
       <PageHeader title={`${t("Welcome,")} ${me.fullName}`} subtitle={`${me.facility?.name ?? ""} · ${new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "full", timeZone: me.facility?.timezone ?? me.tenant.timezone }).format(new Date())}`} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {can("ER_READ") && <Stat label="In the emergency ward now" value={er.data?.meta.total} href="/emergency" />}
         {can("QUEUE_READ") && <Stat label="Waiting in OPD" value={waiting} href="/queue" />}
         {can("REPORT_READ", "REPORT_OPD") && <Stat label="OPD visits today" value={opd.data?.total} href="/reports" />}
         {can("REPORT_READ", "REPORT_FINANCE") && <Stat label="Collected today" value={col.data ? money(col.data.totals.net) : undefined} href="/reports" />}

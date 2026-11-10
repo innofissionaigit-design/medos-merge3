@@ -3,6 +3,8 @@
 enum EncounterType {
   OPD
   IPD
+  /// A patient of the emergency ward (docs/emergency.md). Becomes IPD when the doctor sends the patient to the OT or the ICU.
+  EMERGENCY
 }
 
 enum EncounterStatus {
@@ -61,6 +63,7 @@ model Encounter {
   labResults LabResult[]
   radStudies RadStudy[]
   limsRequests LimsRequest[]
+  emergencyCase EmergencyCase?
   claims     Claim[]
   aiDrafts   AiDraft[]
 

@@ -72,6 +72,18 @@ export class TenantsService {
       });
       await tx.userFacility.create({ data: { tenantId: tenant.id, userId: admin.id, facilityId: facility.id } });
       await tx.userRole.create({ data: { tenantId: tenant.id, userId: admin.id, roleId: adminRole } });
+      // The emergency department, the operation theatre (two operating rooms) and the ICU (three rooms), each room with one bed (docs/emergency.md).
+      await tx.department.create({ data: { tenantId: tenant.id, facilityId: facility.id, name: "Emergency Medicine", code: "EM" } });
+      for (const w of [
+        { name: "Operation Theatre", code: "OT", rate: "3000.00", rooms: [["Operating Room 1", "OT-1", "OT1"], ["Operating Room 2", "OT-2", "OT2"]] },
+        { name: "Intensive Care Unit", code: "ICU", rate: "6000.00", rooms: [["ICU Room 1", "ICU-1", "ICU1"], ["ICU Room 2", "ICU-2", "ICU2"], ["ICU Room 3", "ICU-3", "ICU3"]] },
+      ] as const) {
+        const ward = await tx.ward.create({ data: { tenantId: tenant.id, facilityId: facility.id, name: w.name, code: w.code } });
+        for (const [name, code, bed] of w.rooms) {
+          const room = await tx.room.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: ward.id, name, code } });
+          await tx.bed.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: ward.id, roomId: room.id, code: bed, dailyRate: w.rate } });
+        }
+      }
       await tx.numberSequenceConfig.createMany({
         data: DEFAULT_SEQUENCES.map((s) => ({ tenantId: tenant.id, facilityId: facility.id, type: s.type, pattern: s.pattern, padding: s.padding, resetPolicy: s.resetPolicy })),
       });

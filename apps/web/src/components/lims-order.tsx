@@ -16,14 +16,16 @@ const split = (s: string): string[] => [...new Set(s.split(/[\n,;]+/).map((x) =>
  * The doctor's view of the laboratory and imaging work for one visit: where each test is, an order form (an admitted patient's tests go straight to the laboratory, an
  * emergency comes first in the queue; an outpatient's wait at reception until the patient agrees), and a way to raise the priority of a test already ordered.
  */
-export function LimsVisitCard({ encounterId, visitType, active }: { encounterId: string; visitType: "OPD" | "IPD"; active: boolean }) {
+export function LimsVisitCard({ encounterId, visitType, active }: { encounterId: string; visitType: "OPD" | "IPD" | "EMERGENCY"; active: boolean }) {
   const { can, dateTime } = useMe();
   const refresh = useRefreshLims();
   const q = useQuery({ queryKey: ["lims-visit", encounterId], queryFn: () => api.get<VisitLims>(`/encounters/${encounterId}/lims`), enabled: can("LIMS_READ"), refetchInterval: 30_000 });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [lab, setLab] = useState("");
   const [imaging, setImaging] = useState("");
-  const [priority, setPriority] = useState("ROUTINE");
+  // The tests of a patient in the emergency ward are emergency tests unless the doctor chooses otherwise.
+  const baseline = visitType === "EMERGENCY" ? "EMERGENCY" : "ROUTINE";
+  const [priority, setPriority] = useState(baseline);
   const [note, setNote] = useState("");
   const [sent, setSent] = useState<string | null>(null);
   const done = () => { refresh(); void q.refetch(); };
@@ -32,7 +34,7 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
       encounterId, priority, ...(note.trim() ? { clinicalNote: note.trim() } : {}),
       tests: [...[...picked].map((serviceId) => ({ serviceId })), ...split(lab).map((name) => ({ name, category: "LABORATORY" })), ...split(imaging).map((name) => ({ name, category: "RADIOLOGY" }))],
     }, newKey()),
-    onSuccess: (r) => { setSent(r.routedToLab ? `${r.tests.length} test(s) sent to the laboratory.` : `${r.tests.length} test(s) ordered. Reception will ask the patient to agree and then send them to the laboratory.`); setPicked(new Set()); setLab(""); setImaging(""); setNote(""); setPriority("ROUTINE"); done(); },
+    onSuccess: (r) => { setSent(r.routedToLab ? `${r.tests.length} test(s) sent to the laboratory.` : `${r.tests.length} test(s) ordered. Reception will ask the patient to agree and then send them to the laboratory.`); setPicked(new Set()); setLab(""); setImaging(""); setNote(""); setPriority(baseline); done(); },
   });
   const raise = useMutation({ mutationFn: (v: { id: string; priority: string }) => api.post(`/lims/requests/${v.id}/priority`, { priority: v.priority }, newKey()), onSuccess: done });
   if (!can("LIMS_READ")) return null;
@@ -61,6 +63,7 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
           <div className="space-y-2 rounded-md border border-slate-200 p-3">
             <p className="text-sm font-medium text-slate-800">Order tests</p>
             {visitType === "OPD" && <p className="text-xs text-slate-500">For an outpatient, reception asks the patient to agree and then sends the tests to the laboratory.</p>}
+            {visitType === "EMERGENCY" && <p className="text-xs text-slate-500">An emergency patient's tests go straight to the laboratory, tagged as emergency tests, and are added to the emergency bill when the report is issued.</p>}
             <p className="text-xs text-slate-500">Choose from the hospital's test list. Each test goes to the technician of its department: pathology for laboratory tests, radiology for imaging.</p>
             <TestPicker picked={picked} onChange={setPicked} />
             <p className="text-xs text-slate-500">A test that is not on the list can be typed here (separate with commas).</p>

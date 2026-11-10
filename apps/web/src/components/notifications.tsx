@@ -27,8 +27,13 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   LIMS_REPORT_ISSUED: { text: "A laboratory or imaging report was issued", href: "/dashboard" },
   LIMS_EXCEPTION_RAISED: { text: "A laboratory exception or failed check needs your attention", href: "/lims" },
   LIMS_PATIENT_ARRIVED: { text: "A patient has reported at reception for a test", href: "/lims" },
+  EMERGENCY_ARRIVAL: { text: "EMERGENCY: a patient has arrived", href: "/emergency", critical: true },
+  EMERGENCY_TRIAGED: { text: "An emergency patient was triaged", href: "/emergency" },
+  EMERGENCY_DECISION: { text: "The doctor has decided where an emergency patient goes", href: "/emergency" },
 };
 const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
+/** An emergency notice leads straight to the case it is about. */
+const hrefOf = (r: Row): string => r.href ?? (r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : kindOf(r.type).href);
 
 /**
  * The bell in the top bar. The browser listens to a live stream that says "something changed" and then fetches; if the stream is not open
@@ -103,7 +108,7 @@ export function NotificationBell() {
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
 
-  const go = (r: Row): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(r.href ?? kindOf(r.type).href); };
+  const go = (r: Row): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(hrefOf(r)); };
 
   return (
     <div ref={box} className="relative">
@@ -137,7 +142,7 @@ export function NotificationBell() {
           <div className="font-semibold">{t(kindOf(alertRow.type).text)}</div>
           {alertRow.detail && <div className="mt-0.5 text-xs">{alertRow.detail}</div>}
           <div className="mt-2 flex gap-3">
-            <Link href={alertRow.href ?? kindOf(alertRow.type).href} className="font-medium underline" onClick={() => { read.mutate(alertRow.id); setAlertRow(null); }}>{t("Open")}</Link>
+            <Link href={hrefOf(alertRow)} className="font-medium underline" onClick={() => { read.mutate(alertRow.id); setAlertRow(null); }}>{t("Open")}</Link>
             <button type="button" className={kindOf(alertRow.type).critical ? "text-red-800 hover:underline" : "text-slate-600 hover:underline"} onClick={() => setAlertRow(null)}>{t("Dismiss")}</button>
           </div>
         </div>

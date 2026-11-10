@@ -11,7 +11,7 @@ import { InvoicesService } from "../billing/invoices.service";
 
 const uuid = z.string().uuid();
 /** A test of an admitted patient that the laboratory runs is charged to the admission when its report is issued (docs/lims-portal.md), so the Cashier does not bill it as a separate bill. */
-const NOT_ADMITTED_LAB: Prisma.TestOrderWhereInput = { NOT: { limsRequest: { is: { origin: "IPD" } } } };
+const NOT_ADMITTED_LAB: Prisma.TestOrderWhereInput = { NOT: { limsRequest: { is: { origin: { in: ["IPD", "EMERGENCY"] } } } } };
 const category = z.enum(["LABORATORY", "RADIOLOGY", "CARDIOLOGY", "PROCEDURE"]);
 
 // A price the Cashier types: any test can be billed even when the hospital's price list has no item for it. The amounts are checked here and the bill is worked out on the server.
