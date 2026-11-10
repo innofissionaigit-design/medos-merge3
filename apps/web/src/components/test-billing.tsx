@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button, Card, ErrorNote, Input, Select, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
+import { doctorText } from "@/lib/format";
 import { useMe } from "@/lib/me";
 
 export interface Queue { visits: Visit[]; handwritten: Picture[] }
@@ -54,7 +55,7 @@ export function VisitCard({ v, services, compact = false }: { v: Visit; services
   return (
     <div className="rounded border border-slate-200 p-3" data-testid="test-visit">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        {!compact && <div><span className="font-medium">{v.patientName}</span> <span className="text-xs text-slate-500">{v.mrn}</span><div className="text-xs text-slate-500">Dr {v.doctorName ?? "—"}{v.visitDate ? ` · ${dateTime(v.visitDate)}` : ""}</div></div>}
+        {!compact && <div><span className="font-medium">{v.patientName}</span> <span className="text-xs text-slate-500">{v.mrn}</span><div className="text-xs text-slate-500">{doctorText(v.doctorName)}{v.visitDate ? ` · ${dateTime(v.visitDate)}` : ""}</div></div>}
         <div className="text-sm text-slate-600">{v.testsWithoutPrice === 0 ? <>Total with tax <span className="font-medium">{money(v.estimatedTotal)}</span></> : "Choose or type a price for the tests marked below"}</div>
       </div>
       <ul className="divide-y divide-slate-100">
@@ -112,7 +113,7 @@ export function PictureCard({ p, services, compact = false }: { p: Picture; serv
   const total = chosen.reduce((n, c) => n + amount(c), 0);
   return (
     <div className="rounded border border-slate-200 p-3" data-testid="test-picture">
-      {!compact && <div className="mb-2"><span className="font-medium">{p.patientName}</span> <span className="text-xs text-slate-500">{p.mrn}</span><div className="text-xs text-slate-500">Dr {p.doctorName ?? "—"} · handwritten prescription, {dateTime(p.uploadedAt)}</div></div>}
+      {!compact && <div className="mb-2"><span className="font-medium">{p.patientName}</span> <span className="text-xs text-slate-500">{p.mrn}</span><div className="text-xs text-slate-500">{doctorText(p.doctorName)} · handwritten prescription, {dateTime(p.uploadedAt)}</div></div>}
       {!compact && <div className="mb-2 flex flex-wrap gap-2">
         {p.pages.map((pg) => (
           <a key={pg.fileId} href={`/api/proxy/files/${pg.fileId}/content`} target="_blank" rel="noreferrer" className="block rounded border border-slate-200 p-1 text-center text-xs text-brand-700 hover:underline">

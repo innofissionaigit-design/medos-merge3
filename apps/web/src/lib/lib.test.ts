@@ -1,11 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ApiError, errorText } from "./api";
-import { ageText } from "./format";
+import { ageText, doctorText } from "./format";
 import { homeFor, visibleNav } from "./nav";
 
 const set = (...p: string[]) => new Set(p);
 const ALL_ON = { PHARMACY_ENABLED: true, IPD_ENABLED: true, NURSING_ENABLED: true };
+
+test("a doctor already named Dr. is not given a second Dr", () => {
+  assert.equal(doctorText("Dr. Biswajit Mukherjee"), "Dr. Biswajit Mukherjee");
+  assert.equal(doctorText("dr Amit Saha"), "dr Amit Saha");
+  assert.equal(doctorText("Sutapa Sarkar"), "Dr Sutapa Sarkar");
+  assert.equal(doctorText("Drishti Rao"), "Dr Drishti Rao");
+  assert.equal(doctorText(null), "Dr —");
+});
 
 test("age is formatted from the API's { years, estimated } shape", () => {
   assert.equal(ageText({ years: 46, estimated: false }), "46 y");

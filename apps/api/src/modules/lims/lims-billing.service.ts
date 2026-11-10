@@ -17,7 +17,8 @@ const ZERO = new Decimal(0);
 const dec = (v: { toString(): string } | null | undefined) => new Decimal(v?.toString() ?? 0);
 
 /** The patient reports at reception: what is still owed after the advance is paid now (one or several ways), then the nurse may take the sample. */
-export const arriveSchema = z.object({ payments: payInvoiceSchema.shape.payments.default([]) }).strict();
+/** Nothing to pay (an advance covers it, or the Cashier already collected) is an empty list. */
+export const arriveSchema = z.object({ payments: z.array(payInvoiceSchema.shape.payments.element).max(6).default([]) }).strict();
 
 /**
  * The money side of the laboratory's outpatient and admitted-patient flows (docs/lims-portal.md, "Billing"). It adds no new way of charging: tests are billed with the

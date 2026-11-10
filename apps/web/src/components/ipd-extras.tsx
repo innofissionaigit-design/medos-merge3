@@ -22,7 +22,9 @@ export function VitalsCard({ encounterId, open }: { encounterId: string; open: b
     mutationFn: () => api.post(`/encounters/${encounterId}/observations`, { observations: Object.entries(vit).filter(([, v]) => v.trim() !== "").map(([type, v]) => ({ type, value: Number(v) })) }),
     onSuccess: async () => { setVit({}); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); },
   });
-  const wrong = useMutation({ mutationFn: (id: string) => api.post(`/observations/${id}/enter-in-error`, { reason: "Recorded in error" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }) });
+  // A wrong reading is kept in the history and hidden; the person says why before it is marked.
+  const [fix, setFix] = useState<{ id: string; reason: string } | null>(null);
+  const wrong = useMutation({ mutationFn: (v: { id: string; reason: string }) => api.post(`/observations/${v.id}/enter-in-error`, { reason: v.reason.trim() }), onSuccess: async () => { setFix(null); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); } });
   const rows = (list.data?.items ?? []).filter((o) => o.status === "FINAL").slice(0, 12);
   return (
     <Card title="Vitals">
@@ -37,7 +39,10 @@ export function VitalsCard({ encounterId, open }: { encounterId: string; open: b
         <Table head={["When", "Reading", "Value", ""]} {...(rows.length === 0 ? { empty: "No vitals recorded yet." } : {})}>
           {rows.map((o) => (
             <tr key={o.id}><Td>{dateTime(o.recordedAt)}</Td><Td>{VITALS.find((v) => v.type === o.type)?.label ?? o.type}</Td><Td>{o.value} {o.unit}</Td>
-              <Td>{open && can("VITALS_CREATE") && <button className="text-xs text-slate-500 hover:text-red-700" onClick={() => wrong.mutate(o.id)}>entered in error</button>}</Td></tr>
+              <Td>{open && can("VITALS_CREATE") && (fix?.id === o.id ? (
+                <span className="flex flex-wrap items-center gap-1"><Input aria-label="Why is this reading wrong?" className="w-44" placeholder="Why is it wrong?" value={fix.reason} onChange={(e) => setFix({ id: o.id, reason: e.target.value })} />
+                  <Button variant="danger" disabled={fix.reason.trim().length < 3} loading={wrong.isPending} onClick={() => wrong.mutate(fix)}>Mark as wrong</Button><Button variant="ghost" onClick={() => setFix(null)}>Keep</Button></span>
+              ) : <button className="text-xs text-slate-500 hover:text-red-700" onClick={() => setFix({ id: o.id, reason: "" })}>entered in error</button>)}</Td></tr>
           ))}
         </Table>
       )}

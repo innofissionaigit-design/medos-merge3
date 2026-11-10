@@ -327,13 +327,13 @@ interface Launched { messages: { kind: string; channel: string; to: string; stat
 
 interface Availability { suggestedAt: string; immediate: boolean; departments: { kind: string; name: string; capacityPerHour: number; waiting: number; todayPercent: number; needed: number }[] }
 
-/** What the chosen tests cost (price list, with tax), before the patient pays. */
-function EstimateNote({ amounts }: { amounts: (string | null)[] }) {
+/** What the chosen tests still cost (price list, with tax), before the patient pays. Tests the Cashier has already billed are not counted again. */
+function EstimateNote({ amounts, billed = 0 }: { amounts: (string | null)[]; billed?: number }) {
   const { money } = useMe();
-  if (amounts.length === 0) return null;
+  if (amounts.length === 0) return billed > 0 ? <p className="text-sm text-slate-700">{billed === 1 ? "This test is" : "These tests are"} already billed: nothing more to pay for {billed === 1 ? "it" : "them"}.</p> : null;
   const total = amounts.reduce((n, a) => n + Math.round(Number(a ?? 0) * 100), 0) / 100;
   const unpriced = amounts.filter((a) => a === null).length;
-  return <p className="text-sm text-slate-700">Cost of these tests: <span className="font-medium">{money(total)}</span>{unpriced > 0 ? <span className="text-amber-700"> · {unpriced} test{unpriced > 1 ? "s have" : " has"} no price on the price list yet (the cashier must price {unpriced > 1 ? "them" : "it"} before the patient can pay)</span> : null}</p>;
+  return <p className="text-sm text-slate-700">Cost of {billed > 0 ? "the other tests" : "these tests"}: <span className="font-medium">{money(total)}</span>{billed > 0 ? <span className="text-slate-500"> ({billed} already billed)</span> : null}{unpriced > 0 ? <span className="text-amber-700"> · {unpriced} test{unpriced > 1 ? "s have" : " has"} no price on the price list yet (the cashier must price {unpriced > 1 ? "them" : "it"} before the patient can pay)</span> : null}</p>;
 }
 
 /** The date the patient will be given if reception leaves the time empty, from how busy the labs are. */
@@ -399,7 +399,7 @@ function LaunchCard({ g, onLaunched }: { g: Pending; onLaunched: (g: Pending, r:
           <Field label="Priority"><Select value={priority} onChange={(e) => setPriority(e.target.value)}><option value="ROUTINE">Routine</option>{can("LIMS_PRIORITY") && <><option value="URGENT">Urgent</option><option value="EMERGENCY">Emergency</option></>}</Select></Field>
           <Field label="Nurse to take the sample (optional)"><Select value={nurse} onChange={(e) => setNurse(e.target.value)}><option value="">Any nurse</option>{staff.data?.nurses.map((n) => <option key={n.id} value={n.id}>{n.fullName}</option>)}</Select></Field>
         </div>
-        <EstimateNote amounts={g.tests.filter((t) => picked.has(t.testOrderId)).map((t) => t.amount)} />
+        <EstimateNote amounts={g.tests.filter((t) => picked.has(t.testOrderId) && !t.billed).map((t) => t.amount)} billed={g.tests.filter((t) => picked.has(t.testOrderId) && t.billed).length} />
         <AvailabilityNote pathology={g.tests.filter((t) => picked.has(t.testOrderId) && t.department === "PATHOLOGY").length} radiology={g.tests.filter((t) => picked.has(t.testOrderId) && t.department === "RADIOLOGY").length} priority={priority} />
         <Field label="What the patient should do before coming (sent to the patient)"><Textarea rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="For example: come fasting for 8 hours" /></Field>
         {!g.patient.hasMobile && <Notice tone="warn">This patient has no valid mobile number, so no message can be sent. Tell them when to come and what to do beforehand.</Notice>}

@@ -1070,6 +1070,20 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await t.api("get", `/lims/batches/${x.batchId}/billing`, bRec.token)).status, 404);
     });
 
+    it("a patient whose tests the cashier already billed and collected goes straight to the nurse, with an empty payment list", async () => {
+      const x = await bookOne();
+      const billed = await t.api("post", "/test-orders/bill", cashier.token).send({ encounterId: x.encounterId, fromSaved: true });
+      assert.ok([200, 201].includes(billed.status), JSON.stringify(billed.body));
+      const paid = await t.api("post", `/invoices/${billed.body.data.invoiceId}/payments`, cashier.token).set("Idempotency-Key", key()).send({ payments: [pay("250.00")] });
+      assert.equal(paid.status, 201, JSON.stringify(paid.body));
+      const before = await billing(x.batchId);
+      assert.deepEqual([before.owed, before.toCollect, before.paid, before.arrived], ["0.00", "0.00", true, false]);
+      const r = await arrive(x.batchId, { payments: [] });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.deepEqual([r.body.data.owed, r.body.data.collected, r.body.data.billed.length], ["0.00", "0.00", 0]);
+      assert.equal((await rawCollect(x.requestId)).status, 200, "the nurse may take the sample");
+    });
+
     it("a test with no price on the list stops the arrival until the cashier prices it", async () => {
       const x = await bookOne({ tests: [{ name: "Special assay", category: "LABORATORY" }] });
       assert.equal((await billing(x.batchId)).unpriced, 1);

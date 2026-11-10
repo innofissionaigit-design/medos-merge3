@@ -90,7 +90,7 @@ export default function QueuePage() {
                   <Td>{e.waitingMinutes !== null ? `${e.waitingMinutes} min` : "—"}</Td>
                   <Td>
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      {(waiting || called) && (manage || clinician) && <Button variant="secondary" onClick={() => act.mutate({ id: e.id, action: "call" })}>{called ? "Recall" : "Call"}</Button>}
+                      {(waiting || called) && (manage || clinician) && <Button variant="secondary" onClick={() => act.mutate({ id: e.id, action: called ? "recall" : "call" })}>{called ? "Back to waiting" : "Call"}</Button>}
                       {(waiting || called) && clinician && <Button onClick={() => act.mutate({ id: e.id, action: "start" })}>Start</Button>}
                       {inConsult && e.encounterId && can("CONSULTATION_READ") && <Button onClick={() => router.push(`/visits/${e.encounterId}`)}>Open visit</Button>}
                       {inConsult && clinician && <Button variant="secondary" onClick={() => act.mutate({ id: e.id, action: "complete", encounterId: e.encounterId })}>Complete</Button>}

@@ -6,6 +6,7 @@ import type { Service } from "@/components/test-billing";
 import { Badge, Button, Card, ErrorNote, Input, Modal, Notice, Select, Spinner } from "@/components/ui";
 import { api, printUrl } from "@/lib/api";
 import { canEditTests } from "@/lib/cashier-edit";
+import { doctorText } from "@/lib/format";
 import { useMe } from "@/lib/me";
 
 interface Medicine { orderNumber: string | null; source: string; pharmacy: "WAITING" | "PARTLY_GIVEN" | "GIVEN"; items: { id: string; name: string; strength: string | null; dosage: string; frequency: string; days: number | null; quantity: number | null; suggestedQuantity?: number | null; given: number; status: string }[] }
@@ -269,7 +270,7 @@ function Visit({ v, services, onDirty }: { v: VisitInfo; services: Service[]; on
   return (
     <div className="rounded border border-slate-200 p-3" data-testid="cashier-visit">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="text-sm text-slate-600">Visit {dateTime(v.visitDate)} · Dr {v.doctorName ?? "—"}</div>
+        <div className="text-sm text-slate-600">Visit {dateTime(v.visitDate)} · {doctorText(v.doctorName)}</div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {canEditTests(lines.length, unread.length, editing) && <Button variant="secondary" onClick={start}>Edit tests</Button>}
           {editing && <><Button variant="ghost" onClick={stop}>Cancel</Button><Button loading={save.isPending} disabled={!allOk} onClick={() => save.mutate()}>Save changes</Button></>}
