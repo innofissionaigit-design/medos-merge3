@@ -23,7 +23,7 @@ export interface NotifyInput {
   dedupeKey?: string;
 }
 
-export interface NotificationView { id: string; type: NotificationType; entityType: string; entityId: string | null; createdAt: Date; readAt: Date | null }
+export interface NotificationView { id: string; type: NotificationType; entityType: string; entityId: string | null; createdAt: Date; readAt: Date | null; /** Facts looked up when the list is read (never stored): for a laboratory report, the test, the patient and the bed. */ detail?: string | null; /** Where the laboratory notice leads: the admitted patient's page or the visit. */ href?: string | null }
 export interface StreamEvent { type: "notify" | "ping"; data: { unread?: number; latestId?: string | null } }
 
 /**
@@ -115,7 +115,27 @@ export class NotificationsService {
     ]);
     // Keeping the table small: this person's read notifications older than 90 days are removed (a few at a time, no one else's).
     void this.prisma.notification.deleteMany({ where: { tenantId: ctx.tenantId, recipientUserId: ctx.userId, readAt: { lt: new Date(Date.now() - KEEP_READ_DAYS * 86_400_000) } } }).catch(() => undefined);
-    return { items: items as NotificationView[], total, unread };
+    return { items: await this.withDetail(ctx, items as NotificationView[]), total, unread };
+  }
+
+  /**
+   * Laboratory notices say which test, which patient and (for an admitted patient) which bed. These are looked up now, for this reader, and are not kept in the notification: it
+   * stays free of names. A reader who may not open patient records is told the test only.
+   */
+  private async withDetail(ctx: RequestContext, items: NotificationView[]): Promise<NotificationView[]> {
+    const ids = [...new Set(items.filter((n) => n.entityType === "LimsRequest" && n.entityId).map((n) => n.entityId as string))];
+    if (ids.length === 0) return items;
+    const rows = await this.prisma.limsRequest.findMany({
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, id: { in: ids } },
+      select: { id: true, requestNumber: true, encounterId: true, testOrder: { select: { name: true } }, patient: { select: { firstName: true, lastName: true } }, encounter: { select: { admission: { select: { id: true, assignments: { where: { releasedAt: null }, select: { bed: { select: { code: true, ward: { select: { name: true } } } } }, take: 1 } } } } } },
+    });
+    const by = new Map(rows.map((r) => {
+      const bed = r.encounter.admission?.assignments[0]?.bed;
+      const who = ctx.permissions.has("PATIENT_READ") ? [r.patient.firstName, r.patient.lastName].filter(Boolean).join(" ") : null;
+      const detail = [r.testOrder.name, who, bed ? `Bed ${bed.code} (${bed.ward.name})` : null].filter(Boolean).join(" · ");
+      return [r.id, { detail, href: r.encounter.admission ? `/ipd/${r.encounter.admission.id}` : `/visits/${r.encounterId}` }] as const;
+    }));
+    return items.map((n) => (n.entityType === "LimsRequest" && n.entityId ? { ...n, detail: by.get(n.entityId)?.detail ?? null, href: by.get(n.entityId)?.href ?? null } : n));
   }
 
   async unreadCount(ctx: RequestContext): Promise<number> {

@@ -184,6 +184,15 @@ export class AdvancesService {
     return { items, balance: fmt(items.reduce((a, i) => a.plus(i.balance), ZERO)) };
   }
 
+  /** What the patient has left in advance at this facility (their own and any merged duplicate's), without locking anything. */
+  async available(db: Db | PrismaService, ctx: RequestContext, patientId: string): Promise<Decimal> {
+    const chart = await chartPatientIds(db as Db, ctx.tenantId, patientId);
+    if (!chart) return ZERO;
+    const ids = (await db.advanceDeposit.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: { in: chart } }, select: { id: true }, take: 500 })).map((d) => d.id);
+    if (ids.length === 0) return ZERO;
+    return (await this.rows(db as Db, ctx, ids)).reduce((a, r) => (balanceOf(r).gt(0) ? a.plus(balanceOf(r)) : a), ZERO);
+  }
+
   /** The appointment (at this facility) a booking fee is being taken for. */
   async appointmentOwner(ctx: RequestContext, appointmentId: string) {
     const a = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { id: true, patientId: true } });

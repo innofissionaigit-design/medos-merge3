@@ -10,6 +10,8 @@ import { fmt } from "../billing/billing.domain";
 import { InvoicesService } from "../billing/invoices.service";
 
 const uuid = z.string().uuid();
+/** A test of an admitted patient that the laboratory runs is charged to the admission when its report is issued (docs/lims-portal.md), so the Cashier does not bill it as a separate bill. */
+const NOT_ADMITTED_LAB: Prisma.TestOrderWhereInput = { NOT: { limsRequest: { is: { origin: "IPD" } } } };
 const category = z.enum(["LABORATORY", "RADIOLOGY", "CARDIOLOGY", "PROCEDURE"]);
 
 // A price the Cashier types: any test can be billed even when the hospital's price list has no item for it. The amounts are checked here and the bill is worked out on the server.
@@ -120,7 +122,7 @@ export class TestOrdersService {
   /** The Cashier's list: visits with tests waiting to be billed (with the price list's price), and handwritten pictures nobody has read the tests from yet. */
   async queue(ctx: RequestContext) {
     const orders = await this.prisma.testOrder.findMany({
-      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ORDERED" }, orderBy: { createdAt: "asc" }, take: 500,
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ORDERED", ...NOT_ADMITTED_LAB }, orderBy: { createdAt: "asc" }, take: 500,
       select: { id: true, encounterId: true, patientId: true, category: true, name: true, serviceId: true, createdAt: true },
     });
     const serviceIds = [...new Set(orders.flatMap((o) => (o.serviceId ? [o.serviceId] : [])))];
@@ -165,6 +167,14 @@ export class TestOrdersService {
     };
   }
 
+  /**
+   * Bills exactly these tests of a visit at the price list, in the caller's transaction (reception settling a laboratory booking). A test with no price-list item stops it with
+   * TEST_NEEDS_PRICE, so the Cashier prices it first.
+   */
+  async billOrdersInTx(tx: Db, ctx: RequestContext, encounterId: string, orderIds: string[]) {
+    return this.billInTx(tx, ctx, { encounterId, orders: orderIds.map((orderId) => ({ orderId })) });
+  }
+
   async bill(ctx: RequestContext, input: z.infer<typeof billTestsSchema>) {
     return this.prisma.$transaction((tx) => (input.fromSaved ? this.billSavedInTx(tx, ctx, input.encounterId) : this.billInTx(tx, ctx, input)));
   }
@@ -176,7 +186,7 @@ export class TestOrdersService {
       if (!enc) throw new DomainError("NOT_FOUND", "Resource not found", 404);
 
       const orderIds = input.orders.map((o) => o.orderId);
-      const orders = orderIds.length ? await tx.testOrder.findMany({ where: { id: { in: orderIds }, tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: enc.id, status: "ORDERED" } }) : [];
+      const orders = orderIds.length ? await tx.testOrder.findMany({ where: { id: { in: orderIds }, tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: enc.id, status: "ORDERED", ...NOT_ADMITTED_LAB } }) : [];
       if (orders.length !== new Set(orderIds).size) throw new DomainError("INVALID_STATE", "A test is no longer waiting to be billed. Refresh the list.", 409);
       const chosen = new Map(input.orders.map((o) => [o.orderId, o.serviceId]));
 
@@ -252,7 +262,7 @@ export class TestOrdersService {
     if (!encounterIds.length) return out;
     const where = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: { in: encounterIds } };
     const [orders, drafts] = await Promise.all([
-      db.testOrder.findMany({ where: { ...where, status: "ORDERED" }, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, serviceId: true, source: true } }),
+      db.testOrder.findMany({ where: { ...where, status: "ORDERED", ...NOT_ADMITTED_LAB }, orderBy: { createdAt: "asc" }, select: { id: true, encounterId: true, category: true, name: true, serviceId: true, source: true } }),
       db.testBillingLine.findMany({ where: { ...where, status: "DRAFT" }, orderBy: { createdAt: "asc" } }),
     ]);
     const serviceIds = [...new Set([...orders.flatMap((o) => (o.serviceId ? [o.serviceId] : [])), ...drafts.flatMap((d) => (d.serviceId ? [d.serviceId] : []))])];
@@ -337,7 +347,7 @@ export class TestOrdersService {
     await this.lockVisit(tx, ctx, encounterId);
     const enc = await tx.encounter.findFirst({ where: { id: encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { id: true, patientId: true } });
     if (!enc) throw new DomainError("NOT_FOUND", "Resource not found", 404);
-    const orders = await tx.testOrder.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId, status: "ORDERED" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const orders = await tx.testOrder.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId, status: "ORDERED", ...NOT_ADMITTED_LAB }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     let drafts = await tx.testBillingLine.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId, status: "DRAFT" }, orderBy: { createdAt: "asc" } });
     const serviceIds = [...new Set([...orders.flatMap((o) => (o.serviceId ? [o.serviceId] : [])), ...drafts.flatMap((d) => (d.serviceId ? [d.serviceId] : []))])];
     const services = serviceIds.length ? await tx.service.findMany({ where: { tenantId: ctx.tenantId, id: { in: serviceIds } } }) : [];

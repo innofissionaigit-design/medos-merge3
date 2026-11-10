@@ -87,7 +87,7 @@ export function qcResultFrom(observed: number | null, low: number | null, high: 
 /** The events written to a request's history. */
 export type LimsEventKind =
   | "CREATED" | "PRIORITY_CHANGED" | "NURSE_ASSIGNED" | "TECH_ASSIGNED" | "COLLECTED" | "SAMPLE_REJECTED" | "SENT_BACK" | "ACCEPTED" | "PERFORMED"
-  | "SUBMITTED" | "RETURNED" | "PASSED" | "ISSUED" | "AMENDED_AFTER_ISSUE" | "HANDED_OVER" | "CANCELLED" | "EXCEPTION_APPROVED";
+  | "SUBMITTED" | "RETURNED" | "PASSED" | "ISSUED" | "AMENDED_AFTER_ISSUE" | "HANDED_OVER" | "CANCELLED" | "EXCEPTION_APPROVED" | "ARRIVED" | "CHARGED" | "CHARGE_NOT_POSTED";
 
 /** The text the patient is sent, from the facts only (never any result). Plain text with no markup; the name of the facility is the hospital's. */
 export function scheduledText(i: { firstName: string; facility: string; departments: string[]; when: string | null; instructions: string | null; requestNumbers: string[] }): string {
@@ -100,10 +100,22 @@ export function reportReadyText(i: { firstName: string; facility: string; reques
   return `Dear ${i.firstName}, your report (${i.requestNumbers.join(", ")}) is ready at ${i.facility}. Please collect it from the reception desk. For your privacy results are not sent by message.`;
 }
 
+/**
+ * Which laboratory department probably runs an investigation, from the words in its name: imaging (X-ray, ultrasound, CT, MRI and so on) goes to Radiology and
+ * everything else to Pathology. It is only the starting point; the administrator or the pathologist can change the grouping of any test. (The migration groups the
+ * tests that already exist with the same words.)
+ */
+export function guessDepartment(name: string): DepartmentKind {
+  return /(x[- ]?ray|radiograph|ultrasound|ultrasonograph|sonograph|sonogram|\busg\b|\bct\b|\bmri\b|mammogra|doppler|dexa|\bpet\b|\becho|fluoroscop|angiogra|barium|hsg|imaging)/i.test(name) ? "RADIOLOGY" : "PATHOLOGY";
+}
+
+/** The kind of test order a department's tests are. */
+export const categoryOfDepartment = (d: DepartmentKind): "LABORATORY" | "RADIOLOGY" => (d === "RADIOLOGY" ? "RADIOLOGY" : "LABORATORY");
+
 /** The two departments every facility starts with, and their turnaround targets (minutes). An administrator can change the names, targets and instructions. */
-export const DEFAULT_DEPARTMENTS: readonly { kind: DepartmentKind; name: string; routineTatMinutes: number; urgentTatMinutes: number; emergencyTatMinutes: number }[] = [
-  { kind: "PATHOLOGY", name: "Pathology", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 120 },
-  { kind: "RADIOLOGY", name: "Radiology", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 60 },
+export const DEFAULT_DEPARTMENTS: readonly { kind: DepartmentKind; name: string; routineTatMinutes: number; urgentTatMinutes: number; emergencyTatMinutes: number; capacityPerHour: number; openMinute: number; closeMinute: number }[] = [
+  { kind: "PATHOLOGY", name: "Pathology", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 120, capacityPerHour: 8, openMinute: 480, closeMinute: 1080 },
+  { kind: "RADIOLOGY", name: "Radiology", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 60, capacityPerHour: 3, openMinute: 480, closeMinute: 1080 },
 ];
 
 /** Where the clock for a request starts: when it entered the queue, or later when the patient was asked to come at a set time. */

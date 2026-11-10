@@ -24,6 +24,8 @@ model Encounter {
   startedAt       DateTime        @default(now()) @db.Timestamptz(3)
   endedAt         DateTime?       @db.Timestamptz(3)
   cancelReason    String?
+  /// A visit made only to book laboratory or imaging tests at reception (no doctor, no consultation). Left out of the OPD consultation reports.
+  labOnly         Boolean         @default(false)
   createdById     String          @db.Uuid
   createdAt       DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime        @updatedAt @db.Timestamptz(3)

@@ -1,20 +1,23 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Res } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { z } from "zod";
 import { Ctx, id, parse, RequireAnyPermission, RequirePermissions } from "../../common/http";
+import { parseIdempotencyKey } from "../../common/idempotency.service";
 import type { RequestContext } from "../../common/request-context";
 import { DomainError } from "@medos/shared";
 import { rejectSampleSchema } from "../lab/lab.service";
 import { PrintService } from "../print/print.service";
 import { sendRendered } from "../print/print.controller";
 import { performSchema } from "../radiology/radiology.service";
+import { arriveSchema, LimsBillingService } from "./lims-billing.service";
 import { LimsInsightsService, rangeSchema } from "./lims-insights.service";
 import { LimsMessagesService } from "./lims-messages.service";
+import { availabilitySchema, LimsScheduleService, pressureSchema } from "./lims-schedule.service";
 import {
   departmentSchema, exceptionDecisionSchema, exceptionListSchema, exceptionSchema, instrumentSchema, instrumentUpdateSchema, LimsOpsService, qcListSchema, qcReviewSchema, qcSchema,
 } from "./lims-ops.service";
 import {
-  assignSchema, collectRequestSchema, declineSchema, handoverSchema, launchSchema, LimsService, listSchema, orderSchema, pendingSchema, prioritySchema, reasonSchema, staffSchema,
+  assignSchema, bookSchema, catalogueSchema, collectRequestSchema, declineSchema, groupingSchema, handoverSchema, launchSchema, LimsService, listSchema, orderSchema, pendingSchema, prioritySchema, reasonSchema, staffSchema,
 } from "./lims.service";
 
 const kindParam = z.enum(["PATHOLOGY", "RADIOLOGY"]);
@@ -27,8 +30,8 @@ const formatQuery = z.object({ format: z.enum(["html", "pdf"]).default("html"), 
 @Controller()
 export class LimsController {
   constructor(
-    private readonly lims: LimsService, private readonly insights: LimsInsightsService, private readonly ops: LimsOpsService, private readonly messages: LimsMessagesService,
-    private readonly print: PrintService,
+    private readonly lims: LimsService, private readonly insights: LimsInsightsService, private readonly ops: LimsOpsService, private readonly messages: LimsMessagesService, private readonly schedule: LimsScheduleService,
+    private readonly print: PrintService, private readonly batchBillingSvc: LimsBillingService,
   ) {}
 
   // ───── overview ─────
@@ -74,6 +77,46 @@ export class LimsController {
   @RequirePermissions("LIMS_REQUEST")
   @Post("lims/opd/launch")
   async launch(@Ctx() ctx: RequestContext, @Body() body: unknown) { return { data: await this.lims.launch(ctx, parse(launchSchema, body)) }; }
+
+  /** Reception books tests for a patient with no doctor's order: the patient agrees and the tests go straight into the queue. */
+  /** The date and time an outpatient would be given now, and how busy each lab is today. */
+  @RequirePermissions("LIMS_REQUEST")
+  @Get("lims/opd/availability")
+  async availability(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.schedule.availability(ctx, parse(availabilitySchema, query)) }; }
+
+  /** For the LIMS manager, the administrator and the manager: how full each lab is, day by day. */
+  @RequirePermissions("LIMS_REPORTS")
+  @Get("lims/reports/pressure")
+  async pressure(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.schedule.pressure(ctx, parse(pressureSchema, query)) }; }
+
+  /** What a booking costs, what the patient has paid or left in advance, and what is still to collect. */
+  @RequireAnyPermission("LIMS_REQUEST", "LIMS_REPORTS")
+  @Get("lims/batches/:batchId/billing")
+  async batchBilling(@Ctx() ctx: RequestContext, @Param("batchId") batchId: string) { return { data: await this.batchBillingSvc.view(ctx, id(batchId)) }; }
+
+  /** The patient has reported at reception: the tests are billed, the advance is used, the rest is taken, and the nurse can take the sample. */
+  @RequirePermissions("LIMS_REQUEST", "PAYMENT_CREATE")
+  @Post("lims/batches/:batchId/arrive")
+  async arrive(@Ctx() ctx: RequestContext, @Param("batchId") batchId: string, @Body() body: unknown, @Headers("idempotency-key") key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    const { result, replayed } = await this.batchBillingSvc.arrive(ctx, id(batchId), parse(arriveSchema, body), parseIdempotencyKey(key));
+    res.status(replayed ? 200 : 201);
+    if (replayed) res.setHeader("Idempotent-Replayed", "true");
+    return { data: result };
+  }
+
+  @RequirePermissions("LIMS_REQUEST")
+  @Post("lims/opd/book")
+  async book(@Ctx() ctx: RequestContext, @Body() body: unknown) { return { data: await this.lims.book(ctx, parse(bookSchema, body)) }; }
+
+  /** The test list with the department that runs each test, for choosing tests to order or book. */
+  @RequireAnyPermission("LIMS_ORDER", "LIMS_REQUEST", "LIMS_MANAGE", "LIMS_DEPARTMENTS", "LAB_MASTERS")
+  @Get("lims/catalogue")
+  async catalogue(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.lims.catalogue(ctx, parse(catalogueSchema, query)) }; }
+
+  /** Moves a test between Pathology and Radiology. */
+  @RequireAnyPermission("LIMS_DEPARTMENTS", "LAB_MASTERS")
+  @Put("lims/catalogue/:serviceId")
+  async setGrouping(@Ctx() ctx: RequestContext, @Param("serviceId") serviceId: string, @Body() body: unknown) { return { data: await this.lims.setGrouping(ctx, id(serviceId), parse(groupingSchema, body)) }; }
 
   @RequirePermissions("LIMS_REQUEST")
   @Post("lims/opd/decline")

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { SYSTEM_ROLES } from "@medos/shared";
 import {
-  addMinutes, average, canMove, clockStart, departmentKindOf, isDelayed, LIMS_STATUSES, PRIORITY_RANK, percentile, qcResultFrom, reportReadyText, scheduledText, targetMinutes, turnaroundMinutes,
+  addMinutes, average, canMove, clockStart, departmentKindOf, guessDepartment, isDelayed, LIMS_STATUSES, PRIORITY_RANK, percentile, qcResultFrom, reportReadyText, scheduledText, targetMinutes, turnaroundMinutes,
 } from "./lims.domain";
 
 const targets = { routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 60 };
@@ -81,6 +81,11 @@ describe("LIMS rules", () => {
     assert.equal(departmentKindOf("RADIOLOGY"), "RADIOLOGY");
     assert.equal(departmentKindOf("CARDIOLOGY"), null);
     assert.equal(departmentKindOf("PROCEDURE"), null);
+  });
+
+  it("tests are grouped between the departments by their name: imaging to Radiology, everything else to Pathology", () => {
+    for (const n of ["Chest X-ray", "X-ray chest PA", "xray knee", "Ultrasound abdomen", "USG abdomen", "CT head (plain)", "MRI brain", "Mammography", "Doppler legs", "2D echo", "DEXA scan", "PET scan"]) assert.equal(guessDepartment(n), "RADIOLOGY", n);
+    for (const n of ["CBC (complete blood count)", "Lipid profile", "HbA1c", "TSH", "Urine routine", "Kidney function test (KFT)", "Liver function test (LFT)", "Fasting blood sugar", "Culture and sensitivity", "Ctx level"]) assert.equal(guessDepartment(n), "PATHOLOGY", n);
   });
 
   it("messages to the patient name the department, never the test, and never a result", () => {

@@ -18,6 +18,7 @@ enum NotificationType {
   LIMS_READY_TO_ISSUE
   LIMS_REPORT_ISSUED
   LIMS_EXCEPTION_RAISED
+  LIMS_PATIENT_ARRIVED
 }
 
 model Notification {

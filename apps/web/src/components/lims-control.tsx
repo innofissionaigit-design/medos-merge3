@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, newKey } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { LabTests } from "./lab";
+import { TodayBoard } from "./lims-today";
+import { useCatalogue } from "./lims-picker";
 import { DetailModal, type Req, RequestTable, useRefreshLims, useRequests } from "./lims-common";
 import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, Select, Spinner, Table, Td, Tabs, Textarea, useDebounced } from "./ui";
 
@@ -287,7 +289,8 @@ interface Perf {
   departments: { kind: string; name: string; ordered: number; performed: number; reported: number; issued: number; open: number; cancelled: number; overdueOpen: number; lateIssued: number; tat: { averageMinutes: number | null; medianMinutes: number | null; p90Minutes: number | null; withinTargetPercent: number | null }; stages: Record<string, number | null>; samples: { collected: number; rejected: number; rejectionPercent: number | null }; returnedForCorrection: number; priority: { emergency: number; urgent: number; routine: number }; origin: { opd: number; ipd: number } }[];
   days: { date: string; ordered: number; issued: number }[]; technicians: { id: string; name: string; accepted: number; issued: number }[];
 }
-interface BillingSummary { from: string; to: string; totals: { tests: number; billed: number; notBilled: number; issuedNotBilled: number; billedAmount: string }; departments: { kind: string; name: string; tests: number; billed: number; notBilled: number; billedAmount: string; reportsIssued: number; issuedNotBilled: number }[] }
+interface AdmittedCharge { requestNumber: string; test: string; department: string; patient: string; admissionNumber: string | null; status: string; amount: string }
+interface BillingSummary { from: string; to: string; admittedCharges: AdmittedCharge[]; totals: { tests: number; billed: number; notBilled: number; issuedNotBilled: number; billedAmount: string }; departments: { kind: string; name: string; tests: number; billed: number; notBilled: number; billedAmount: string; reportsIssued: number; issuedNotBilled: number; chargedToAdmissions: number }[] }
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -350,16 +353,57 @@ export function BillingMonitor() {
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5"><Stat label="Tests" value={q.data.totals.tests} /><Stat label="Billed" value={q.data.totals.billed} /><Stat label="Not billed yet" value={q.data.totals.notBilled} tone="amber" /><Stat label="Reports issued but not billed" value={q.data.totals.issuedNotBilled} tone="red" /><Stat label="Billed amount" value={money(q.data.totals.billedAmount)} /></div>
           <Card title="By department"><Table head={["Department", "Tests", "Billed", "Not billed", "Billed amount", "Reports issued", "Issued, not billed"]}>{q.data.departments.map((d) => <tr key={d.kind}><Td className="font-medium">{d.name}</Td><Td>{d.tests}</Td><Td>{d.billed}</Td><Td>{d.notBilled}</Td><Td>{money(d.billedAmount)}</Td><Td>{d.reportsIssued}</Td><Td>{d.issuedNotBilled}</Td></tr>)}</Table></Card>
-          <Notice>Tests are billed at the cashier. Work in the laboratory does not wait for billing; this page shows what still needs to be billed.</Notice>
+          <Card title="Charged to admitted patients' bills (added when the report is issued)">
+            <Table head={["Request", "Patient", "Admission", "Test", "Charge", "Status"]} {...(q.data.admittedCharges.length === 0 ? { empty: "No laboratory charge has been added to an admitted patient's bill in this period." } : {})}>
+              {q.data.admittedCharges.map((c) => <tr key={c.requestNumber}><Td>{c.requestNumber}</Td><Td>{c.patient}</Td><Td>{c.admissionNumber ?? "—"}</Td><Td>{c.test}</Td><Td>{money(c.amount)}</Td><Td><Badge tone={c.status === "BILLED" ? "green" : "amber"}>{c.status === "BILLED" ? "on the final bill" : "waiting for the final bill"}</Badge></Td></tr>)}
+            </Table>
+          </Card>
+          <Notice>An outpatient's tests are billed when the patient reports at reception (the advance is used first). An admitted patient's test is added to the admission's bill when its report is issued. Work in the laboratory never waits for billing.</Notice>
         </>
       )}
     </div>
   );
 }
 
+// ───────────────────────── lab load ─────────────────────────
+
+interface Pressure {
+  today: string;
+  departments: { kind: string; name: string; capacityPerHour: number; openMinute: number; closeMinute: number; waitingNow: number; open: { waitingForSample: number; inLab: number; withSpecialist: number; toIssue: number }; days: { date: string; capacity: number; booked: number; backlog: number; percent: number }[]; nextFreeAt: string | null }[];
+}
+const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/** How full each lab is, day by day. The date an outpatient is given comes from this: the next hour in which the lab has room. */
+export function LabLoad() {
+  const { dateTime, can } = useMe();
+  const q = useQuery({ queryKey: ["lims-pressure"], queryFn: () => api.get<Pressure>("/lims/reports/pressure", { days: 7 }), refetchInterval: 30_000 });
+  if (q.isLoading || !q.data) return <Spinner />;
+  return (
+    <div className="space-y-4">
+      <Notice>Outpatients are given the first hour in which every lab they need has room, so the more work is waiting or booked, the later the date. {can("LIMS_DEPARTMENTS") ? "Change what a lab can take in an hour under Departments." : "The administrator sets what a lab can take in an hour."}</Notice>
+      {q.data.departments.map((d) => (
+        <Card key={d.kind} title={`${d.name}: ${d.capacityPerHour} an hour, ${hhmm(d.openMinute)} to ${hhmm(d.closeMinute)}`}>
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <Stat label="Waiting for sample now" value={d.open.waitingForSample} tone="amber" /><Stat label="In the lab" value={d.open.inLab} /><Stat label="With the specialist" value={d.open.withSpecialist} /><Stat label="Ready to issue" value={d.open.toIssue} />
+            <Stat label="Next outpatient place" value={d.nextFreeAt ? dateTime(d.nextFreeAt) : "None in 14 days"} />
+          </div>
+          <Table head={["Day", "Booked", "Waiting now", "Room for", "Full"]}>
+            {d.days.map((x) => (
+              <tr key={x.date}>
+                <Td className="font-medium">{x.date}{x.date === q.data.today ? " (today)" : ""}</Td><Td>{x.booked}</Td><Td>{x.date === q.data.today ? x.backlog : "—"}</Td><Td>{x.capacity}</Td>
+                <Td><div className="flex items-center gap-2"><div className="h-2 w-28 overflow-hidden rounded bg-slate-100" aria-hidden><div className={`h-2 ${x.percent >= 90 ? "bg-red-500" : x.percent >= 60 ? "bg-amber-500" : "bg-green-500"}`} style={{ width: `${x.percent}%` }} /></div><span className={x.percent >= 90 ? "font-medium text-red-700" : ""}>{x.percent}%</span></div></Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ───────────────────────── departments ─────────────────────────
 
-interface Dept { id: string; kind: string; name: string; status: string; routineTatMinutes: number; urgentTatMinutes: number; emergencyTatMinutes: number; defaultInstructions: string | null; openRequests: number | null }
+interface Dept { id: string; kind: string; name: string; status: string; routineTatMinutes: number; urgentTatMinutes: number; emergencyTatMinutes: number; defaultInstructions: string | null; capacityPerHour: number; openMinute: number; closeMinute: number; openRequests: number | null }
 
 function DeptEditor({ d, onClose }: { d: Dept; onClose: () => void }) {
   const refresh = useRefreshLims();
@@ -369,9 +413,13 @@ function DeptEditor({ d, onClose }: { d: Dept; onClose: () => void }) {
   const [urgent, setUrgent] = useState(String(d.urgentTatMinutes / 60));
   const [emergency, setEmergency] = useState(String(d.emergencyTatMinutes / 60));
   const [text, setText] = useState(d.defaultInstructions ?? "");
+  const [capacity, setCapacity] = useState(String(d.capacityPerHour));
+  const [opens, setOpens] = useState(hhmm(d.openMinute));
+  const [closes, setCloses] = useState(d.closeMinute >= 1440 ? "23:59" : hhmm(d.closeMinute));
   const mins = (h: string) => Math.round(Number(h) * 60);
+  const clock = (v: string) => { const [h, m] = v.split(":").map(Number); return (h ?? 0) * 60 + (m ?? 0); };
   const save = useMutation({
-    mutationFn: () => api.put(`/lims/departments/${d.kind.toLowerCase()}`, { name: name.trim(), status: active ? "ACTIVE" : "INACTIVE", routineTatMinutes: mins(routine), urgentTatMinutes: mins(urgent), emergencyTatMinutes: mins(emergency), defaultInstructions: text.trim() || null }),
+    mutationFn: () => api.put(`/lims/departments/${d.kind.toLowerCase()}`, { name: name.trim(), status: active ? "ACTIVE" : "INACTIVE", routineTatMinutes: mins(routine), urgentTatMinutes: mins(urgent), emergencyTatMinutes: mins(emergency), defaultInstructions: text.trim() || null, capacityPerHour: Number(capacity), openMinute: clock(opens), closeMinute: closes === "23:59" ? 1440 : clock(closes) }),
     onSuccess: () => { refresh(); onClose(); },
   });
   return (
@@ -383,6 +431,12 @@ function DeptEditor({ d, onClose }: { d: Dept; onClose: () => void }) {
           <Field label="Urgent within (hours)"><Input inputMode="decimal" value={urgent} onChange={(e) => setUrgent(e.target.value)} /></Field>
           <Field label="Emergency within (hours)"><Input inputMode="decimal" value={emergency} onChange={(e) => setEmergency(e.target.value)} /></Field>
         </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Field label="Outpatient tests it can take in an hour"><Input inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
+          <Field label="Opens"><Input type="time" value={opens} onChange={(e) => setOpens(e.target.value)} /></Field>
+          <Field label="Closes"><Input type="time" value={closes} onChange={(e) => setCloses(e.target.value)} /></Field>
+        </div>
+        <p className="text-xs text-slate-500">The date an outpatient is given comes from these figures and the work already waiting: when the lab is busy the date moves later.</p>
         <Field label="What patients are told to do before coming (when a test has no instructions of its own)"><Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} /></Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> This department takes new requests</label>
         <ErrorNote error={save.error} />
@@ -400,9 +454,9 @@ export function Departments() {
   return (
     <Card title="Laboratory departments">
       {list.isLoading ? <Spinner /> : (
-        <Table head={["Department", "Status", "Routine", "Urgent", "Emergency", "Open now", ""]}>
+        <Table head={["Department", "Status", "Routine", "Urgent", "Emergency", "Takes an hour", "Open now", ""]}>
           {list.data?.map((d) => (
-            <tr key={d.id}><Td className="font-medium">{d.name}</Td><Td><Badge tone={d.status === "ACTIVE" ? "green" : "gray"}>{d.status.toLowerCase()}</Badge></Td><Td>{minutesText(d.routineTatMinutes)}</Td><Td>{minutesText(d.urgentTatMinutes)}</Td><Td>{minutesText(d.emergencyTatMinutes)}</Td><Td>{d.openRequests ?? "—"}</Td>
+            <tr key={d.id}><Td className="font-medium">{d.name}</Td><Td><Badge tone={d.status === "ACTIVE" ? "green" : "gray"}>{d.status.toLowerCase()}</Badge></Td><Td>{minutesText(d.routineTatMinutes)}</Td><Td>{minutesText(d.urgentTatMinutes)}</Td><Td>{minutesText(d.emergencyTatMinutes)}</Td><Td>{d.capacityPerHour} tests</Td><Td>{d.openRequests ?? "—"}</Td>
               <Td>{can("LIMS_DEPARTMENTS") && <Button variant="secondary" onClick={() => setEdit(d)}>Edit</Button>}</Td></tr>
           ))}
         </Table>
@@ -413,23 +467,53 @@ export function Departments() {
   );
 }
 
+// ───────────────────────── which department runs each test ─────────────────────────
+
+/** The test list grouped between Pathology and Radiology. The administrator or the pathologist moves a test; it decides which technician a test ordered from the list reaches. */
+export function TestGrouping() {
+  const { can } = useMe();
+  const qc = useQueryClient();
+  const [q, setQ] = useState("");
+  const cat = useCatalogue();
+  const set = useMutation({ mutationFn: (v: { id: string; department: string }) => api.put(`/lims/catalogue/${v.id}`, { department: v.department }), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lims-catalogue"] }); } });
+  const editable = can("LIMS_DEPARTMENTS", "LAB_MASTERS");
+  const term = q.trim().toLowerCase();
+  const rows = (cat.data ?? []).filter((i) => !term || i.name.toLowerCase().includes(term) || i.code.toLowerCase().includes(term));
+  return (
+    <Card title="Which department runs each test" actions={<Input aria-label="Search tests" className="w-48" placeholder="Search tests" value={q} onChange={(e) => setQ(e.target.value)} />}>
+      <ErrorNote error={set.error} />
+      {cat.isLoading ? <Spinner /> : (
+        <Table head={["Test", "Code", "Department"]} {...(rows.length === 0 ? { empty: "No tests. Add investigations to the price list first." } : {})}>
+          {rows.map((i) => (
+            <tr key={i.serviceId}><Td>{i.name}</Td><Td className="text-slate-500">{i.code}</Td>
+              <Td>{editable ? <Select aria-label={`Department of ${i.name}`} className="w-48" value={i.department} onChange={(e) => set.mutate({ id: i.serviceId, department: e.target.value })}><option value="PATHOLOGY">Pathology (laboratory)</option><option value="RADIOLOGY">Radiology (imaging)</option></Select> : i.department === "PATHOLOGY" ? "Pathology" : "Radiology"}</Td></tr>
+          ))}
+        </Table>
+      )}
+      <p className="mt-3 text-xs text-slate-500">A test chosen from this list goes to the technician of its department. New investigations are grouped by their name (imaging words such as X-ray, ultrasound, CT and MRI go to Radiology); change any that are wrong. Requests already in the queue are not moved.</p>
+    </Card>
+  );
+}
+
 // ───────────────────────── the control room ─────────────────────────
 
-type Tab = "overview" | "requests" | "late" | "review" | "qc" | "exceptions" | "performance" | "billing" | "departments";
+type Tab = "overview" | "load" | "today" | "requests" | "late" | "review" | "qc" | "exceptions" | "performance" | "billing" | "departments";
 
 /** The LIMS manager's control room; the administrator and the manager see the same monitoring without the controls they do not hold. */
 export function ControlRoom() {
   const { can } = useMe();
   const [tab, setTab] = useState<Tab>("overview");
   const tabs: { id: Tab; label: string }[] = [
-    { id: "overview", label: "Overview" }, { id: "requests", label: "All requests" }, { id: "late", label: "Late and rejected" }, { id: "review", label: "Reports pending" },
+    { id: "overview", label: "Overview" }, ...(can("LIMS_REPORTS") ? [{ id: "load" as const, label: "Lab load" }] : []), { id: "today", label: "Today's patients" }, { id: "requests", label: "All requests" }, { id: "late", label: "Late and rejected" }, { id: "review", label: "Reports pending" },
     { id: "qc", label: "Quality control" }, { id: "exceptions", label: "Exceptions" }, ...(can("LIMS_REPORTS") ? [{ id: "performance" as const, label: "Performance" }] : []),
-    ...(can("LIMS_REPORTS") && can("INVOICE_READ") ? [{ id: "billing" as const, label: "Billing" }] : []), { id: "departments", label: "Departments" },
+    ...(can("LIMS_REPORTS") && can("INVOICE_READ", "LIMS_MANAGE") ? [{ id: "billing" as const, label: "Billing" }] : []), { id: "departments", label: "Departments" },
   ];
   return (
     <>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === "overview" && <Overview />}
+      {tab === "load" && <LabLoad />}
+      {tab === "today" && <TodayBoard mode="manager" />}
       {tab === "requests" && <RequestsExplorer />}
       {tab === "late" && <DelayedRejected />}
       {tab === "review" && <ReviewMonitor />}
@@ -437,7 +521,7 @@ export function ControlRoom() {
       {tab === "exceptions" && <Exceptions />}
       {tab === "performance" && <Performance />}
       {tab === "billing" && <BillingMonitor />}
-      {tab === "departments" && <div className="space-y-4"><Departments />{can("LAB_MASTERS") && <LabTests />}</div>}
+      {tab === "departments" && <div className="space-y-4"><Departments />{can("LIMS_DEPARTMENTS", "LAB_MASTERS") && <TestGrouping />}{can("LAB_MASTERS") && <LabTests />}</div>}
     </>
   );
 }

@@ -62,7 +62,7 @@ export class ReportsService {
     const r = await this.range(ctx, q);
     const rows = await this.prisma.$queryRaw<{ day: string; visits: number; completed: number }[]>`
       SELECT to_char(("startedAt" AT TIME ZONE ${r.tz})::date, 'YYYY-MM-DD') AS day, COUNT(*)::int AS visits, COUNT(*) FILTER (WHERE status = 'COMPLETED')::int AS completed
-      FROM "Encounter" e WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED'
+      FROM "Encounter" e WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED' AND NOT e."labOnly"
         AND e."startedAt" >= ${r.start} AND e."startedAt" < ${r.end} ${visitScopeSql(ctx, "e")} GROUP BY 1 ORDER BY 1`;
     return { from: r.from, to: r.to, total: rows.reduce((n, x) => n + x.visits, 0), days: rows };
   }
@@ -72,7 +72,7 @@ export class ReportsService {
     const rows = await this.prisma.$queryRaw<{ practitionerId: string | null; doctor: string | null; visits: number; completed: number }[]>`
       SELECT e."practitionerId" AS "practitionerId", p."displayName" AS doctor, COUNT(*)::int AS visits, COUNT(*) FILTER (WHERE e.status = 'COMPLETED')::int AS completed
       FROM "Encounter" e LEFT JOIN "Practitioner" p ON p.id = e."practitionerId" AND p."tenantId" = e."tenantId"
-      WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED'
+      WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED' AND NOT e."labOnly"
         AND e."startedAt" >= ${r.start} AND e."startedAt" < ${r.end} ${visitScopeSql(ctx, "e")} GROUP BY 1, 2 ORDER BY visits DESC, doctor`;
     return { from: r.from, to: r.to, rows };
   }
@@ -82,7 +82,7 @@ export class ReportsService {
     const rows = await this.prisma.$queryRaw<{ departmentId: string | null; department: string | null; visits: number; completed: number }[]>`
       SELECT e."departmentId" AS "departmentId", d.name AS department, COUNT(*)::int AS visits, COUNT(*) FILTER (WHERE e.status = 'COMPLETED')::int AS completed
       FROM "Encounter" e LEFT JOIN "Department" d ON d.id = e."departmentId" AND d."tenantId" = e."tenantId"
-      WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED'
+      WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED' AND NOT e."labOnly"
         AND e."startedAt" >= ${r.start} AND e."startedAt" < ${r.end} ${visitScopeSql(ctx, "e")} GROUP BY 1, 2 ORDER BY visits DESC, department`;
     return { from: r.from, to: r.to, rows };
   }

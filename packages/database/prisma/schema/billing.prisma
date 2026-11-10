@@ -22,6 +22,8 @@ model Service {
   taxPercent Decimal         @default(0) @db.Decimal(5, 2)
   /// Optional SAC/HSN code for the service (4-8 digits); copied onto each invoice line when billed.
   sacCode    String?
+  /// For an INVESTIGATION: which laboratory department runs it (Pathology or Radiology). Decides which technician gets a test ordered from the price list (docs/lims-portal.md).
+  limsDepartment LimsDepartmentKind?
   status     ActiveStatus    @default(ACTIVE)
   createdAt  DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt  DateTime        @updatedAt @db.Timestamptz(3)

@@ -48,7 +48,11 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
   const only = async (encounterId: string, test: string, tok = mgr.token) => { const r = (await forVisit(encounterId, tok)).find((x) => x.test === test); assert.ok(r, `request for ${test}`); return r; };
   const notes = async (tok: string) => (await t.api("get", "/notifications", tok)).body.data as { type: string; entityId: string }[];
   const detail = async (id: string, tok = mgr.token) => (await t.api("get", `/lims/requests/${id}`, tok));
-  const act = (id: string, step: string, tok: string, body: Record<string, unknown> = {}) => t.api("post", `/lims/requests/${id}/${step}`, tok).send(body);
+  /** Takes a step. A nurse may take an outpatient's sample only after the patient has reported at reception, so the tests of the steps after that mark the patient as reported first. */
+  const act = async (id: string, step: string, tok: string, body: Record<string, unknown> = {}) => {
+    if (step === "collect") await t.prisma.limsRequest.updateMany({ where: { id, origin: "OPD", arrivedAt: null }, data: { arrivedAt: new Date(), arrivedById: rec.id } });
+    return t.api("post", `/lims/requests/${id}/${step}`, tok).send(body);
+  };
   const statusOf = async (id: string) => (await t.prisma.limsRequest.findFirstOrThrow({ where: { id } })).status;
   const typed = (resultId: string, version: number, value = "13.2", tok = pTech.token) =>
     t.api("put", `/lab/results/${resultId}/draft`, tok).send({ version, values: [{ parameterId: hb, value }] });
@@ -124,7 +128,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
         assert.deepEqual(list.map((d) => d.kind).sort(), ["PATHOLOGY", "RADIOLOGY"]);
         assert.deepEqual(list.map((d) => d.name).sort(), ["Pathology", "Radiology"]);
       }
-      const body = { name: "Pathology", status: "ACTIVE", routineTatMinutes: 720, urgentTatMinutes: 240, emergencyTatMinutes: 90, defaultInstructions: "Bring your previous reports." };
+      const body = { name: "Pathology", status: "ACTIVE", routineTatMinutes: 720, urgentTatMinutes: 240, emergencyTatMinutes: 90, defaultInstructions: "Bring your previous reports.", capacityPerHour: 8, openMinute: 480, closeMinute: 1080 };
       assert.equal((await t.api("put", "/lims/departments/pathology", mgr.token).send(body)).status, 403);
       assert.equal((await t.api("put", "/lims/departments/pathology", hospMgr.token).send(body)).status, 403);
       assert.equal((await t.api("put", "/lims/departments/pathology", a.admin.token).send(body)).status, 200);
@@ -148,7 +152,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       })();
       const adm = await t.api("post", "/admissions", bRec.token).send({ patientId: bPatient.id, consultantId: bDoc.practitionerId, bedId: bBed.id, reason: "Observation after surgery" });
       assert.equal(adm.status, 201, JSON.stringify(adm.body));
-      const body = { name: "Radiology", status: "INACTIVE", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 60 };
+      const body = { name: "Radiology", status: "INACTIVE", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 60, capacityPerHour: 3, openMinute: 480, closeMinute: 1080 };
       assert.equal((await t.api("put", "/lims/departments/radiology", b.admin.token).send(body)).status, 200);
       const o = await order(adm.body.data.encounterId, [{ name: "X-ray chest", category: "RADIOLOGY" }], "ROUTINE", bDoc.token);
       assert.equal(o.status, 409, JSON.stringify(o.body));
@@ -261,7 +265,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
 
       // The history says who did what, in order.
       const d = (await detail(lab.id)).body.data as { timeline: { kind: string; by: string | null }[] };
-      assert.deepEqual(d.timeline.map((e) => e.kind), ["CREATED", "COLLECTED", "ACCEPTED", "SUBMITTED", "PASSED", "ISSUED"]);
+      assert.deepEqual(d.timeline.map((e) => e.kind), ["CREATED", "NURSE_ASSIGNED", "COLLECTED", "ACCEPTED", "SUBMITTED", "PASSED", "ISSUED", "CHARGED"]);
       assert.ok(d.timeline.every((e) => e.by));
       const actions = (await t.prisma.auditEvent.findMany({ where: { tenantId: a.tenantId, entityId: lab.id } })).map((e) => e.action);
       for (const x of ["LIMS_SAMPLE_COLLECTED", "LIMS_SAMPLE_ACCEPTED", "LIMS_SENT_FOR_REVIEW", "LIMS_REPORT_PASSED", "LIMS_REPORT_ISSUED"]) assert.ok(actions.includes(x), x);
@@ -324,12 +328,12 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await launch(encounterId, ids)).status, 409, "a test is launched once");
       assert.equal(((await t.api("get", "/lims/opd/pending", rec.token)).body.data as { encounterId: string }[]).some((g) => g.encounterId === encounterId), false);
 
-      // One message to the patient for the whole booking: the department, the time, what to do; no test name.
-      const queued = await t.prisma.limsMessage.findMany({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId } });
-      assert.deepEqual(queued.map((m) => [m.kind, m.channel, m.status]), [["SCHEDULED", "WHATSAPP", "PENDING"]]);
+      // One message to the patient for the whole booking, on WhatsApp and by SMS: the department, the time, what to do; no test name.
+      const queued = (await t.prisma.limsMessage.findMany({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId }, orderBy: { channel: "desc" } }));
+      assert.deepEqual(queued.map((m) => [m.kind, m.channel, m.status]), [["SCHEDULED", "WHATSAPP", "PENDING"], ["SCHEDULED", "SMS", "PENDING"]]);
       const mobile = (await t.prisma.patient.findFirstOrThrow({ where: { id: patient.id } })).mobile as string;
       assert.ok(!queued[0]!.toMask.includes(mobile) && queued[0]!.toMask.endsWith(mobile.slice(-4)), "only a masked number is kept");
-      const sent = await messages.runDue(new Date(Date.now() + 5_000));
+      const sent = await messages.runDue(new Date(Date.now() + 5_000), 100_000);
       assert.ok(sent.sent >= 1);
       const m = await t.prisma.limsMessage.findFirstOrThrow({ where: { id: queued[0]!.id } });
       assert.equal(m.status, "SENT");
@@ -357,9 +361,9 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       const radNow = await only(encounterId, "Ultrasound abdomen");
       assert.equal((await t.api("post", `/rad/studies/${radNow.studyId}/report`, radiologist.token).send({ findings: "Liver, spleen and kidneys are normal.", impression: "Normal study.", critical: false })).status, 200);
       assert.equal((await act(radReq.id, "issue", rTech.token)).status, 200);
-      assert.equal(await t.prisma.limsMessage.count({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } }), 1, "one message when every report of the booking is ready");
-      await messages.runDue(new Date(Date.now() + 5_000));
-      assert.equal((await t.prisma.limsMessage.findFirstOrThrow({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } })).status, "SENT");
+      assert.equal(await t.prisma.limsMessage.count({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } }), 2, "one message on each channel when every report of the booking is ready");
+      await messages.runDue(new Date(Date.now() + 5_000), 100_000);
+      assert.deepEqual((await t.prisma.limsMessage.findMany({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } })).map((m) => m.status), ["SENT", "SENT"]);
 
       // Reception prints the report and hands it over.
       const printed = await t.api("get", `/lims/requests/${labReq.id}/report`, rec.token);
@@ -415,7 +419,8 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await act(r.id, "reject-sample", pTech.token, { reason: "Clotted sample" })).status, 200);
       const back = await only(encounterId, cbc.name);
       assert.deepEqual([back.status, back.needsRecollection, back.recollectCount], ["PENDING_COLLECTION", true, 1]);
-      assert.ok((await notes(nurse.token)).some((n: { type: string; entityId: string }) => n.type === "LIMS_COLLECTION_WAITING" && n.entityId === r.id));
+      const assignedNurse = (await t.prisma.limsRequest.findFirstOrThrow({ where: { id: r.id } })).assignedNurseId;
+      assert.ok((await notes(assignedNurse === nurse2.id ? nurse2.token : nurse.token)).some((n: { type: string; entityId: string }) => n.type === "LIMS_COLLECTION_WAITING" && n.entityId === r.id), "the nurse who was given it is asked again");
       assert.equal((await act(r.id, "collect", nurse2.token)).status, 200);
       const second = await t.prisma.labSample.findFirstOrThrow({ where: { testOrderId: r.testOrderId, status: "COLLECTED" } });
       assert.notEqual(second.accessionNumber, first.accessionNumber);
@@ -448,7 +453,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await typed(back.resultId!, back.resultVersion!, "9.8")).status, 200);
       assert.equal((await act(back.id, "submit", pTech.token)).status, 200);
       const timeline = ((await detail(back.id)).body.data as { timeline: { kind: string; note: string | null }[] }).timeline;
-      assert.deepEqual(timeline.map((e) => e.kind), ["CREATED", "COLLECTED", "ACCEPTED", "SUBMITTED", "RETURNED", "SUBMITTED"]);
+      assert.deepEqual(timeline.map((e) => e.kind), ["CREATED", "NURSE_ASSIGNED", "COLLECTED", "ACCEPTED", "SUBMITTED", "RETURNED", "SUBMITTED"]);
       assert.equal(timeline.find((e) => e.kind === "RETURNED")!.note, "Re-check the haemoglobin");
     });
 
@@ -734,7 +739,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       const { encounterId, orders } = await advised({ lab: [cbc.name] });
       assert.equal((await launch(encounterId, orders.map((o) => o.id))).status, 201);
       const before = await get("/lims/reports/billing", hospMgr.token);
-      assert.equal((await t.api("get", "/lims/reports/billing", mgr.token)).status, 403, "the LIMS manager has no access to billing");
+      assert.equal((await t.api("get", "/lims/reports/billing", mgr.token)).status, 200, "the LIMS manager follows what the laboratory has billed and charged");
       assert.equal((await t.api("get", "/lims/reports/billing", pTech.token)).status, 403);
       // The existing cashier flow bills the test that is already in the lab; the request carries on.
       const billed = await t.api("post", "/test-orders/bill", cashier.token).send({ encounterId, orders: [{ orderId: orders[0]!.id, serviceId: cbc.id }] });
@@ -749,6 +754,404 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.ok(Number(p(after).billedAmount) >= Number(p(before).billedAmount) + 250);
       // Taking a test off the bill at the cashier does not cancel work already in the lab.
       assert.equal((await t.api("post", `/test-orders/${orders[0]!.id}/cancel`, cashier.token).send({ reason: "Patient left" })).status, 409);
+    });
+  });
+
+  // ───────────────────────── the test list is grouped between the two departments ─────────────────────────
+  describe("test grouping and booking at reception", () => {
+    let xray: { id: string; name: string; limsDepartment: string | null };
+    let lipid: { id: string; name: string; limsDepartment: string | null };
+    const mk = async (name: string, category = "INVESTIGATION", tenant = a) => (await t.api("post", "/services", tenant.admin.token).send({ code: code("G"), name, category, price: "400", taxPercent: 0 })).body.data as { id: string; name: string; limsDepartment: string | null };
+
+    before(async () => {
+      xray = await mk(`Chest X-ray PA ${uniqueWord(3)}`);
+      lipid = await mk(`Lipid profile ${uniqueWord(3)}`);
+    });
+
+    it("an investigation is grouped with Pathology or Radiology when it is added, and the list shows the grouping to the people who order", async () => {
+      assert.equal(xray.limsDepartment, "RADIOLOGY");
+      assert.equal(lipid.limsDepartment, "PATHOLOGY");
+      assert.equal((await mk("Consultation fee", "CONSULTATION")).limsDepartment, null, "only an investigation is grouped");
+      for (const tok of [doc.token, rec.token, mgr.token, a.admin.token, path.token]) {
+        const list = (await t.api("get", "/lims/catalogue", tok)).body.data as { serviceId: string; department: string }[];
+        assert.equal(list.find((x) => x.serviceId === xray.id)!.department, "RADIOLOGY");
+        assert.equal(list.find((x) => x.serviceId === lipid.id)!.department, "PATHOLOGY");
+      }
+      const radiology = (await t.api("get", "/lims/catalogue?department=RADIOLOGY", doc.token)).body.data as { serviceId: string; department: string }[];
+      assert.ok(radiology.length >= 1 && radiology.every((x) => x.department === "RADIOLOGY"));
+      assert.equal(((await t.api("get", "/lims/catalogue?q=lipid", doc.token)).body.data as unknown[]).length >= 1, true);
+      for (const tok of [nurse.token, pTech.token, rTech.token, cashier.token]) assert.equal((await t.api("get", "/lims/catalogue", tok)).status, 403);
+      assert.deepEqual((await t.api("get", "/lims/catalogue", bMgr.token)).body.data, [], "another hospital's list is its own");
+    });
+
+    it("a doctor's order reaches the technician of the department the test belongs to, whichever way it was picked or typed", async () => {
+      const { encounterId } = await admitted();
+      const r = await t.api("post", "/lims/orders", doc.token).send({ encounterId, tests: [{ serviceId: xray.id }, { serviceId: lipid.id }] });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      assert.deepEqual((await forVisit(encounterId, rTech.token)).map((x) => x.test), [xray.name], "the radiology technician gets the X-ray");
+      assert.deepEqual((await forVisit(encounterId, pTech.token)).map((x) => x.test), [lipid.name], "the pathology technician gets the blood test");
+      // Typed in the wrong box, a name that is on the list is still routed by the list.
+      const second = await admitted();
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: second.encounterId, tests: [{ name: xray.name.toLowerCase(), category: "LABORATORY" }] })).status, 201);
+      assert.deepEqual((await forVisit(second.encounterId, rTech.token)).map((x) => x.department), ["RADIOLOGY"]);
+      assert.deepEqual(await forVisit(second.encounterId, pTech.token), []);
+      // Something that is not on the list keeps the kind it was typed with.
+      const third = await admitted();
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: third.encounterId, tests: [{ name: "Special stain XYZ", category: "LABORATORY" }] })).status, 201);
+      assert.deepEqual((await forVisit(third.encounterId, pTech.token)).map((x) => x.test), ["Special stain XYZ"]);
+      // A choice must be a test from the list (not a consultation fee or another hospital's item), and a free-typed test needs its kind.
+      const fee = await mk("Dressing charge", "PROCEDURE");
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: third.encounterId, tests: [{ serviceId: fee.id }] })).status, 400);
+      const foreignTest = await mk("Own test", "INVESTIGATION", b);
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: third.encounterId, tests: [{ serviceId: foreignTest.id }] })).status, 400);
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: third.encounterId, tests: [{ name: "No kind" }] })).status, 400);
+    });
+
+    it("the administrator or the pathologist can move a test to the other department; only they can; it applies to new requests", async () => {
+      const moved = await mk(`Barium swallow ${uniqueWord(3)}`);
+      assert.equal(moved.limsDepartment, "RADIOLOGY");
+      const before = await admitted();
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: before.encounterId, tests: [{ serviceId: moved.id }] })).status, 201);
+      for (const tok of [doc.token, rec.token, mgr.token, nurse.token, pTech.token]) assert.equal((await t.api("put", `/lims/catalogue/${moved.id}`, tok).send({ department: "PATHOLOGY" })).status, 403);
+      assert.equal((await t.api("put", `/lims/catalogue/${moved.id}`, a.admin.token).send({ department: "BOGUS" })).status, 400);
+      assert.equal((await t.api("put", `/lims/catalogue/${moved.id}`, b.admin.token).send({ department: "PATHOLOGY" })).status, 404, "another hospital cannot reach it");
+      assert.equal((await t.api("put", `/lims/catalogue/${moved.id}`, path.token).send({ department: "PATHOLOGY" })).status, 200);
+      const after = await admitted();
+      assert.equal((await t.api("post", "/lims/orders", doc.token).send({ encounterId: after.encounterId, tests: [{ serviceId: moved.id }] })).status, 201);
+      assert.deepEqual((await forVisit(after.encounterId, pTech.token)).map((x) => x.department), ["PATHOLOGY"]);
+      assert.deepEqual((await forVisit(before.encounterId, rTech.token)).map((x) => x.department), ["RADIOLOGY"], "the request already in the queue stays where it was");
+      assert.equal((await t.api("put", `/lims/catalogue/${moved.id}`, a.admin.token).send({ department: "RADIOLOGY" })).status, 200);
+      assert.ok(await t.prisma.auditEvent.findFirst({ where: { tenantId: a.tenantId, action: "LIMS_TEST_GROUPING_CHANGED", entityId: moved.id } }));
+    });
+
+    it("reception books tests for a patient with no doctor's order: they agree, the tests go to the right technicians, and nothing is counted as a consultation", async () => {
+      const patient = await registerPatient(t, rec.token);
+      const opdBefore = ((await t.api("get", "/reports/opd/daily", a.admin.token)).body.data as { total: number }).total;
+      const body = { patientId: patient.id, consent: true, consentMode: "WRITTEN", tests: [{ serviceId: lipid.id }, { serviceId: xray.id }], referredBy: "Dr. S. Roy (outside)", assignedNurseId: nurse.id, instructions: "Come fasting for 8 hours." };
+      for (const [name, tok, b2] of [
+        ["no agreement", rec.token, { ...body, consent: false }], ["no consent field", rec.token, (({ consent: _c, ...rest }) => rest)(body)], ["a doctor", doc.token, body], ["a nurse", nurse.token, body], ["a technician", pTech.token, body], ["another hospital", bRec.token, body],
+        ["no tests", rec.token, { ...body, tests: [] }], ["an unknown field", rec.token, { ...body, tenantId: a.tenantId }], ["a nurse who cannot take samples", rec.token, { ...body, assignedNurseId: pTech.id }],
+      ] as const) {
+        const r = await t.api("post", "/lims/opd/book", tok).send(b2);
+        assert.ok([400, 403, 404].includes(r.status), `${name}: ${r.status}`);
+      }
+      assert.equal(await t.prisma.encounter.count({ where: { patientId: patient.id } }), 0, "a refused booking leaves nothing behind");
+      const res = await t.api("post", "/lims/opd/book", rec.token).send(body);
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      const encounterId = res.body.data.encounterId as string;
+      assert.deepEqual(res.body.data.requests.map((r: { department: string }) => r.department).sort(), ["PATHOLOGY", "RADIOLOGY"]);
+      const enc = await t.prisma.encounter.findFirstOrThrow({ where: { id: encounterId } });
+      assert.deepEqual([enc.labOnly, enc.type, enc.status, enc.practitionerId], [true, "OPD", "COMPLETED", null]);
+      assert.deepEqual((await t.prisma.testOrder.findMany({ where: { encounterId } })).map((o) => [o.source, o.status, o.orderedById]).sort(), [["RECEPTION", "ORDERED", rec.id], ["RECEPTION", "ORDERED", rec.id]]);
+      const rows = await t.prisma.limsRequest.findMany({ where: { encounterId } });
+      assert.deepEqual(rows.map((r) => [r.origin, r.consent, r.assignedNurseId, r.clinicalNote]), [["OPD", "GIVEN", nurse.id, "Referred by Dr. S. Roy (outside)"], ["OPD", "GIVEN", nurse.id, "Referred by Dr. S. Roy (outside)"]]);
+      assert.equal(new Set(rows.map((r) => r.batchId)).size, 1);
+      assert.equal(await t.prisma.limsMessage.count({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "SCHEDULED" } }), 2, "the patient is told when to come (WhatsApp and SMS)");
+      const launched = await t.prisma.auditEvent.findFirstOrThrow({ where: { tenantId: a.tenantId, action: "LIMS_OPD_BOOKED", entityId: encounterId } });
+      assert.equal((launched.metadata as { consentMode: string }).consentMode, "WRITTEN");
+      // Each technician sees only their department's test; the reception sees the request but not the reason for it.
+      assert.deepEqual((await forVisit(encounterId, pTech.token)).map((x) => x.test), [lipid.name]);
+      assert.deepEqual((await forVisit(encounterId, rTech.token)).map((x) => x.test), [xray.name]);
+      const lab = await only(encounterId, lipid.name, pTech.token);
+      assert.equal((await detail(lab.id, pTech.token)).body.data.clinicalNote, "Referred by Dr. S. Roy (outside)");
+      assert.equal((await detail(lab.id, rec.token)).body.data.clinicalNote, null);
+      // The work goes on as for any outpatient.
+      assert.equal((await act(lab.id, "collect", nurse.token)).status, 200);
+      assert.equal((await act(lab.id, "accept", pTech.token)).status, 200);
+      // A visit made only to book tests is not an OPD consultation.
+      assert.equal(((await t.api("get", "/reports/opd/daily", a.admin.token)).body.data as { total: number }).total, opdBefore);
+      // The patient can book again: it is a new visit each time.
+      const again = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: patient.id, consent: true, tests: [{ serviceId: lipid.id }] });
+      assert.equal(again.status, 201);
+      assert.notEqual(again.body.data.encounterId, encounterId);
+    });
+
+    it("booking at reception needs a patient of this hospital, a test of the right kind, and honours priority rules", async () => {
+      const own = await registerPatient(t, rec.token);
+      const foreign = await registerPatient(t, bRec.token);
+      assert.equal((await t.api("post", "/lims/opd/book", rec.token).send({ patientId: foreign.id, consent: true, tests: [{ serviceId: lipid.id }] })).status, 404, "another hospital's patient looks like it does not exist");
+      assert.equal((await t.api("post", "/lims/opd/book", rec.token).send({ patientId: randomUUID(), consent: true, tests: [{ serviceId: lipid.id }] })).status, 404);
+      assert.equal((await t.api("post", "/lims/opd/book", rec.token).send({ patientId: own.id, consent: true, tests: [{ name: "Free typed", category: "CARDIOLOGY" }] })).status, 400);
+      assert.equal((await t.api("post", "/lims/opd/book", rec.token).send({ patientId: own.id, consent: true, tests: [{ serviceId: lipid.id }], scheduledFor: new Date(Date.now() - 86_400_000).toISOString() })).status, 400);
+      const urgent = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: own.id, consent: true, priority: "EMERGENCY", tests: [{ serviceId: lipid.id }] });
+      assert.equal(urgent.status, 201, JSON.stringify(urgent.body));
+      assert.equal((await only(urgent.body.data.encounterId, lipid.name)).priority, "EMERGENCY");
+      const dupe = await Promise.all([1, 2].map(() => t.api("post", "/lims/opd/book", rec.token).send({ patientId: own.id, consent: true, tests: [{ serviceId: xray.id }] })));
+      assert.deepEqual(dupe.map((r) => r.status), [201, 201], "two separate bookings are two visits");
+    });
+  });
+
+  // ───────────────────────── lab load decides the outpatient's date ─────────────────────────
+  describe("the outpatient's date comes from the pressure on the labs", () => {
+    let c: TestTenant;
+    let cRec: User; let cMgr: User; let cMgr2: User; let cNurse: User; let cDoc: TestDoctor;
+    let cbcC: { id: string }; let xrayC: { id: string };
+    const hourKey = (iso: string | Date) => Math.floor((new Date(iso).getTime() + 19_800_000) / 3_600_000);
+    const book = (patientId: string, tests: { serviceId: string }[], o: Record<string, unknown> = {}, tok = cRec.token) => t.api("post", "/lims/opd/book", tok).send({ patientId, consent: true, tests, ...o });
+    const dept = (kind: string, o: Record<string, unknown>) => t.api("put", `/lims/departments/${kind.toLowerCase()}`, c.admin.token).send({ name: kind === "PATHOLOGY" ? "Pathology" : "Radiology", status: "ACTIVE", routineTatMinutes: 1440, urgentTatMinutes: 360, emergencyTatMinutes: 120, capacityPerHour: 8, openMinute: 0, closeMinute: 1440, ...o });
+
+    before(async () => {
+      c = await t.makeTenant("lims-c");
+      cRec = await t.makeUser(c, ["RECEPTIONIST"]); cMgr = await t.makeUser(c, ["LIMS_MANAGER"]); cMgr2 = await t.makeUser(c, ["MANAGER"]); cNurse = await t.makeUser(c, ["NURSE"]); cDoc = await makeDoctor(t, c);
+      cbcC = (await t.api("post", "/services", c.admin.token).send({ code: code("C"), name: "Complete blood count", category: "INVESTIGATION", price: "250", taxPercent: 0 })).body.data;
+      xrayC = (await t.api("post", "/services", c.admin.token).send({ code: code("X"), name: "X-ray chest", category: "INVESTIGATION", price: "350", taxPercent: 0 })).body.data;
+      // Open round the clock so the test does not depend on the time of day; one test an hour in each lab, so the pressure shows at once.
+      assert.equal((await dept("PATHOLOGY", { capacityPerHour: 1 })).status, 200);
+      assert.equal((await dept("RADIOLOGY", { capacityPerHour: 1 })).status, 200);
+    });
+
+    it("the date moves later as the lab fills: each patient is given the next hour with room, and the time is in the message to the patient", async () => {
+      const times: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const p = await registerPatient(t, cRec.token);
+        const r = await book(p.id, [{ serviceId: cbcC.id }]);
+        assert.equal(r.status, 201, JSON.stringify(r.body));
+        assert.equal(r.body.data.autoScheduled, true);
+        times.push(r.body.data.scheduledFor as string);
+        const row = await t.prisma.limsRequest.findFirstOrThrow({ where: { encounterId: r.body.data.encounterId } });
+        assert.equal(row.scheduledFor!.toISOString(), r.body.data.scheduledFor, "the request carries the date");
+        assert.ok(row.dueAt.getTime() > row.scheduledFor!.getTime(), "the report is due after the patient comes");
+      }
+      assert.deepEqual([...times].sort(), times, "each patient comes later than the one before");
+      assert.equal(new Set(times.map(hourKey)).size, 4, "one place an hour: four patients, four different hours");
+      const av = await t.api("get", "/lims/opd/availability?pathology=1", cRec.token);
+      assert.equal(av.status, 200);
+      assert.ok(new Date(av.body.data.suggestedAt).getTime() > new Date(times[3]!).getTime(), "the next patient would be given a later hour still");
+      assert.equal(av.body.data.departments.find((d: { kind: string }) => d.kind === "PATHOLOGY").capacityPerHour, 1);
+    });
+
+    it("an emergency does not wait for a place, and a time chosen by reception is respected", async () => {
+      const p = await registerPatient(t, cRec.token);
+      const em = await book(p.id, [{ serviceId: cbcC.id }], { priority: "EMERGENCY" });
+      assert.equal(em.status, 201, JSON.stringify(em.body));
+      assert.equal(em.body.data.autoScheduled, false);
+      assert.equal(em.body.data.scheduledFor, null, "come now");
+      const when = new Date(Date.now() + 3 * 86_400_000).toISOString();
+      const manual = await book((await registerPatient(t, cRec.token)).id, [{ serviceId: cbcC.id }], { scheduledFor: when });
+      assert.equal(manual.status, 201);
+      assert.deepEqual([manual.body.data.autoScheduled, manual.body.data.scheduledFor], [false, when]);
+    });
+
+    it("a patient who needs both labs is given one time at which both have room, and each lab is counted", async () => {
+      const p = await registerPatient(t, cRec.token);
+      const r = await book(p.id, [{ serviceId: cbcC.id }, { serviceId: xrayC.id }]);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      const rows = await t.prisma.limsRequest.findMany({ where: { encounterId: r.body.data.encounterId }, include: { department: true } });
+      assert.equal(rows.length, 2);
+      assert.equal(new Set(rows.map((x) => x.scheduledFor!.toISOString())).size, 1, "one time for the visit");
+      assert.deepEqual(rows.map((x) => x.department.kind).sort(), ["PATHOLOGY", "RADIOLOGY"]);
+    });
+
+    it("two receptionists booking at the same moment never take the same last place", async () => {
+      const cRec2 = await t.makeUser(c, ["RECEPTIONIST"]);
+      const [p1, p2] = [await registerPatient(t, cRec.token), await registerPatient(t, cRec.token)];
+      const out = await Promise.all([book(p1.id, [{ serviceId: xrayC.id }]), book(p2.id, [{ serviceId: xrayC.id }], {}, cRec2.token)]);
+      assert.deepEqual(out.map((o) => o.status), [201, 201]);
+      assert.notEqual(hourKey(out[0]!.body.data.scheduledFor), hourKey(out[1]!.body.data.scheduledFor), "one place an hour in radiology");
+    });
+
+    it("the LIMS manager, the manager and the administrator see how full each lab is; others do not", async () => {
+      const views = await Promise.all([cMgr.token, cMgr2.token, c.admin.token].map(async (tok) => (await t.api("get", "/lims/reports/pressure?days=5", tok)).body.data as { today: string; departments: { kind: string; capacityPerHour: number; days: { date: string; capacity: number; booked: number; percent: number }[]; open: { waitingForSample: number }; nextFreeAt: string | null }[] }));
+      assert.deepEqual(views[1]!.departments, views[0]!.departments);
+      assert.deepEqual(views[2]!.departments, views[0]!.departments);
+      const path = views[0]!.departments.find((d) => d.kind === "PATHOLOGY")!;
+      assert.equal(path.capacityPerHour, 1);
+      assert.equal(path.days.length, 5);
+      assert.equal(path.days[0]!.capacity > 0, true);
+      assert.ok(path.days.reduce((n, d) => n + d.booked, 0) >= 5, "the bookings made above are counted");
+      assert.ok(path.open.waitingForSample >= 5);
+      assert.ok(path.nextFreeAt);
+      for (const tok of [cRec.token, cNurse.token, cDoc.token]) assert.equal((await t.api("get", "/lims/reports/pressure", tok)).status, 403);
+      assert.equal((await t.api("get", "/lims/reports/pressure?days=99", cMgr.token)).status, 400);
+      // Another hospital sees its own labs, not this one's bookings.
+      const other = (await t.api("get", "/lims/reports/pressure", bMgr.token)).body.data.departments as { days: { booked: number }[] }[];
+      assert.ok(other.every((d) => d.days.every((x) => x.booked === 0)));
+    });
+
+    it("only reception asks for a date; capacity and hours are kept by the administrator and must make sense", async () => {
+      for (const tok of [cMgr.token, cNurse.token, cDoc.token]) assert.equal((await t.api("get", "/lims/opd/availability?pathology=1", tok)).status, 403);
+      assert.equal((await t.api("get", "/lims/opd/availability?pathology=99", cRec.token)).status, 400);
+      assert.equal((await dept("PATHOLOGY", { capacityPerHour: 0 })).status, 400);
+      assert.equal((await dept("PATHOLOGY", { capacityPerHour: 501 })).status, 400);
+      assert.equal((await dept("PATHOLOGY", { openMinute: 600, closeMinute: 630 })).status, 400, "open for less than an hour");
+      assert.equal((await dept("PATHOLOGY", { openMinute: 1000, closeMinute: 900 })).status, 400);
+      assert.equal((await t.api("put", "/lims/departments/pathology", cMgr.token).send({})).status, 403, "the LIMS manager looks; the administrator sets the capacity");
+      // Raising the capacity gives later patients earlier times.
+      const before = (await t.api("get", "/lims/opd/availability?pathology=1", cRec.token)).body.data.suggestedAt as string;
+      assert.equal((await dept("PATHOLOGY", { capacityPerHour: 50 })).status, 200);
+      const after = (await t.api("get", "/lims/opd/availability?pathology=1", cRec.token)).body.data.suggestedAt as string;
+      assert.ok(new Date(after).getTime() < new Date(before).getTime(), `${after} should be earlier than ${before}`);
+      assert.ok(await t.prisma.auditEvent.findFirst({ where: { tenantId: c.tenantId, action: "LIMS_DEPARTMENT_CHANGED", entityId: (await t.prisma.limsDepartment.findFirstOrThrow({ where: { tenantId: c.tenantId, kind: "PATHOLOGY" } })).id } }));
+    });
+
+    it("a department that is switched off, or has no room for two weeks, says so instead of giving a date", async () => {
+      assert.equal((await dept("RADIOLOGY", { capacityPerHour: 1, openMinute: 0, closeMinute: 60 })).status, 200);
+      // One place an hour and a single working hour a day: the first patients fill the days one after the other.
+      const first = await book((await registerPatient(t, cRec.token)).id, [{ serviceId: xrayC.id }]);
+      const second = await book((await registerPatient(t, cRec.token)).id, [{ serviceId: xrayC.id }]);
+      assert.equal(first.status, 201, JSON.stringify(first.body));
+      assert.equal(second.status, 201, JSON.stringify(second.body));
+      assert.ok(new Date(second.body.data.scheduledFor).getTime() - new Date(first.body.data.scheduledFor).getTime() >= 20 * 3_600_000, "the next day");
+    });
+  });
+
+  // ───────────────────────── arrival, payment and the admitted patient's bill ─────────────────────────
+  describe("reporting at reception, the advance and the balance, and the admitted patient's bill", () => {
+    const key = () => randomUUID();
+    const soon = () => new Date(Date.now() + 90_000).toISOString();
+    const pay = (amount: string, reference = "UPI-0001") => ({ method: "UPI", amount, reference });
+    const arrive = (batchId: string, body: Record<string, unknown>, tok = rec.token, k = key()) => t.api("post", `/lims/batches/${batchId}/arrive`, tok).set("Idempotency-Key", k).send(body);
+    const rawCollect = (id: string, tok = nurse.token) => t.api("post", `/lims/requests/${id}/collect`, tok).send({});
+    const advance = (patientId: string, amount: string) => t.api("post", `/patients/${patientId}/advances`, rec.token).set("Idempotency-Key", key()).send({ tenders: [pay(amount, "UPI-ADV-1")] });
+    const bookOne = async (o: Record<string, unknown> = {}) => {
+      const patient = await registerPatient(t, rec.token);
+      const r = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: patient.id, consent: true, tests: [{ serviceId: cbc.id }], scheduledFor: soon(), ...o });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      return { patient, batchId: r.body.data.batchId as string, encounterId: r.body.data.encounterId as string, requestId: r.body.data.requests[0].id as string };
+    };
+    interface Billing { owed: string; advanceAvailable: string; advanceToUse: string; toCollect: string; arrived: boolean; paid: boolean; invoices: { id: string; status: string }[]; unpriced: number; tests: { amount: string | null }[] }
+    const billing = async (batchId: string, tok = rec.token) => (await t.api("get", `/lims/batches/${batchId}/billing`, tok)).body.data as Billing;
+    const ids = async (qs: string, tok: string) => ((await get(`/lims/requests?${qs}&pageSize=100`, tok)).items as Req[]).map((r) => r.id);
+
+    it("the nurse cannot take the sample until the patient has reported; reporting bills the tests, uses the advance first and takes the rest", async () => {
+      const x = await bookOne();
+      const first = await billing(x.batchId);
+      assert.deepEqual([first.owed, first.toCollect, first.arrived, first.paid, first.unpriced], ["250.00", "250.00", false, false, 0]);
+      assert.equal(first.tests[0]!.amount, "250.00");
+      const early = await rawCollect(x.requestId);
+      assert.equal(early.status, 409);
+      assert.equal(early.body.error.code, "PATIENT_NOT_ARRIVED");
+
+      assert.equal((await advance(x.patient.id, "100.00")).status, 201);
+      const withAdvance = await billing(x.batchId);
+      assert.deepEqual([withAdvance.advanceAvailable, withAdvance.advanceToUse, withAdvance.toCollect], ["100.00", "100.00", "150.00"]);
+
+      // The rest must be taken in full; when it is not, nothing is billed and nothing is taken.
+      const none = await arrive(x.batchId, {});
+      assert.equal(none.status, 409);
+      assert.equal(none.body.error.code, "PAYMENT_REQUIRED");
+      assert.equal(none.body.error.details?.balanceDue, "150.00");
+      assert.equal((await arrive(x.batchId, { payments: [pay("100.00")] })).body.error.code, "PAYMENT_REQUIRED");
+      assert.equal((await arrive(x.batchId, { payments: [pay("200.00")] })).body.error.code, "PAYMENT_EXCEEDS_BALANCE");
+      assert.equal((await arrive(x.batchId, { payments: [{ method: "UPI", amount: "150.00" }] })).status, 400, "a UPI payment needs its reference");
+      const order = await t.prisma.limsRequest.findFirstOrThrow({ where: { id: x.requestId }, include: { testOrder: true } });
+      assert.equal(order.testOrder.status, "ORDERED", "refused: nothing was billed");
+      assert.equal(order.arrivedAt, null);
+
+      // Who may do it.
+      for (const [name, tok] of [["a nurse", nurse.token], ["a doctor", doc.token], ["the cashier", cashier.token], ["the LIMS manager", mgr.token]] as const) assert.equal((await arrive(x.batchId, { payments: [pay("150.00")] }, tok)).status, 403, `${name} does not take the patient in`);
+      assert.equal((await arrive(x.batchId, { payments: [pay("150.00")] }, bRec.token)).status, 404, "another hospital's reception does not know this booking");
+
+      const k = key();
+      const ok = await arrive(x.batchId, { payments: [pay("150.00")] }, rec.token, k);
+      assert.equal(ok.status, 201, JSON.stringify(ok.body));
+      assert.deepEqual([ok.body.data.owed, ok.body.data.advanceUsed, ok.body.data.collected], ["250.00", "100.00", "150.00"]);
+      const done = await billing(x.batchId);
+      assert.deepEqual([done.arrived, done.paid, done.toCollect, done.invoices.length], [true, true, "0.00", 1]);
+      const inv = await t.prisma.invoice.findFirstOrThrow({ where: { id: done.invoices[0]!.id } });
+      assert.deepEqual([inv.status, inv.kind, inv.paidTotal.toString()], ["PAID", "OTHER", "250"]);
+      assert.equal((await t.prisma.testOrder.findFirstOrThrow({ where: { id: order.testOrderId } })).status, "BILLED");
+      // The same press twice (a double click, a retry) takes nothing more; a second, deliberate attempt is refused.
+      const replay = await arrive(x.batchId, { payments: [pay("150.00")] }, rec.token, k);
+      assert.ok([200, 201].includes(replay.status), JSON.stringify(replay.body));
+      assert.equal((await billing(x.batchId)).invoices.length, 1);
+      assert.equal((await arrive(x.batchId, { payments: [pay("150.00")] })).status, 409);
+      assert.equal((await t.prisma.invoice.findFirstOrThrow({ where: { id: inv.id } })).paidTotal.toString(), "250");
+
+      // The history, the audit and the nurse's notice; then the nurse may take the sample.
+      assert.ok(await t.prisma.limsRequestEvent.findFirst({ where: { requestId: x.requestId, kind: "ARRIVED" } }));
+      assert.ok(await t.prisma.auditEvent.findFirst({ where: { tenantId: a.tenantId, action: "LIMS_PATIENT_ARRIVED", entityId: x.encounterId } }));
+      assert.ok((await notes(nurse.token)).some((n) => n.type === "LIMS_PATIENT_ARRIVED" && n.entityId === x.requestId));
+      assert.equal((await rawCollect(x.requestId)).status, 200);
+
+      // Who may look at the money.
+      assert.equal((await t.api("get", `/lims/batches/${x.batchId}/billing`, nurse.token)).status, 403);
+      for (const tok of [mgr.token, hospMgr.token, a.admin.token]) assert.equal((await t.api("get", `/lims/batches/${x.batchId}/billing`, tok)).status, 200);
+      assert.equal((await t.api("get", `/lims/batches/${x.batchId}/billing`, bRec.token)).status, 404);
+    });
+
+    it("a test with no price on the list stops the arrival until the cashier prices it", async () => {
+      const x = await bookOne({ tests: [{ name: "Special assay", category: "LABORATORY" }] });
+      assert.equal((await billing(x.batchId)).unpriced, 1);
+      const r = await arrive(x.batchId, { payments: [pay("100.00")] });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.error.code, "TEST_NEEDS_PRICE");
+      assert.equal((await t.prisma.limsRequest.findFirstOrThrow({ where: { id: x.requestId } })).arrivedAt, null);
+    });
+
+    it("on the day the patient's name shows for reception, the LIMS manager and the nurse, as expected or as reported", async () => {
+      const x = await bookOne();
+      const later = await bookOne({ scheduledFor: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+      for (const tok of [rec.token, mgr.token, hospMgr.token, nurse.token]) {
+        assert.ok((await ids("expected=true", tok)).includes(x.requestId), "expected today");
+        assert.ok(!(await ids("expected=true", tok)).includes(later.requestId), "a later day is not today's list");
+        assert.ok((await ids("arrived=false", tok)).includes(x.requestId));
+        assert.ok(!(await ids("arrived=true", tok)).includes(x.requestId));
+      }
+      assert.equal((await arrive(x.batchId, { payments: [pay("250.00")] })).status, 201);
+      for (const tok of [rec.token, mgr.token, nurse.token]) {
+        assert.ok((await ids("arrived=true", tok)).includes(x.requestId), "now at reception");
+        assert.ok(!(await ids("arrived=false", tok)).includes(x.requestId));
+      }
+      const view = (await get(`/lims/requests/${x.requestId}`, mgr.token)) as { arrivedAt: string | null; timeline: { kind: string }[] };
+      assert.ok(view.arrivedAt);
+      assert.ok(view.timeline.some((e) => e.kind === "ARRIVED"));
+    });
+
+    it("the patient is messaged on WhatsApp and by SMS (and by email when on), with the time and what to do beforehand", async () => {
+      const x = await bookOne({ instructions: "Come fasting for 8 hours." });
+      const rows = await t.prisma.limsMessage.findMany({ where: { batchId: x.batchId } });
+      assert.deepEqual(rows.map((r) => `${r.kind}:${r.channel}`).sort(), ["SCHEDULED:SMS", "SCHEDULED:WHATSAPP"]);
+    });
+
+    it("an admitted patient's test goes to a nurse chosen at once, is not held by lab load, and its charge reaches the admission's bill when the report is issued", async () => {
+      // The pathology lab is as full as it can be for outpatients; an admitted patient is not held back by that.
+      assert.equal((await t.api("put", "/lims/departments/pathology", a.admin.token).send({ name: "Pathology", status: "ACTIVE", routineTatMinutes: 720, urgentTatMinutes: 240, emergencyTatMinutes: 90, capacityPerHour: 1, openMinute: 480, closeMinute: 1080 })).status, 200);
+      const x = await passedLab();
+      const row = await t.prisma.limsRequest.findFirstOrThrow({ where: { id: x.r.id } });
+      assert.equal(row.scheduledFor, null, "no lab-load date for an admitted patient");
+      assert.ok(row.assignedNurseId, "a nurse is chosen automatically");
+      const staff = (await get("/lims/staff", mgr.token)) as { nurses: { id: string }[] };
+      assert.ok(staff.nurses.some((n) => n.id === row.assignedNurseId), "the nurse is one of the nurses who take samples");
+      assert.ok(await t.prisma.limsRequestEvent.findFirst({ where: { requestId: x.r.id, kind: "NURSE_ASSIGNED", note: "assigned automatically" } }));
+      // The Cashier does not bill it as a separate bill: it is charged to the admission.
+      const queue = (await get("/test-orders/queue", cashier.token)) as { visits: { encounterId: string }[] };
+      assert.ok(!queue.visits.some((v) => v.encounterId === x.encounterId), "not in the Cashier's list");
+      assert.equal(await t.prisma.charge.count({ where: { sourceKey: `LIMS:${x.r.id}` } }), 0, "not charged before the report is out");
+
+      assert.equal((await act(x.r.id, "issue", pTech.token)).status, 200);
+      const adm = await t.prisma.admission.findFirstOrThrow({ where: { encounterId: x.encounterId } });
+      const charge = await t.prisma.charge.findFirstOrThrow({ where: { sourceKey: `LIMS:${x.r.id}` } });
+      assert.deepEqual([charge.admissionId, charge.status, charge.type, charge.unitPrice.toString(), charge.quantity.toString()], [adm.id, "PENDING", "SERVICE", "250", "1"]);
+      assert.ok(await t.prisma.limsRequestEvent.findFirst({ where: { requestId: x.r.id, kind: "CHARGED" } }));
+
+      // The doctor is told: test, patient and bed (looked up when read, never stored in the notice).
+      const patient = await t.prisma.patient.findFirstOrThrow({ where: { id: x.patient.id } });
+      const told = (await t.api("get", "/notifications", doc.token)).body.data as { type: string; entityId: string; detail?: string | null }[];
+      const n = told.find((m) => m.type === "LIMS_REPORT_ISSUED" && m.entityId === x.r.id);
+      assert.ok(n, "the doctor has a notice");
+      assert.ok(n!.detail?.includes(cbc.name) && n!.detail.includes(patient.firstName) && n!.detail.includes("Bed "), n!.detail ?? "no detail");
+      const asRequest = (await get(`/lims/requests/${x.r.id}`, mgr.token)) as { bed: { code: string; ward: string } | null };
+      assert.ok(asRequest.bed, "the request shows the bed");
+
+      // The LIMS manager, the manager and the administrator follow the charge.
+      for (const tok of [mgr.token, hospMgr.token, a.admin.token]) {
+        const rep = (await get("/lims/reports/billing", tok)) as { admittedCharges: { requestNumber: string; admissionNumber: string | null; amount: string; status: string }[]; departments: { kind: string; chargedToAdmissions: number }[] };
+        const hit = rep.admittedCharges.find((c) => c.requestNumber === x.r.requestNumber);
+        assert.ok(hit, "listed for the monitors");
+        assert.deepEqual([hit!.amount, hit!.status, hit!.admissionNumber], ["250.00", "PENDING", adm.admissionNumber]);
+        assert.ok(rep.departments.find((d) => d.kind === "PATHOLOGY")!.chargedToAdmissions >= 1);
+      }
+      // Another hospital never sees it.
+      const other = (await get("/lims/reports/billing", bMgr.token)) as { admittedCharges: unknown[] };
+      assert.equal(other.admittedCharges.length, 0);
+    });
+
+    it("an admitted patient's test with no price on the list is not charged", async () => {
+      const { encounterId } = await admitted();
+      assert.equal((await order(encounterId, [{ name: "Special assay", category: "LABORATORY" }])).status, 201);
+      const r = await only(encounterId, "Special assay");
+      assert.equal(await t.prisma.charge.count({ where: { sourceKey: `LIMS:${r.id}` } }), 0);
     });
   });
 });

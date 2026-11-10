@@ -163,7 +163,7 @@ async function main(): Promise<void> {
     services.push((await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0 }))["id"] as string);
   }
   // The hospital's lab-test and investigation list, which feeds the Lab test dropdown of the prescription and the Cashier's test billing (synthetic prices).
-  for (const [c, n, price] of [["CBC", "CBC (complete blood count)", "250"], ["ESR", "ESR", "100"], ["LFT", "Liver function test (LFT)", "600"], ["KFT", "Kidney function test (KFT)", "550"], ["RBS", "Random blood sugar", "80"], ["FBS", "Fasting blood sugar", "80"], ["HBA1C", "HbA1c", "450"], ["LIPID", "Lipid profile", "700"], ["TSH", "TSH", "350"], ["CRP", "CRP", "400"], ["URINE", "Urine routine", "120"], ["XRAYCH", "Chest X-ray", "400"], ["USGAB", "USG abdomen", "900"], ["ECHO", "2D echo", "1500"]] as const) {
+  for (const [c, n, price] of [["XRC", "X-ray chest PA", "350"], ["USGA", "Ultrasound abdomen", "800"], ["CTH", "CT head (plain)", "3000"], ["MRIB", "MRI brain", "6000"], ["CBC", "CBC (complete blood count)", "250"], ["ESR", "ESR", "100"], ["LFT", "Liver function test (LFT)", "600"], ["KFT", "Kidney function test (KFT)", "550"], ["RBS", "Random blood sugar", "80"], ["FBS", "Fasting blood sugar", "80"], ["HBA1C", "HbA1c", "450"], ["LIPID", "Lipid profile", "700"], ["TSH", "TSH", "350"], ["CRP", "CRP", "400"], ["URINE", "Urine routine", "120"], ["XRAYCH", "Chest X-ray", "400"], ["USGAB", "USG abdomen", "900"], ["ECHO", "2D echo", "1500"]] as const) {
     await call("POST", "/services", admin, { code: c, name: n, category: "INVESTIGATION", price, taxPercent: 0 });
   }
   step("laboratory: test set-up and a few orders");
@@ -182,7 +182,7 @@ async function main(): Promise<void> {
   // Admitted patients' tests go straight to the laboratory; the first one is an emergency so the queue shows what that looks like.
   for (const [i, a] of admissions.slice(0, 3).entries()) {
     const doctor = await login(a.doctor);
-    await call("POST", "/lims/orders", doctor, { encounterId: a.encounterId, priority: i === 0 ? "EMERGENCY" : "ROUTINE", clinicalNote: "Synthetic demo order", tests: [{ name: "CBC (complete blood count)", category: "LABORATORY" }, ...(i === 1 ? [{ name: "X-ray chest", category: "RADIOLOGY" as const }] : [])] });
+    await call("POST", "/lims/orders", doctor, { encounterId: a.encounterId, priority: i === 0 ? "EMERGENCY" : "ROUTINE", clinicalNote: "Synthetic demo order", tests: [{ name: "CBC (complete blood count)", category: "LABORATORY" }, ...(i === 1 ? [{ name: "X-ray chest PA", category: "RADIOLOGY" as const }] : [])] });
   }
   await call("POST", "/shifts/open", cashier, { openingCash: "2000" });
   for (let i = 0; i < COUNTS.invoices; i++) {

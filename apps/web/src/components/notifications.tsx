@@ -7,7 +7,7 @@ import { api, type Page } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 
-interface Row { id: string; type: string; entityType: string; entityId: string | null; createdAt: string; readAt: string | null }
+interface Row { id: string; type: string; entityType: string; entityId: string | null; createdAt: string; readAt: string | null; detail?: string | null; href?: string | null }
 
 /** Where each kind of notification leads, and its fixed wording (English is the key for the Bengali and Hindi dictionaries). A notification carries no patient name. */
 const KINDS: Record<string, { text: string; href: string; critical?: boolean }> = {
@@ -26,6 +26,7 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   LIMS_READY_TO_ISSUE: { text: "A passed report is ready to issue", href: "/lims" },
   LIMS_REPORT_ISSUED: { text: "A laboratory or imaging report was issued", href: "/dashboard" },
   LIMS_EXCEPTION_RAISED: { text: "A laboratory exception or failed check needs your attention", href: "/lims" },
+  LIMS_PATIENT_ARRIVED: { text: "A patient has reported at reception for a test", href: "/lims" },
 };
 const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 
@@ -102,7 +103,7 @@ export function NotificationBell() {
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
 
-  const go = (r: Row): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(kindOf(r.type).href); };
+  const go = (r: Row): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(r.href ?? kindOf(r.type).href); };
 
   return (
     <div ref={box} className="relative">
@@ -123,6 +124,7 @@ export function NotificationBell() {
               <li key={r.id}>
                 <button type="button" onClick={() => go(r)} className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${r.readAt ? "text-slate-500" : "font-medium text-slate-900"}`}>
                   <span className={kindOf(r.type).critical && !r.readAt ? "text-red-700" : ""}>{t(kindOf(r.type).text)}</span>
+                  {r.detail && <span className="mt-0.5 block text-xs font-normal text-slate-700">{r.detail}</span>}
                   <span className="mt-0.5 block text-xs font-normal text-slate-500">{dateTime(r.createdAt)}</span>
                 </button>
               </li>
@@ -133,8 +135,9 @@ export function NotificationBell() {
       {alertRow && (
         <div role={kindOf(alertRow.type).critical ? "alert" : "status"} data-testid="notification-toast" className={`fixed inset-x-2 top-14 z-50 rounded-md border p-3 text-sm shadow-lg sm:inset-x-auto sm:right-4 sm:w-80 ${kindOf(alertRow.type).critical ? "border-red-300 bg-red-50 text-red-900" : "border-slate-200 bg-white text-slate-900"}`}>
           <div className="font-semibold">{t(kindOf(alertRow.type).text)}</div>
+          {alertRow.detail && <div className="mt-0.5 text-xs">{alertRow.detail}</div>}
           <div className="mt-2 flex gap-3">
-            <Link href={kindOf(alertRow.type).href} className="font-medium underline" onClick={() => { read.mutate(alertRow.id); setAlertRow(null); }}>{t("Open")}</Link>
+            <Link href={alertRow.href ?? kindOf(alertRow.type).href} className="font-medium underline" onClick={() => { read.mutate(alertRow.id); setAlertRow(null); }}>{t("Open")}</Link>
             <button type="button" className={kindOf(alertRow.type).critical ? "text-red-800 hover:underline" : "text-slate-600 hover:underline"} onClick={() => setAlertRow(null)}>{t("Dismiss")}</button>
           </div>
         </div>

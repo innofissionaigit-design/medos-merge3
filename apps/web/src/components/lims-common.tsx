@@ -8,7 +8,7 @@ import { Badge, Button, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notic
 export interface Req {
   id: string; requestNumber: string; status: string; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD"; department: "PATHOLOGY" | "RADIOLOGY"; departmentName: string;
   test: string; testOrderId: string; patient: { id: string; name: string; gender: string; mrn: string | null }; encounterId: string; visitNumber: string; doctor: string | null; batchId: string;
-  createdAt: string; scheduledFor: string | null; dueAt: string; delayed: boolean; assignedNurse: { id: string; name: string | null } | null; assignedTech: { id: string; name: string | null } | null;
+  createdAt: string; scheduledFor: string | null; arrivedAt: string | null; bed: { code: string; ward: string } | null; dueAt: string; delayed: boolean; assignedNurse: { id: string; name: string | null } | null; assignedTech: { id: string; name: string | null } | null;
   needsRecollection: boolean; recollectCount: number; returnedCount: number; compromisedSampleApproved: boolean; instructions: string | null; clinicalNote: string | null; billed: boolean; version: number;
   accessionNumber: string | null; resultId: string | null; resultVersion: number | null; studyId: string | null; critical: boolean;
   stamps: { collectedAt: string | null; acceptedAt: string | null; submittedAt: string | null; passedAt: string | null; issuedAt: string | null; handedOverAt: string | null };
@@ -41,7 +41,7 @@ export const PriorityBadge = ({ p }: { p: Req["priority"] }) => (p === "ROUTINE"
 export const EVENT_LABEL: Record<string, string> = {
   CREATED: "Entered the queue", PRIORITY_CHANGED: "Priority changed", NURSE_ASSIGNED: "Nurse assigned", TECH_ASSIGNED: "Technician assigned", COLLECTED: "Sample taken / patient ready", SAMPLE_REJECTED: "Sample rejected", SENT_BACK: "Patient sent back",
   ACCEPTED: "Sample accepted", PERFORMED: "Scan performed", SUBMITTED: "Sent for review", RETURNED: "Sent back to the technician", PASSED: "Report passed", ISSUED: "Report issued", AMENDED_AFTER_ISSUE: "Report amended after issue",
-  HANDED_OVER: "Handed over at reception", CANCELLED: "Cancelled", EXCEPTION_APPROVED: "Exception approved",
+  HANDED_OVER: "Handed over at reception", CANCELLED: "Cancelled", EXCEPTION_APPROVED: "Exception approved", ARRIVED: "Patient reported at reception", CHARGED: "Charged to the admission's bill", CHARGE_NOT_POSTED: "Not charged: needs a charge added by hand",
 };
 
 /** Refreshes every LIMS list after something changed. */
@@ -69,10 +69,10 @@ export function RequestTable({ rows, empty, actions, onOpen, columns = ["patient
     <Table head={head} {...(rows.length === 0 ? { empty } : {})}>
       {rows.map((r, i) => {
         const cell: Record<string, ReactNode> = {
-          patient: <Td key="patient"><button className="text-left" onClick={() => onOpen?.(r)}><span className="font-medium">{r.patient.name}</span> <span className="text-slate-500">· {r.patient.mrn}</span></button></Td>,
-          test: <Td key="test">{r.test} <span className="text-xs text-slate-500">({r.requestNumber})</span> <PriorityBadge p={r.priority} />{r.critical && <> <Badge tone="red">critical</Badge></>}</Td>,
+          patient: <Td key="patient"><button className="text-left" onClick={() => onOpen?.(r)}><span className="font-medium">{r.patient.name}</span> <span className="text-slate-500">· {r.patient.mrn}{r.bed ? ` · Bed ${r.bed.code} (${r.bed.ward})` : ""}</span></button></Td>,
+          test: <Td key="test">{r.test} <span className="text-xs text-slate-500">({r.requestNumber})</span> <PriorityBadge p={r.priority} />{r.critical && <> <Badge tone="red">critical</Badge></>}{r.scheduledFor && r.status === "PENDING_COLLECTION" && <div className="text-xs text-slate-500">Come at {dateTime(r.scheduledFor)}</div>}</Td>,
           origin: <Td key="origin">{r.origin === "IPD" ? "Admitted" : "Outpatient"}</Td>,
-          status: <Td key="status"><StageBadge r={r} />{r.returnedCount > 0 && <> <Badge tone="amber">returned</Badge></>}{r.compromisedSampleApproved && <> <Badge tone="amber">by exception</Badge></>}</Td>,
+          status: <Td key="status"><StageBadge r={r} />{r.origin === "OPD" && r.status === "PENDING_COLLECTION" && <> <Badge tone={r.arrivedAt ? "green" : "amber"}>{r.arrivedAt ? "reported at reception" : "not here yet"}</Badge></>}{r.returnedCount > 0 && <> <Badge tone="amber">returned</Badge></>}{r.compromisedSampleApproved && <> <Badge tone="amber">by exception</Badge></>}</Td>,
           due: <Td key="due" className={r.delayed ? "font-medium text-red-700" : ""}>{dateTime(r.dueAt)}{r.delayed && " · late"}</Td>,
           who: <Td key="who" className="text-slate-600">{[r.assignedNurse && `Nurse: ${r.assignedNurse.name ?? "—"}`, r.assignedTech && `Tech: ${r.assignedTech.name ?? "—"}`].filter(Boolean).join(" · ") || "—"}</Td>,
         };
@@ -117,7 +117,9 @@ export function DetailModal({ id, onClose }: { id: string; onClose: () => void }
             <KV label="Nurse">{r.assignedNurse?.name ?? "—"}</KV><KV label="Technician">{r.assignedTech?.name ?? "—"}</KV>
             {r.accessionNumber && <KV label="Sample / study number">{r.accessionNumber}</KV>}
             {r.scheduledFor && <KV label="Patient asked to come at">{dateTime(r.scheduledFor)}</KV>}
-            <KV label="Billing">{r.billed ? "Billed" : "Not billed yet"}</KV>
+            <KV label="Billing">{r.billed ? "Billed" : r.origin === "IPD" ? "Charged to the admission when the report is issued" : "Not billed yet"}</KV>
+            {r.origin === "OPD" && <KV label="At reception">{r.arrivedAt ? dateTime(r.arrivedAt) : "Not here yet"}</KV>}
+            {r.bed && <KV label="Bed">{r.bed.code} ({r.bed.ward})</KV>}
             {r.recollectCount > 0 && <KV label="Samples rejected">{r.recollectCount}</KV>}
           </div>
           {r.clinicalNote && <Notice>Reason for the test: {r.clinicalNote}</Notice>}

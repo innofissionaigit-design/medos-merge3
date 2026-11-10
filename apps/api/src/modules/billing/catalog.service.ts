@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AuditService, actorOf } from "../../common/audit.service";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
+import { guessDepartment } from "../lims/lims.domain";
 import { amount, percent } from "./money.schema";
 
 const CATEGORIES = ["CONSULTATION", "ROOM_BED", "PROCEDURE", "NURSING", "INJECTION_DRESSING", "INVESTIGATION", "OTHER"] as const;
@@ -35,7 +36,7 @@ export const listServicesSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(100),
 }).strict();
 
-const SELECT = { id: true, code: true, name: true, category: true, price: true, taxPercent: true, sacCode: true, status: true } satisfies Prisma.ServiceSelect;
+const SELECT = { id: true, code: true, name: true, category: true, price: true, taxPercent: true, sacCode: true, status: true, limsDepartment: true } satisfies Prisma.ServiceSelect;
 type Row = Prisma.ServiceGetPayload<{ select: typeof SELECT }>;
 export const toServiceView = (s: Row) => ({ ...s, price: s.price.toFixed(2), taxPercent: s.taxPercent.toFixed(2) });
 
@@ -61,7 +62,9 @@ export class CatalogService {
     return this.prisma.$transaction(async (tx) => {
       const dup = await tx.service.findFirst({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, code: input.code }, select: { id: true } });
       if (dup) throw new DomainError("CONFLICT", "A service with this code already exists. Choose another code, or switch the old one back on.", 409, [{ path: "code", message: "Already used" }]);
-      const s = await tx.service.create({ data: { ...input, tenantId: ctx.tenantId, facilityId: ctx.facilityId, price: input.price.toFixed(2), taxPercent: input.taxPercent.toFixed(2) }, select: SELECT });
+      // An investigation is grouped with a laboratory department (Pathology or Radiology) so the LIMS routes it to the right technician; the starting point is guessed from the name.
+      const limsDepartment = input.category === "INVESTIGATION" ? guessDepartment(input.name) : null;
+      const s = await tx.service.create({ data: { ...input, limsDepartment, tenantId: ctx.tenantId, facilityId: ctx.facilityId, price: input.price.toFixed(2), taxPercent: input.taxPercent.toFixed(2) }, select: SELECT });
       await this.audit.record(tx, actorOf(ctx), { action: "SERVICE_CREATED", entityType: "Service", entityId: s.id, metadata: { code: s.code, price: s.price.toFixed(2), taxPercent: s.taxPercent.toFixed(2) } });
       return toServiceView(s);
     });
@@ -74,7 +77,11 @@ export class CatalogService {
       if (!existing) throw new DomainError("NOT_FOUND", "Resource not found", 404);
       const data: Prisma.ServiceUpdateInput = {};
       if (input.name !== undefined) data.name = input.name;
-      if (input.category !== undefined) data.category = input.category;
+      if (input.category !== undefined) {
+        data.category = input.category;
+        if (input.category !== "INVESTIGATION") data.limsDepartment = null;
+        else if (!existing.limsDepartment) data.limsDepartment = guessDepartment(input.name ?? existing.name);
+      }
       if (input.status !== undefined) data.status = input.status;
       if (input.price !== undefined) data.price = input.price.toFixed(2);
       if (input.taxPercent !== undefined) data.taxPercent = input.taxPercent.toFixed(2);

@@ -13,10 +13,14 @@ import { LabService, rejectSampleSchema } from "../lab/lab.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NumberingService } from "../numbering/numbering.service";
 import { performSchema, RadiologyService } from "../radiology/radiology.service";
+import { endOfLocalDay, localDateStr } from "../../common/time";
+import { computeLine, fmt } from "../billing/billing.domain";
+import { LimsBillingService } from "./lims-billing.service";
 import { LimsCoreService, type RequestRow } from "./lims-core.service";
 import { LimsMessagesService } from "./lims-messages.service";
+import { LimsScheduleService } from "./lims-schedule.service";
 import {
-  addMinutes, clockStart, DEFAULT_DEPARTMENTS, DEPARTMENT_PERMISSIONS, departmentKindOf, isDelayed, LIMS_PRIORITIES, LIMS_STATUSES, OPEN_STATUSES, PRIORITY_RANK, targetMinutes,
+  addMinutes, categoryOfDepartment, clockStart, DEFAULT_DEPARTMENTS, DEPARTMENT_PERMISSIONS, departmentKindOf, guessDepartment, isDelayed, LIMS_PRIORITIES, LIMS_STATUSES, OPEN_STATUSES, PRIORITY_RANK, targetMinutes,
   type DepartmentKind, type LimsPriority, type LimsStatus,
 } from "./lims.domain";
 
@@ -27,12 +31,33 @@ const bool = z.enum(["true", "false"]).transform((v) => v === "true");
 const norm = (s: string): string => s.trim().replace(/\s+/g, " ").toLowerCase();
 const nameOf = (p: { firstName: string; lastName: string | null }) => [p.firstName, p.lastName].filter(Boolean).join(" ");
 
+/** A test is chosen from the test list (its department decides who runs it), or typed with its kind. A typed name that matches the list is routed by the list. */
+const testItem = z.object({ serviceId: uuid.optional(), name: z.string().trim().min(2).max(120).optional(), category: z.enum(["LABORATORY", "RADIOLOGY"]).optional() }).strict()
+  .refine((t) => !!t.serviceId || (!!t.name && !!t.category), "Choose a test from the list, or type its name and kind");
+
 export const orderSchema = z.object({
   encounterId: uuid,
   priority: priority.default("ROUTINE"),
   clinicalNote: z.string().trim().min(3).max(600).optional(),
-  tests: z.array(z.object({ name: z.string().trim().min(2).max(120), category: z.enum(["LABORATORY", "RADIOLOGY"]), serviceId: uuid.optional() }).strict()).min(1).max(20),
+  tests: z.array(testItem).min(1).max(20),
 }).strict();
+
+/** Reception books tests for a patient who has no doctor's order: the patient agrees, and the tests go straight into the queue. */
+export const bookSchema = z.object({
+  patientId: uuid,
+  consent: z.literal(true),
+  consentMode: z.enum(["VERBAL", "WRITTEN"]).default("VERBAL"),
+  tests: z.array(testItem).min(1).max(20),
+  priority: priority.default("ROUTINE"),
+  scheduledFor: instant.optional(),
+  assignedNurseId: uuid.optional(),
+  instructions: z.string().trim().min(3).max(600).optional(),
+  /** The outside doctor who sent the patient, if any (shown to the technician and the specialist). */
+  referredBy: z.string().trim().min(2).max(80).optional(),
+}).strict();
+
+export const catalogueSchema = z.object({ q: z.string().trim().min(1).max(60).optional(), department: z.enum(["PATHOLOGY", "RADIOLOGY"]).optional() }).strict();
+export const groupingSchema = z.object({ department: z.enum(["PATHOLOGY", "RADIOLOGY"]) }).strict();
 
 export const launchSchema = z.object({
   encounterId: uuid,
@@ -57,6 +82,10 @@ export const listSchema = z.object({
   mine: bool.optional(),
   overdue: bool.optional(),
   recollect: bool.optional(),
+  /** Outpatients expected today (or earlier and not yet attended), waiting for the sample step. */
+  expected: bool.optional(),
+  /** With `expected`: only those who have reported at reception (true) or are still to come (false). */
+  arrived: bool.optional(),
   unassigned: bool.optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -74,10 +103,10 @@ export const staffSchema = z.object({ department: z.enum(["PATHOLOGY", "RADIOLOG
 const LIST_SELECT = {
   id: true, requestNumber: true, status: true, priority: true, origin: true, consent: true, scheduledFor: true, dueAt: true, instructions: true, clinicalNote: true, createdAt: true,
   needsRecollection: true, recollectCount: true, returnedCount: true, compromisedSampleApproved: true, assignedNurseId: true, assignedTechId: true,
-  collectedAt: true, acceptedAt: true, submittedAt: true, passedAt: true, issuedAt: true, handedOverAt: true, testOrderId: true, encounterId: true, batchId: true, version: true,
+  arrivedAt: true, collectedAt: true, acceptedAt: true, submittedAt: true, passedAt: true, issuedAt: true, handedOverAt: true, testOrderId: true, encounterId: true, batchId: true, version: true,
   department: { select: { kind: true, name: true } },
   patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" as const }, select: { value: true } } } },
-  encounter: { select: { encounterNumber: true, practitioner: { select: { displayName: true } } } },
+  encounter: { select: { encounterNumber: true, practitioner: { select: { displayName: true } }, admission: { select: { admissionNumber: true, assignments: { where: { releasedAt: null }, take: 1, select: { bed: { select: { code: true, ward: { select: { name: true } } } } } } } } } },
   testOrder: { select: { name: true, status: true, labResult: { select: { id: true, version: true, hasCritical: true, criticalAckAt: true } }, radStudy: { select: { id: true, accessionNumber: true, hasCritical: true, criticalAckAt: true } }, labSamples: { where: { status: "COLLECTED" as const }, select: { accessionNumber: true }, take: 1 } } },
 } satisfies Prisma.LimsRequestSelect;
 type Row = Prisma.LimsRequestGetPayload<{ select: typeof LIST_SELECT }>;
@@ -90,9 +119,9 @@ type Row = Prisma.LimsRequestGetPayload<{ select: typeof LIST_SELECT }>;
 @Injectable()
 export class LimsService {
   constructor(
-    private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly core: LimsCoreService, private readonly messages: LimsMessagesService,
+    private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly core: LimsCoreService, private readonly messages: LimsMessagesService, private readonly schedule: LimsScheduleService,
     private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly lab: LabService, private readonly rad: RadiologyService,
-    private readonly encounters: EncountersService, private readonly clinicians: ClinicianService,
+    private readonly encounters: EncountersService, private readonly clinicians: ClinicianService, private readonly billing: LimsBillingService,
   ) {}
 
   // ───── helpers ─────
@@ -148,7 +177,8 @@ export class LimsService {
       department: r.department.kind, departmentName: r.department.name, test: r.testOrder.name, testOrderId: r.testOrderId,
       patient: { id: r.patient.id, name: nameOf(r.patient), gender: r.patient.gender, mrn: r.patient.identifiers[0]?.value ?? null },
       encounterId: r.encounterId, visitNumber: r.encounter.encounterNumber, doctor: r.encounter.practitioner?.displayName ?? null, batchId: r.batchId,
-      createdAt: r.createdAt, scheduledFor: r.scheduledFor, dueAt: r.dueAt, delayed: isDelayed({ status: r.status, dueAt: r.dueAt, issuedAt: r.issuedAt }, now),
+      bed: r.encounter.admission?.assignments[0] ? { code: r.encounter.admission.assignments[0].bed.code, ward: r.encounter.admission.assignments[0].bed.ward.name } : null,
+      createdAt: r.createdAt, scheduledFor: r.scheduledFor, arrivedAt: r.arrivedAt, dueAt: r.dueAt, delayed: isDelayed({ status: r.status, dueAt: r.dueAt, issuedAt: r.issuedAt }, now),
       assignedNurse: r.assignedNurseId ? { id: r.assignedNurseId, name: users.get(r.assignedNurseId) ?? null } : null,
       assignedTech: r.assignedTechId ? { id: r.assignedTechId, name: users.get(r.assignedTechId) ?? null } : null,
       needsRecollection: r.needsRecollection, recollectCount: r.recollectCount, returnedCount: r.returnedCount, compromisedSampleApproved: r.compromisedSampleApproved,
@@ -169,21 +199,34 @@ export class LimsService {
     // A person who can open LIMS sees both department names; the counts are limited to the departments they may read.
     const open = await this.prisma.limsRequest.groupBy({ by: ["departmentId"], where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: { in: [...OPEN_STATUSES] } }, _count: { _all: true } });
     const counts = new Map(open.map((o) => [o.departmentId, o._count._all]));
-    return rows.map((d) => ({ id: d.id, kind: d.kind, name: d.name, status: d.status, routineTatMinutes: d.routineTatMinutes, urgentTatMinutes: d.urgentTatMinutes, emergencyTatMinutes: d.emergencyTatMinutes, defaultInstructions: d.defaultInstructions, openRequests: kinds.has(d.kind) ? counts.get(d.id) ?? 0 : null, readable: kinds.has(d.kind) }));
+    return rows.map((d) => ({ id: d.id, kind: d.kind, name: d.name, status: d.status, routineTatMinutes: d.routineTatMinutes, urgentTatMinutes: d.urgentTatMinutes, emergencyTatMinutes: d.emergencyTatMinutes, defaultInstructions: d.defaultInstructions, capacityPerHour: d.capacityPerHour, openMinute: d.openMinute, closeMinute: d.closeMinute, openRequests: kinds.has(d.kind) ? counts.get(d.id) ?? 0 : null, readable: kinds.has(d.kind) }));
   }
 
   // ───── ordering (doctor) ─────
 
-  /** Matches what the doctor typed to the hospital's price list, so billing can price it later. */
-  private async priceListMatch(tx: Db, ctx: RequestContext, name: string, serviceId: string | undefined): Promise<{ serviceId: string | null; name: string }> {
-    if (serviceId) {
-      const s = await tx.service.findFirst({ where: { id: serviceId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { id: true, name: true } });
-      if (!s) throw new DomainError("VALIDATION_FAILED", "That test is not on the price list", 400);
-      return { serviceId: s.id, name: s.name };
+  /**
+   * Turns what was chosen or typed into tests with a kind. A test from the list (or a typed name that matches it) is routed by the department the list groups it with,
+   * so it always reaches the right technician whatever box it was typed in; anything else keeps the kind it was given, and is priced later by the cashier.
+   */
+  private async resolveTests(tx: Db, ctx: RequestContext, items: z.infer<typeof testItem>[]): Promise<{ name: string; category: TestCategory; serviceId: string | null }[]> {
+    const services = await tx.service.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { id: true, name: true, code: true, category: true, limsDepartment: true } });
+    const out = new Map<string, { name: string; category: TestCategory; serviceId: string | null }>();
+    for (const t of items) {
+      let r: { name: string; category: TestCategory; serviceId: string | null };
+      if (t.serviceId) {
+        const svc = services.find((x) => x.id === t.serviceId && x.category === "INVESTIGATION");
+        if (!svc) throw new DomainError("VALIDATION_FAILED", "That test is not on the test list", 400);
+        r = { name: svc.name, serviceId: svc.id, category: categoryOfDepartment(svc.limsDepartment ?? guessDepartment(svc.name)) };
+      } else {
+        const typed = (t.name ?? "").replace(/\s+/g, " ").trim();
+        const hit = services.find((x) => norm(x.name) === norm(typed) || norm(x.code) === norm(typed));
+        r = hit?.category === "INVESTIGATION"
+          ? { name: hit.name, serviceId: hit.id, category: categoryOfDepartment(hit.limsDepartment ?? guessDepartment(hit.name)) }
+          : { name: typed, serviceId: hit?.id ?? null, category: t.category as TestCategory };
+      }
+      out.set(`${r.category}|${norm(r.name)}`, r);
     }
-    const services = await tx.service.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { id: true, name: true, code: true } });
-    const hit = services.find((s) => norm(s.name) === norm(name) || norm(s.code) === norm(name));
-    return { serviceId: hit?.id ?? null, name: name.replace(/\s+/g, " ").trim() };
+    return [...out.values()];
   }
 
   /** Builds the request for a test order: department, number, due time, history, audit. */
@@ -222,6 +265,21 @@ export class LimsService {
   }
 
   /**
+   * The nurse for an admitted patient's sample, chosen automatically: of the nurses who take samples at this facility, the one with the fewest samples waiting (then by name), so
+   * the work is shared. The LIMS manager can still change it. Returns null when no nurse is set up, and the nurses are asked together instead.
+   */
+  private async autoNurse(tx: Db, ctx: RequestContext): Promise<string | null> {
+    const nurses = await tx.user.findMany({
+      where: { tenantId: ctx.tenantId, status: "ACTIVE", isService: false, facilities: { some: { facilityId: ctx.facilityId } }, roles: { some: { role: { permissions: { some: { permission: "LIMS_COLLECT" } } } } } },
+      select: { id: true, fullName: true }, orderBy: [{ fullName: "asc" }, { id: "asc" }], take: 200,
+    });
+    if (nurses.length === 0) return null;
+    const load = await tx.limsRequest.groupBy({ by: ["assignedNurseId"], where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "PENDING_COLLECTION", assignedNurseId: { in: nurses.map((n) => n.id) } }, _count: { _all: true } });
+    const waiting = new Map(load.map((l) => [l.assignedNurseId as string, l._count._all]));
+    return [...nurses].sort((a, b) => (waiting.get(a.id) ?? 0) - (waiting.get(b.id) ?? 0))[0]?.id ?? null;
+  }
+
+  /**
    * A doctor orders laboratory or imaging tests for a visit. For an admitted patient the tests go straight to the laboratory (no separate consent is asked), and the doctor can
    * mark them urgent or emergency so they come to the top of the queue. For an outpatient the order waits at reception, which launches it once the patient agrees.
    */
@@ -231,8 +289,7 @@ export class LimsService {
       await assertEncounterVisible(tx, ctx, input.encounterId);
       const enc = await this.encounters.assertActive(tx, ctx, input.encounterId);
       await this.clinicians.requireActive(tx, ctx);
-      const wanted = new Map<string, { name: string; category: TestCategory; serviceId: string | undefined }>();
-      for (const t of input.tests) wanted.set(`${t.category}|${norm(t.name)}`, { name: t.name, category: t.category, serviceId: t.serviceId });
+      const wanted = new Map((await this.resolveTests(tx, ctx, input.tests)).map((t) => [`${t.category}|${norm(t.name)}`, t]));
       // A test already on its way for this visit is not ordered twice. A test that was finished earlier may be ordered again (a repeat).
       const active = await tx.testOrder.findMany({ where: { tenantId: ctx.tenantId, encounterId: enc.id, category: { in: ["LABORATORY", "RADIOLOGY"] }, status: { in: ["ORDERED", "BILLED"] } }, select: { category: true, name: true, limsRequest: { select: { status: true } } } });
       for (const a of active) {
@@ -242,24 +299,34 @@ export class LimsService {
       const batchId = randomUUID();
       const made: { id: string; priority: LimsPriority }[] = [];
       const orders: { id: string; name: string; category: TestCategory }[] = [];
+      // An admitted patient is never held back by how busy the lab is, and the nurse is chosen at once (the LIMS manager can change it).
+      const nurseId = enc.type === "IPD" ? await this.autoNurse(tx, ctx) : null;
       for (const t of wanted.values()) {
-        const m = await this.priceListMatch(tx, ctx, t.name, t.serviceId);
+        const m = { serviceId: t.serviceId, name: t.name };
         const order = await tx.testOrder.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: enc.patientId, encounterId: enc.id, category: t.category, name: m.name, serviceId: m.serviceId, source: "LIMS", orderedById: ctx.userId }, select: { id: true, name: true, category: true } });
         orders.push(order);
         if (enc.type === "IPD") {
           const r = await this.createRequest(tx, ctx, { testOrderId: order.id, category: order.category, serviceId: m.serviceId, patientId: enc.patientId, encounterId: enc.id, origin: "IPD" }, {
-            batchId, priority: input.priority, scheduledFor: null, instructions: null, clinicalNote: input.clinicalNote ?? null, assignedNurseId: null, consent: "NOT_REQUIRED",
+            batchId, priority: input.priority, scheduledFor: null, instructions: null, clinicalNote: input.clinicalNote ?? null, assignedNurseId: nurseId, consent: "NOT_REQUIRED",
           });
+          if (nurseId) await this.core.event(tx, ctx.tenantId, r.id, "NURSE_ASSIGNED", ctx.userId, { note: "assigned automatically" });
           made.push({ id: r.id, priority: input.priority });
         }
       }
       await this.audit.record(tx, actorOf(ctx), { action: "LIMS_TESTS_ORDERED", entityType: "Encounter", entityId: enc.id, metadata: { tests: orders.length, visitType: enc.type, priority: input.priority } });
-      await this.announce(tx, ctx, made, null);
-      return { encounterId: enc.id, visitType: enc.type, routedToLab: enc.type === "IPD", tests: orders.map((o) => ({ testOrderId: o.id, name: o.name, category: o.category })) };
+      await this.announce(tx, ctx, made, nurseId);
+      return { encounterId: enc.id, visitType: enc.type, routedToLab: enc.type === "IPD", nurseAssigned: nurseId, tests: orders.map((o) => ({ testOrderId: o.id, name: o.name, category: o.category })) };
     });
   }
 
   // ───── reception: outpatient requests ─────
+
+  /** The price list amount of each test (with tax), by price-list item, as shown to reception before the patient pays. */
+  private async priceOf(db: Db | PrismaService, ctx: RequestContext, serviceIds: string[]): Promise<Map<string, string>> {
+    if (serviceIds.length === 0) return new Map();
+    const rows = await db.service.findMany({ where: { tenantId: ctx.tenantId, id: { in: serviceIds } }, select: { id: true, price: true, taxPercent: true } });
+    return new Map(rows.map((s) => [s.id, fmt(computeLine({ quantity: 1, unitPrice: s.price.toString(), discountAmount: 0, taxPercent: s.taxPercent.toString() }).total)]));
+  }
 
   /** OPD tests the doctor advised that nobody has launched yet, newest first, for reception. */
   async pending(ctx: RequestContext, q: z.infer<typeof pendingSchema>) {
@@ -278,16 +345,17 @@ export class LimsService {
       },
     });
     const serviceIds = [...new Set(rows.map((r) => r.serviceId).filter((x): x is string => !!x))];
+    const prices = await this.priceOf(this.prisma, ctx, serviceIds);
     const defs = serviceIds.length ? await this.prisma.labTestDefinition.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, serviceId: { in: serviceIds }, status: "ACTIVE" }, select: { serviceId: true, instructions: true, specimen: true, turnaroundHours: true } }) : [];
     const defOf = new Map(defs.map((d) => [d.serviceId, d]));
     const depts = await this.ensureDepartments(this.prisma, ctx.tenantId, ctx.facilityId);
-    const byEncounter = new Map<string, { encounterId: string; visitNumber: string; doctor: string | null; patient: { id: string; name: string; mrn: string | null; hasMobile: boolean }; orderedAt: Date; tests: { testOrderId: string; name: string; department: DepartmentKind; billed: boolean; instructions: string | null; specimen: string | null }[] }>();
+    const byEncounter = new Map<string, { encounterId: string; visitNumber: string; doctor: string | null; patient: { id: string; name: string; mrn: string | null; hasMobile: boolean }; orderedAt: Date; tests: { testOrderId: string; name: string; department: DepartmentKind; billed: boolean; amount: string | null; instructions: string | null; specimen: string | null }[] }>();
     for (const r of rows) {
       const kind = departmentKindOf(r.category);
       if (!kind) continue;
       const g = byEncounter.get(r.encounterId) ?? { encounterId: r.encounterId, visitNumber: r.encounter.encounterNumber, doctor: r.encounter.practitioner?.displayName ?? null, patient: { id: r.patient.id, name: nameOf(r.patient), mrn: r.patient.identifiers[0]?.value ?? null, hasMobile: /^[6-9]\d{9}$/.test((r.patient.mobile ?? "").replace(/\D/g, "").slice(-10)) }, orderedAt: r.createdAt, tests: [] };
       const d = r.serviceId ? defOf.get(r.serviceId) : undefined;
-      g.tests.push({ testOrderId: r.id, name: r.name, department: kind, billed: r.status === "BILLED", instructions: d?.instructions ?? depts.find((x) => x.kind === kind)?.defaultInstructions ?? null, specimen: d?.specimen ?? null });
+      g.tests.push({ testOrderId: r.id, name: r.name, department: kind, billed: r.status === "BILLED", amount: r.serviceId ? prices.get(r.serviceId) ?? null : null, instructions: d?.instructions ?? depts.find((x) => x.kind === kind)?.defaultInstructions ?? null, specimen: d?.specimen ?? null });
       byEncounter.set(r.encounterId, g);
     }
     return [...byEncounter.values()];
@@ -312,25 +380,95 @@ export class LimsService {
         if (o.status === "CANCELLED") throw new DomainError("INVALID_STATE", "One of these tests was cancelled", 409);
         if (!departmentKindOf(o.category)) throw new DomainError("VALIDATION_FAILED", "Only laboratory and imaging tests are launched here", 400);
       }
-      if (input.priority !== "ROUTINE" && !ctx.permissions.has("LIMS_PRIORITY")) throw new DomainError("FORBIDDEN", "You may not mark a test urgent or emergency", 403);
-      if (input.assignedNurseId && !(await this.userHas(tx, ctx, input.assignedNurseId, "LIMS_COLLECT"))) throw new DomainError("VALIDATION_FAILED", "That person cannot take samples at this facility", 400);
-      const batchId = randomUUID();
-      const made: { id: string; priority: LimsPriority; requestNumber: string; department: DepartmentKind }[] = [];
-      for (const o of orders) {
-        const r = await this.createRequest(tx, ctx, { testOrderId: o.id, category: o.category, serviceId: o.serviceId, patientId: enc.patientId, encounterId: enc.id, origin: "OPD" }, {
-          batchId, priority: input.priority, scheduledFor: input.scheduledFor ?? null, instructions: input.instructions ?? null, clinicalNote: null, assignedNurseId: input.assignedNurseId ?? null, consent: "GIVEN",
-        });
-        made.push(r);
-      }
-      await this.audit.record(tx, actorOf(ctx), {
-        action: "LIMS_OPD_LAUNCHED", entityType: "Encounter", entityId: enc.id,
-        metadata: { tests: made.length, consent: "GIVEN", consentMode: input.consentMode, priority: input.priority, scheduledFor: input.scheduledFor?.toISOString() ?? null, nurseAssigned: !!input.assignedNurseId },
-      });
-      await this.announce(tx, ctx, made, input.assignedNurseId ?? null);
-      await this.messages.queueScheduled(tx, ctx, enc.patientId, batchId);
-      return { batchId, encounterId: enc.id, requests: made.map((m) => ({ id: m.id, requestNumber: m.requestNumber, department: m.department })) };
+      return this.launchCore(tx, ctx, enc, orders, input, "LIMS_OPD_LAUNCHED");
     });
     return { ...result, messages: await this.messages.forBatch(ctx, result.batchId) };
+  }
+
+  /** The part of launching that reception's two routes share: priority, nurse, one request per test, the history, the audit, the nurse's notice and the patient's message. */
+  private async launchCore(
+    tx: Db, ctx: RequestContext, enc: { id: string; patientId: string }, orders: { id: string; category: TestCategory; serviceId: string | null }[],
+    input: { priority: LimsPriority; scheduledFor?: Date | undefined; assignedNurseId?: string | undefined; instructions?: string | undefined; consentMode: "VERBAL" | "WRITTEN"; clinicalNote?: string | null | undefined },
+    action: "LIMS_OPD_LAUNCHED" | "LIMS_OPD_BOOKED",
+  ) {
+    if (input.priority !== "ROUTINE" && !ctx.permissions.has("LIMS_PRIORITY")) throw new DomainError("FORBIDDEN", "You may not mark a test urgent or emergency", 403);
+    if (input.assignedNurseId && !(await this.userHas(tx, ctx, input.assignedNurseId, "LIMS_COLLECT"))) throw new DomainError("VALIDATION_FAILED", "That person cannot take samples at this facility", 400);
+    // The date comes from the lab load (docs/lims-portal.md): when nobody chose a time, the patient is given the first hour in which every department needed has room.
+    // Taken under a lock so two receptionists booking at once do not both take the last place.
+    let when = input.scheduledFor ?? null;
+    let autoScheduled = false;
+    if (!when && input.priority !== "EMERGENCY") {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`lims-slot:${ctx.facilityId}`}, 0))`;
+      const need: Partial<Record<DepartmentKind, number>> = {};
+      for (const o of orders) { const k = departmentKindOf(o.category); if (k) need[k] = (need[k] ?? 0) + 1; }
+      when = (await this.schedule.suggest(tx, ctx, need, input.priority)).at;
+      autoScheduled = true;
+    }
+    const batchId = randomUUID();
+    const made: { id: string; priority: LimsPriority; requestNumber: string; department: DepartmentKind }[] = [];
+    for (const o of orders) {
+      const r = await this.createRequest(tx, ctx, { testOrderId: o.id, category: o.category, serviceId: o.serviceId, patientId: enc.patientId, encounterId: enc.id, origin: "OPD" }, {
+        batchId, priority: input.priority, scheduledFor: when, instructions: input.instructions ?? null, clinicalNote: input.clinicalNote ?? null, assignedNurseId: input.assignedNurseId ?? null, consent: "GIVEN",
+      });
+      made.push(r);
+    }
+    await this.audit.record(tx, actorOf(ctx), {
+      action, entityType: "Encounter", entityId: enc.id,
+      metadata: { tests: made.length, consent: "GIVEN", consentMode: input.consentMode, priority: input.priority, scheduledFor: when?.toISOString() ?? null, autoScheduled, nurseAssigned: !!input.assignedNurseId },
+    });
+    await this.announce(tx, ctx, made, input.assignedNurseId ?? null);
+    await this.messages.queueScheduled(tx, ctx, enc.patientId, batchId);
+    return { batchId, encounterId: enc.id, scheduledFor: when, autoScheduled, requests: made.map((m) => ({ id: m.id, requestNumber: m.requestNumber, department: m.department })) };
+  }
+
+  /**
+   * Reception books tests for a patient who has no doctor's order (a patient who walks in with a request from outside, or asks for a test): the patient agrees, a
+   * laboratory-only visit is opened (no doctor, no consultation; it is left out of the consultation reports), and the tests go straight into the queue and the patient is messaged.
+   */
+  async book(ctx: RequestContext, input: z.infer<typeof bookSchema>) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (input.scheduledFor && input.scheduledFor.getTime() < Date.now() - 5 * 60_000) throw new DomainError("VALIDATION_FAILED", "The time to come cannot be in the past", 400);
+      const patient = await tx.patient.findFirst({ where: { id: input.patientId, tenantId: ctx.tenantId, status: "ACTIVE" }, select: { id: true } });
+      if (!patient) throw new DomainError("PATIENT_NOT_FOUND", "Patient not found", 404);
+      const tests = await this.resolveTests(tx, ctx, input.tests);
+      const encounterNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "OPD_VISIT");
+      const opened = new Date();
+      const enc = await tx.encounter.create({
+        data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: patient.id, encounterNumber, type: "OPD", status: "COMPLETED", startedAt: opened, endedAt: opened, labOnly: true, createdById: ctx.userId },
+        select: { id: true, patientId: true },
+      });
+      await this.audit.record(tx, actorOf(ctx), { action: "ENCOUNTER_OPENED", entityType: "Encounter", entityId: enc.id, metadata: { type: "OPD", encounterNumber, labOnly: true } });
+      const orders: { id: string; category: TestCategory; serviceId: string | null }[] = [];
+      for (const t of tests) {
+        orders.push(await tx.testOrder.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: enc.patientId, encounterId: enc.id, category: t.category, name: t.name, serviceId: t.serviceId, source: "RECEPTION", orderedById: ctx.userId }, select: { id: true, category: true, serviceId: true } }));
+      }
+      return this.launchCore(tx, ctx, enc, orders, { ...input, clinicalNote: input.referredBy ? `Referred by ${input.referredBy}` : null }, "LIMS_OPD_BOOKED");
+    });
+    return { ...result, messages: await this.messages.forBatch(ctx, result.batchId) };
+  }
+
+  // ───── the test list, grouped between the two departments ─────
+
+  /** The investigations on the price list with the department that runs each (Pathology or Radiology), for choosing a test. */
+  async catalogue(ctx: RequestContext, q: z.infer<typeof catalogueSchema>) {
+    const rows = await this.prisma.service.findMany({
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "INVESTIGATION", status: "ACTIVE", ...(q.department ? { limsDepartment: q.department } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: "insensitive" } }, { code: { contains: q.q, mode: "insensitive" } }] } : {}) },
+      orderBy: { name: "asc" }, take: 500, select: { id: true, code: true, name: true, limsDepartment: true, price: true, taxPercent: true },
+    });
+    const defs = rows.length ? await this.prisma.labTestDefinition.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, serviceId: { in: rows.map((r) => r.id) }, status: "ACTIVE" }, select: { serviceId: true, specimen: true, instructions: true } }) : [];
+    const by = new Map(defs.map((d) => [d.serviceId, d]));
+    return rows.map((r) => ({ serviceId: r.id, code: r.code, name: r.name, department: r.limsDepartment ?? guessDepartment(r.name), amount: fmt(computeLine({ quantity: 1, unitPrice: r.price.toString(), discountAmount: 0, taxPercent: r.taxPercent.toString() }).total), specimen: by.get(r.id)?.specimen ?? null, instructions: by.get(r.id)?.instructions ?? null }));
+  }
+
+  /** The administrator or the pathologist moves a test to the other department. Requests already in the queue stay where they are. */
+  async setGrouping(ctx: RequestContext, serviceId: string, input: z.infer<typeof groupingSchema>) {
+    return this.prisma.$transaction(async (tx) => {
+      const svc = await tx.service.findFirst({ where: { id: serviceId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "INVESTIGATION" }, select: { id: true, name: true, limsDepartment: true } });
+      if (!svc) throw new DomainError("NOT_FOUND", "Resource not found", 404);
+      await tx.service.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: svc.id } }, data: { limsDepartment: input.department } });
+      await this.audit.record(tx, actorOf(ctx), { action: "LIMS_TEST_GROUPING_CHANGED", entityType: "Service", entityId: svc.id, metadata: { test: svc.name, from: svc.limsDepartment ?? "NONE", to: input.department } });
+      return { serviceId: svc.id, department: input.department };
+    });
   }
 
   /** The patient does not want some tests done here: they are taken off with the reason. Tests already billed are reversed through billing, not here. */
@@ -359,6 +497,11 @@ export class LimsService {
     if (q.unassigned) and.push({ assignedTechId: null });
     if (q.recollect) and.push({ OR: [{ needsRecollection: true }, { recollectCount: { gt: 0 } }] });
     if (q.overdue) and.push({ status: { in: [...OPEN_STATUSES] }, dueAt: { lt: new Date() } });
+    if (q.expected || q.arrived !== undefined) {
+      const tz = (await this.prisma.facility.findFirstOrThrow({ where: { id: ctx.facilityId, tenantId: ctx.tenantId }, select: { timezone: true } })).timezone;
+      const endOfToday = endOfLocalDay(localDateStr(new Date(), tz), tz);
+      and.push({ origin: "OPD", status: "PENDING_COLLECTION", OR: [{ scheduledFor: null }, { scheduledFor: { lte: endOfToday } }], ...(q.arrived === undefined ? {} : { arrivedAt: q.arrived ? { not: null } : null }) });
+    }
     if (q.q) {
       const text = q.q.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").trim();
       and.push({ OR: [
@@ -539,6 +682,8 @@ export class LimsService {
       await this.audit.record(tx, actorOf(ctx), { action: "LIMS_REPORT_ISSUED", entityType: "LimsRequest", entityId: req.id, metadata: { requestNumber: req.requestNumber, department: req.department.kind, origin: req.origin } });
       const doctor = await this.notifications.doctorOfEncounter(tx, ctx.tenantId, req.encounterId);
       if (doctor) await this.core.notify(tx, ctx, [doctor], "LIMS_REPORT_ISSUED", req, "v1");
+      // An admitted patient's test is charged to the admission now that the report is out (the final bill takes it from there).
+      if (req.origin === "IPD") await this.billing.chargeAdmitted(tx, ctx, req);
       if (req.origin === "OPD") await this.messages.queueReportReady(tx, ctx, req.patientId, req.batchId);
       return this.done(req, "ISSUED");
     });

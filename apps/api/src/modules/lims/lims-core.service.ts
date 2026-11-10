@@ -16,12 +16,12 @@ export const RELEASED_ORDER: Prisma.TestOrderWhereInput = { OR: [{ limsRequest: 
 export interface RequestRow {
   id: string; tenantId: string; facilityId: string; patientId: string; encounterId: string; testOrderId: string; departmentId: string;
   requestNumber: string; status: LimsStatus; version: number; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; origin: "OPD" | "IPD";
-  assignedNurseId: string | null; assignedTechId: string | null; batchId: string; dueAt: Date; recollectCount: number; returnedCount: number;
+  assignedNurseId: string | null; assignedTechId: string | null; batchId: string; dueAt: Date; recollectCount: number; returnedCount: number; arrivedAt: Date | null;
   department: { kind: DepartmentKind };
 }
 const ROW = {
   id: true, tenantId: true, facilityId: true, patientId: true, encounterId: true, testOrderId: true, departmentId: true, requestNumber: true, status: true, version: true, priority: true,
-  origin: true, assignedNurseId: true, assignedTechId: true, batchId: true, dueAt: true, recollectCount: true, returnedCount: true, department: { select: { kind: true } },
+  origin: true, assignedNurseId: true, assignedTechId: true, batchId: true, dueAt: true, recollectCount: true, returnedCount: true, arrivedAt: true, department: { select: { kind: true } },
 } satisfies Prisma.LimsRequestSelect;
 
 type Patch = Omit<Prisma.LimsRequestUncheckedUpdateManyInput, "status" | "version" | "id" | "tenantId">;
@@ -90,6 +90,8 @@ export class LimsCoreService {
     const req = await this.find(db, ctx.tenantId, testOrderId);
     if (!req) return;
     if (req.status !== "PENDING_COLLECTION") throw new DomainError("INVALID_STATE", "This request is not waiting for a sample", 409);
+    // An outpatient is attended only after reporting at reception, where the bill is settled. (An admitted patient is already in the hospital.)
+    if (req.origin === "OPD" && !req.arrivedAt) throw new DomainError("PATIENT_NOT_ARRIVED", "The patient has not reported at reception yet", 409);
     await this.transition(db, ctx, req, "COLLECTED", "COLLECTED", { collectedAt: new Date(), collectedById: ctx.userId, needsRecollection: false });
     await this.audit.record(db, actorOf(ctx), { action: "LIMS_SAMPLE_COLLECTED", entityType: "LimsRequest", entityId: req.id, metadata: { requestNumber: req.requestNumber, department: req.department.kind } });
     const to = req.assignedTechId ? [req.assignedTechId] : await this.techsOf(db, ctx, req.department.kind);

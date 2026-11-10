@@ -22,7 +22,11 @@ export const departmentSchema = z.object({
   urgentTatMinutes: z.number().int().min(5).max(43_200),
   emergencyTatMinutes: z.number().int().min(5).max(43_200),
   defaultInstructions: z.string().trim().max(600).nullish(),
-}).strict().refine((d) => d.emergencyTatMinutes <= d.urgentTatMinutes && d.urgentTatMinutes <= d.routineTatMinutes, "Targets must get shorter from routine to urgent to emergency");
+  /** Outpatient tests the department takes in an hour, and its working hours (minutes after local midnight): the date an outpatient is given comes from these and the work already queued. */
+  capacityPerHour: z.number().int().min(1).max(500),
+  openMinute: z.number().int().min(0).max(1380),
+  closeMinute: z.number().int().min(60).max(1440),
+}).strict().refine((d) => d.closeMinute - d.openMinute >= 60, "The department must be open for at least an hour").refine((d) => d.emergencyTatMinutes <= d.urgentTatMinutes && d.urgentTatMinutes <= d.routineTatMinutes, "Targets must get shorter from routine to urgent to emergency");
 
 export const instrumentSchema = z.object({
   department: kind,
@@ -85,11 +89,11 @@ export class LimsOpsService {
       }
       const row = await tx.limsDepartment.update({
         where: { tenantId_id: { tenantId: ctx.tenantId, id: d.id } },
-        data: { name: input.name, status: input.status, routineTatMinutes: input.routineTatMinutes, urgentTatMinutes: input.urgentTatMinutes, emergencyTatMinutes: input.emergencyTatMinutes, defaultInstructions: input.defaultInstructions ?? null },
+        data: { name: input.name, status: input.status, routineTatMinutes: input.routineTatMinutes, urgentTatMinutes: input.urgentTatMinutes, emergencyTatMinutes: input.emergencyTatMinutes, defaultInstructions: input.defaultInstructions ?? null, capacityPerHour: input.capacityPerHour, openMinute: input.openMinute, closeMinute: input.closeMinute },
       });
       await this.audit.record(tx, actorOf(ctx), {
         action: "LIMS_DEPARTMENT_CHANGED", entityType: "LimsDepartment", entityId: d.id,
-        metadata: { kind: k, name: input.name, status: input.status, routine: input.routineTatMinutes, urgent: input.urgentTatMinutes, emergency: input.emergencyTatMinutes, statusFrom: d.status },
+        metadata: { kind: k, name: input.name, status: input.status, routine: input.routineTatMinutes, urgent: input.urgentTatMinutes, emergency: input.emergencyTatMinutes, capacityPerHour: input.capacityPerHour, open: input.openMinute, close: input.closeMinute, statusFrom: d.status },
       });
       return { id: row.id, kind: row.kind, name: row.name, status: row.status };
     });

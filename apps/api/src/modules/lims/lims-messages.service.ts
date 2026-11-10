@@ -89,8 +89,9 @@ export class LimsMessagesService {
     const mobile = indianMobile(p?.mobile);
     if (!mobile) return;
     if (!remindersAllowed(await reminderConsentState(tx, ctx.tenantId, patientId), false)) return;
-    const channel = await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "LIMS_MESSAGE_CHANNEL");
-    await tx.limsMessage.createMany({ data: [{ tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId, batchId, kind, channel, toMask: mask(mobile), createdById: ctx.userId }], skipDuplicates: true });
+    const setting = await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "LIMS_MESSAGE_CHANNEL");
+    const channels = setting === "BOTH" ? (["WHATSAPP", "SMS"] as const) : ([setting] as const);
+    await tx.limsMessage.createMany({ data: channels.map((channel) => ({ tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId, batchId, kind, channel, toMask: mask(mobile), createdById: ctx.userId })), skipDuplicates: true });
   }
 
   // ───── sending (the worker) ─────

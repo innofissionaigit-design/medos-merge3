@@ -6,6 +6,8 @@ import { isRestricted, visitScope } from "../../common/data-scope";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { endOfLocalDay, localDateStr, startOfLocalDay } from "../../common/time";
+import { fmt } from "../billing/billing.domain";
+import { chargeAmounts } from "../ipd/charges.service";
 import { average, DEPARTMENT_PERMISSIONS, isDelayed, OPEN_STATUSES, percentile, turnaroundMinutes, type DepartmentKind, type LimsStatus } from "./lims.domain";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -135,12 +137,13 @@ export class LimsInsightsService {
    * What the laboratory has earned, read from billing, and what has been done but not billed. Read only: the billing itself is done at the Cashier (docs/lims-portal.md, "Billing").
    */
   async billing(ctx: RequestContext, q: z.infer<typeof rangeSchema>) {
-    if (!ctx.permissions.has("INVOICE_READ")) throw new DomainError("FORBIDDEN", "You do not have permission to see billing", 403);
+    // The LIMS manager follows what the laboratory has billed and charged; everyone else needs to be allowed to see bills.
+    if (!ctx.permissions.has("INVOICE_READ") && !ctx.permissions.has("LIMS_MANAGE")) throw new DomainError("FORBIDDEN", "You do not have permission to see billing", 403);
     const w = await this.window(ctx, q);
     const kinds = this.kinds(ctx, q.department);
     const rows = await this.prisma.limsRequest.findMany({
       where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, department: { kind: { in: kinds } }, createdAt: { gte: w.gte, lte: w.lte }, status: { not: "CANCELLED" } },
-      select: { status: true, testOrderId: true, department: { select: { kind: true, name: true } }, testOrder: { select: { status: true, invoiceId: true } } },
+      select: { id: true, status: true, origin: true, requestNumber: true, testOrderId: true, department: { select: { kind: true, name: true } }, testOrder: { select: { name: true, status: true, invoiceId: true } }, patient: { select: { firstName: true, lastName: true } }, encounter: { select: { admission: { select: { admissionNumber: true } } } } },
       take: MAX_ROWS + 1,
     });
     if (rows.length > MAX_ROWS) throw new DomainError("VALIDATION_FAILED", `That period has more than ${MAX_ROWS} requests. Choose a shorter period`, 400);
@@ -150,20 +153,31 @@ export class LimsInsightsService {
       billedIds.length ? this.prisma.testBillingLine.findMany({ where: { tenantId: ctx.tenantId, testOrderId: { in: billedIds }, status: "BILLED" }, select: { id: true, testOrderId: true } }) : [],
     ]);
     const viaLines = lines.length ? await this.prisma.invoiceLine.findMany({ where: { tenantId: ctx.tenantId, sourceType: "TEST_BILLING_LINE", sourceId: { in: lines.map((l) => l.id) } }, select: { sourceId: true, lineTotal: true } }) : [];
+    // An admitted patient's test is charged to the admission when its report is issued: that charge is what has been "billed" for it.
+    const admitted = rows.filter((r) => r.origin === "IPD");
+    const charges = admitted.length ? await this.prisma.charge.findMany({ where: { tenantId: ctx.tenantId, sourceKey: { in: admitted.map((r) => `LIMS:${r.id}`) }, status: { not: "VOIDED" } }, select: { sourceKey: true, status: true, quantity: true, unitPrice: true, taxPercent: true } }) : [];
+    const chargeOf = new Map(charges.map((c) => [c.sourceKey as string, c]));
+    const chargedAmount = (id: string) => { const c = chargeOf.get(`LIMS:${id}`); return c ? chargeAmounts(c).total : null; };
     const orderOfLine = new Map(lines.map((l) => [l.id, l.testOrderId as string]));
     const amountOf = new Map<string, Decimal>();
     for (const l of direct) if (l.sourceId) amountOf.set(l.sourceId, (amountOf.get(l.sourceId) ?? new Decimal(0)).plus(new Decimal(l.lineTotal.toString())));
     for (const l of viaLines) { const o = l.sourceId ? orderOfLine.get(l.sourceId) : undefined; if (o) amountOf.set(o, (amountOf.get(o) ?? new Decimal(0)).plus(new Decimal(l.lineTotal.toString()))); }
     const departments = kinds.map((k) => {
       const r = rows.filter((x) => x.department.kind === k);
-      const billed = r.filter((x) => x.testOrder.status === "BILLED");
-      const total = billed.reduce((a, x) => a.plus(amountOf.get(x.testOrderId) ?? new Decimal(0)), new Decimal(0));
+      const billed = r.filter((x) => x.testOrder.status === "BILLED" || chargeOf.has(`LIMS:${x.id}`));
+      const total = billed.reduce((a, x) => a.plus(chargedAmount(x.id) ?? amountOf.get(x.testOrderId) ?? new Decimal(0)), new Decimal(0));
       const done = r.filter((x) => x.status === "ISSUED" || x.status === "HANDED_OVER");
       return {
         kind: k, name: r[0]?.department.name ?? (k === "PATHOLOGY" ? "Pathology" : "Radiology"), tests: r.length, billed: billed.length, notBilled: r.length - billed.length,
-        billedAmount: total.toFixed(2), reportsIssued: done.length, issuedNotBilled: done.filter((x) => x.testOrder.status !== "BILLED").length,
+        billedAmount: total.toFixed(2), reportsIssued: done.length, issuedNotBilled: done.filter((x) => x.testOrder.status !== "BILLED" && !chargeOf.has(`LIMS:${x.id}`)).length,
+        chargedToAdmissions: r.filter((x) => chargeOf.has(`LIMS:${x.id}`)).length,
       };
     });
-    return { from: w.from, to: w.to, departments, totals: { tests: rows.length, billed: departments.reduce((a, d) => a + d.billed, 0), notBilled: departments.reduce((a, d) => a + d.notBilled, 0), issuedNotBilled: departments.reduce((a, d) => a + d.issuedNotBilled, 0), billedAmount: departments.reduce((a, d) => a.plus(new Decimal(d.billedAmount)), new Decimal(0)).toFixed(2) } };
+    // The charges added to admitted patients' bills, newest first, so the manager and the administrator can follow them.
+    const admittedCharges = admitted.filter((r) => chargeOf.has(`LIMS:${r.id}`)).slice(0, 100).map((r) => ({
+      requestNumber: r.requestNumber, test: r.testOrder.name, department: r.department.kind, patient: [r.patient.firstName, r.patient.lastName].filter(Boolean).join(" "),
+      admissionNumber: r.encounter.admission?.admissionNumber ?? null, status: (chargeOf.get(`LIMS:${r.id}`) as { status: string }).status, amount: fmt(chargedAmount(r.id) ?? new Decimal(0)),
+    }));
+    return { from: w.from, to: w.to, departments, admittedCharges, totals: { tests: rows.length, billed: departments.reduce((a, d) => a + d.billed, 0), notBilled: departments.reduce((a, d) => a + d.notBilled, 0), issuedNotBilled: departments.reduce((a, d) => a + d.issuedNotBilled, 0), billedAmount: departments.reduce((a, d) => a.plus(new Decimal(d.billedAmount)), new Decimal(0)).toFixed(2) } };
   }
 }

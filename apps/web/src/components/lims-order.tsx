@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, newKey } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { PriorityBadge, stageLabel, useRefreshLims } from "./lims-common";
+import { TestPicker } from "./lims-picker";
 import { Badge, Button, Card, ErrorNote, Field, Input, Notice, Select, Table, Td, Textarea } from "./ui";
 
 interface Row { id: string; requestNumber: string; test: string; department: "PATHOLOGY" | "RADIOLOGY"; status: string; priority: "EMERGENCY" | "URGENT" | "ROUTINE"; dueAt: string; delayed: boolean; released: boolean; critical: boolean; needsRecollection: boolean }
@@ -19,6 +20,7 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
   const { can, dateTime } = useMe();
   const refresh = useRefreshLims();
   const q = useQuery({ queryKey: ["lims-visit", encounterId], queryFn: () => api.get<VisitLims>(`/encounters/${encounterId}/lims`), enabled: can("LIMS_READ"), refetchInterval: 30_000 });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [lab, setLab] = useState("");
   const [imaging, setImaging] = useState("");
   const [priority, setPriority] = useState("ROUTINE");
@@ -28,15 +30,15 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
   const order = useMutation({
     mutationFn: () => api.post<{ routedToLab: boolean; tests: unknown[] }>("/lims/orders", {
       encounterId, priority, ...(note.trim() ? { clinicalNote: note.trim() } : {}),
-      tests: [...split(lab).map((name) => ({ name, category: "LABORATORY" })), ...split(imaging).map((name) => ({ name, category: "RADIOLOGY" }))],
+      tests: [...[...picked].map((serviceId) => ({ serviceId })), ...split(lab).map((name) => ({ name, category: "LABORATORY" })), ...split(imaging).map((name) => ({ name, category: "RADIOLOGY" }))],
     }, newKey()),
-    onSuccess: (r) => { setSent(r.routedToLab ? `${r.tests.length} test(s) sent to the laboratory.` : `${r.tests.length} test(s) ordered. Reception will ask the patient to agree and then send them to the laboratory.`); setLab(""); setImaging(""); setNote(""); setPriority("ROUTINE"); done(); },
+    onSuccess: (r) => { setSent(r.routedToLab ? `${r.tests.length} test(s) sent to the laboratory.` : `${r.tests.length} test(s) ordered. Reception will ask the patient to agree and then send them to the laboratory.`); setPicked(new Set()); setLab(""); setImaging(""); setNote(""); setPriority("ROUTINE"); done(); },
   });
   const raise = useMutation({ mutationFn: (v: { id: string; priority: string }) => api.post(`/lims/requests/${v.id}/priority`, { priority: v.priority }, newKey()), onSuccess: done });
   if (!can("LIMS_READ")) return null;
   const rows = q.data?.requests ?? [];
   const nothing = !q.isLoading && rows.length === 0 && (q.data?.waitingAtReception.length ?? 0) === 0;
-  const total = split(lab).length + split(imaging).length;
+  const total = picked.size + split(lab).length + split(imaging).length;
   return (
     <Card title="Laboratory and imaging orders">
       <div className="space-y-3">
@@ -59,9 +61,12 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
           <div className="space-y-2 rounded-md border border-slate-200 p-3">
             <p className="text-sm font-medium text-slate-800">Order tests</p>
             {visitType === "OPD" && <p className="text-xs text-slate-500">For an outpatient, reception asks the patient to agree and then sends the tests to the laboratory.</p>}
+            <p className="text-xs text-slate-500">Choose from the hospital's test list. Each test goes to the technician of its department: pathology for laboratory tests, radiology for imaging.</p>
+            <TestPicker picked={picked} onChange={setPicked} />
+            <p className="text-xs text-slate-500">A test that is not on the list can be typed here (separate with commas).</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Field label="Laboratory tests (separate with commas)"><Textarea rows={2} value={lab} onChange={(e) => setLab(e.target.value)} placeholder="Complete blood count, Blood sugar fasting" /></Field>
-              <Field label="Imaging (X-ray, ultrasound, CT, MRI)"><Textarea rows={2} value={imaging} onChange={(e) => setImaging(e.target.value)} placeholder="X-ray chest, Ultrasound abdomen" /></Field>
+              <Field label="Other laboratory tests"><Textarea rows={2} value={lab} onChange={(e) => setLab(e.target.value)} placeholder="A laboratory test not on the list" /></Field>
+              <Field label="Other imaging"><Textarea rows={2} value={imaging} onChange={(e) => setImaging(e.target.value)} placeholder="An imaging test not on the list" /></Field>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <Field label="Priority"><Select value={priority} onChange={(e) => setPriority(e.target.value)}><option value="ROUTINE">Routine</option>{can("LIMS_PRIORITY") && <><option value="URGENT">Urgent</option><option value="EMERGENCY">Emergency: first in the queue</option></>}</Select></Field>

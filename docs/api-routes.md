@@ -363,6 +363,10 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | Method | Path | Access | Module flag |
 |---|---|---|---|
 | GET | `/encounters/:id/lims` | LIMS_READ |  |
+| POST | `/lims/batches/:batchId/arrive` | LIMS_REQUEST + PAYMENT_CREATE |  |
+| GET | `/lims/batches/:batchId/billing` | any of LIMS_REQUEST / LIMS_REPORTS |  |
+| GET | `/lims/catalogue` | any of LIMS_ORDER / LIMS_REQUEST / LIMS_MANAGE / LIMS_DEPARTMENTS / LAB_MASTERS |  |
+| PUT | `/lims/catalogue/:serviceId` | any of LIMS_DEPARTMENTS / LAB_MASTERS |  |
 | GET | `/lims/dashboard` | LIMS_READ |  |
 | GET | `/lims/departments` | LIMS_READ |  |
 | PUT | `/lims/departments/:kind` | LIMS_DEPARTMENTS |  |
@@ -372,6 +376,8 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/lims/instruments` | LIMS_READ |  |
 | POST | `/lims/instruments` | LIMS_MANAGE |  |
 | PUT | `/lims/instruments/:id` | LIMS_MANAGE |  |
+| GET | `/lims/opd/availability` | LIMS_REQUEST |  |
+| POST | `/lims/opd/book` | LIMS_REQUEST |  |
 | POST | `/lims/opd/decline` | LIMS_REQUEST |  |
 | POST | `/lims/opd/launch` | LIMS_REQUEST |  |
 | GET | `/lims/opd/pending` | LIMS_REQUEST |  |
@@ -381,6 +387,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/lims/qc/:id/review` | LIMS_MANAGE |  |
 | GET | `/lims/reports/billing` | LIMS_REPORTS |  |
 | GET | `/lims/reports/performance` | LIMS_REPORTS |  |
+| GET | `/lims/reports/pressure` | LIMS_REPORTS |  |
 | GET | `/lims/requests` | LIMS_READ |  |
 | GET | `/lims/requests/:id` | LIMS_READ |  |
 | POST | `/lims/requests/:id/accept` | LAB_RESULT |  |

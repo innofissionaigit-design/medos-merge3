@@ -73,6 +73,10 @@ model LimsDepartment {
   routineTatMinutes   Int                @default(1440)
   urgentTatMinutes    Int                @default(360)
   emergencyTatMinutes Int                @default(120)
+  /// How many outpatient tests the department can take in an hour, and when it works (minutes after local midnight). The date given to an outpatient comes from this and the work already queued.
+  capacityPerHour     Int                @default(6)
+  openMinute          Int                @default(480)
+  closeMinute         Int                @default(1080)
   /// What the patient is told to do before coming, unless the test has its own instructions.
   defaultInstructions String?
   createdAt           DateTime           @default(now()) @db.Timestamptz(3)
@@ -130,6 +134,9 @@ model LimsRequest {
   passedById    String?      @db.Uuid
   issuedAt      DateTime?    @db.Timestamptz(3)
   issuedById    String?      @db.Uuid
+  /// When the outpatient reported at reception (bill settled): the nurse may take the sample only after this.
+  arrivedAt     DateTime?    @db.Timestamptz(3)
+  arrivedById   String?      @db.Uuid
   handedOverAt  DateTime?    @db.Timestamptz(3)
   handedOverById String?     @db.Uuid
   handedOverTo  String?
