@@ -123,3 +123,9 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Emergency bed board, medico-legal case (MLC) record, ambulance and arrival log, resuscitation and emergency order sets, emergency reports.
 - More decisions: admit to an ordinary ward, refer to another hospital, left against advice; changing the doctor called after registration.
 - A nurse's medication chart during the emergency stay (it starts once the patient is admitted).
+
+## ICU follow-ups (docs/icu.md)
+
+- Bedside charting: fluid balance, ventilator settings, severity scores, drug infusions with rates; more nurse tasks on a schedule than vitals.
+- A notice to the ICU nurse the moment vitals become late when no page is open (today the alert bar, the board and the page show it), and escalation to the doctor.
+- A ward-to-ICU transfer from the admission page that offers the ICU doctor and sets the vitals interval; a handover summary printout.

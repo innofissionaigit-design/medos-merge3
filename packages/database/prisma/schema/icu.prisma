@@ -1,0 +1,66 @@
+// ───────────────────────── Intensive care unit (docs/icu.md) ─────────────────────────
+// An ICU stay is an ordinary Admission whose bed is in the ICU ward (a patient sent from the emergency ward keeps the same visit). The ICU adds, per admission:
+// how often vitals are to be taken (set by the ICU doctor), the doctor's instructions for the nurse, and the doctor's day-by-day record. The vitals themselves are the
+// ordinary observations of the visit, recorded by the ICU nurse.
+
+enum IcuInstructionStatus {
+  OPEN
+  DONE
+}
+
+/// How often the ICU nurse is to record vitals: 5, 15, 60 or 120 minutes. Every change is a new row; the latest is in force.
+model IcuVitalsOrder {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @db.Uuid
+  facilityId      String   @db.Uuid
+  admissionId     String   @db.Uuid
+  intervalMinutes Int
+  reason          String?
+  setById         String   @db.Uuid
+  setAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, setAt(sort: Desc)])
+}
+
+/// The doctor's instruction for the nurse. The nurse marks it done, once, with an optional note; the text is never changed.
+model IcuInstruction {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String               @db.Uuid
+  facilityId    String               @db.Uuid
+  admissionId   String               @db.Uuid
+  text          String
+  urgent        Boolean              @default(false)
+  status        IcuInstructionStatus @default(OPEN)
+  createdById   String               @db.Uuid
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  doneById      String?              @db.Uuid
+  doneAt        DateTime?            @db.Timestamptz(3)
+  doneNote      String?
+
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, status, createdAt(sort: Desc)])
+  @@index([tenantId, facilityId, status])
+}
+
+/// The doctor's record for one calendar day of the stay (hospital time). Append-only: a correction is a new note.
+model IcuDayNote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  facilityId  String   @db.Uuid
+  admissionId String   @db.Uuid
+  day         DateTime @db.Date
+  text        String
+  plan        String?
+  authorId    String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, day(sort: Desc), createdAt(sort: Desc)])
+}

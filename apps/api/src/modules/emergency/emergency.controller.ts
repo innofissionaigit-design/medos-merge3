@@ -27,6 +27,10 @@ export class EmergencyController {
   @Get("doctors")
   async doctors(@Ctx() ctx: RequestContext) { return { data: await this.emergency.doctors(ctx) }; }
 
+  @RequirePermissions("ER_TREAT")
+  @Get("icu-doctors")
+  async icuDoctors(@Ctx() ctx: RequestContext) { return { data: await this.emergency.icuDoctors(ctx) }; }
+
   @RequirePermissions("ER_READ")
   @Get("beds")
   async beds(@Ctx() ctx: RequestContext) { return { data: await this.emergency.beds(ctx) }; }

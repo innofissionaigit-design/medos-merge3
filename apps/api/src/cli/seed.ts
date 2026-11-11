@@ -101,6 +101,10 @@ async function main(): Promise<void> {
   await prisma.practitioner.create({ data: { tenantId: prov.tenantId, facilityId: prov.facilityId, userId: erDoctorUser, departmentId: emDept?.id ?? null, displayName: "Dr. Emergency Doctor One", specialty: "Emergency Medicine" } });
   await mkUser("er_nurse1", "Emergency Nurse One", "EMERGENCY_NURSE");
   await mkUser("er_reception1", "Emergency Desk One", "EMERGENCY_RECEPTIONIST");
+  // The intensive care unit (docs/icu.md): an ICU doctor and an ICU nurse.
+  const icuDoctorUser = await mkUser("icu_doctor1", "Dr. ICU Doctor One", "ICU_DOCTOR");
+  await prisma.practitioner.create({ data: { tenantId: prov.tenantId, facilityId: prov.facilityId, userId: icuDoctorUser, displayName: "Dr. ICU Doctor One", specialty: "Critical Care" } });
+  await mkUser("icu_nurse1", "ICU Nurse One", "ICU_NURSE");
   for (const [u, n, r] of [["reception1", "Reception One", "RECEPTIONIST"], ["reception2", "Reception Two", "RECEPTIONIST"], ["cashier1", "Cashier One", "CASHIER"], ["cashier2", "Cashier Two", "CASHIER"], ["pharmacist1", "Pharmacist One", "PHARMACIST"], ["manager1", "Manager One", "MANAGER"],
     // The laboratory portal (docs/lims-portal.md): one login for each role.
     ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
@@ -205,7 +209,7 @@ async function main(): Promise<void> {
   }
 
   await app.close();
-  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nEmergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_doctor1 (doctor).\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
+  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nEmergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_doctor1 (doctor).\nIntensive care (menu: ICU): icu_doctor1, icu_nurse1.\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
   process.stdout.write(generated ? `Password (generated, shown once): ${password}\n` : "Password: the value of SEED_PASSWORD\n");
 }
 

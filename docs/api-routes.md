@@ -270,6 +270,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/emergency/cases/:id/notes` | ER_TREAT |  |
 | POST | `/emergency/cases/:id/triage` | ER_TRIAGE |  |
 | GET | `/emergency/doctors` | ER_REGISTER |  |
+| GET | `/emergency/icu-doctors` | ER_TREAT |  |
 
 ## Encounters
 
@@ -310,6 +311,18 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 |---|---|---|---|
 | GET | `/health/` | public |  |
 | GET | `/health/ready` | public |  |
+
+## Icu
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/icu/alerts` | ICU_READ |  |
+| POST | `/icu/instructions/:id/done` | ICU_NURSE |  |
+| GET | `/icu/stays` | ICU_READ |  |
+| GET | `/icu/stays/:id` | ICU_READ |  |
+| POST | `/icu/stays/:id/instructions` | ICU_DOCTOR |  |
+| POST | `/icu/stays/:id/notes` | ICU_DOCTOR |  |
+| POST | `/icu/stays/:id/vitals-schedule` | ICU_DOCTOR |  |
 
 ## Imports
 

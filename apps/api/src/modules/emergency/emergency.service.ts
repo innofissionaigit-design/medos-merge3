@@ -95,7 +95,10 @@ export class EmergencyService {
   // ───── reading ─────
 
   private scope(ctx: RequestContext): Prisma.EmergencyCaseWhereInput {
-    return { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounter: { is: { ...visitScope(ctx) } } };
+    // A doctor keeps the cases called to them after the patient has moved on (the visit then belongs to the ICU doctor).
+    const s = ctx.dataScope;
+    const own: Prisma.EmergencyCaseWhereInput = { encounter: { is: { ...visitScope(ctx) } } };
+    return { tenantId: ctx.tenantId, facilityId: ctx.facilityId, ...(s.kind === "DOCTOR" ? { OR: [{ doctorId: { in: [...s.practitionerIds] } }, own] } : own) };
   }
 
   private summaryOf(c: CaseRow, ctx: RequestContext) {
@@ -177,6 +180,15 @@ export class EmergencyService {
     return docs
       .map((d) => ({ id: d.id, name: d.displayName, specialty: d.specialty, department: d.department?.name ?? null, emergencyDoctor: d.department?.code === "EM", activeCases: busy.get(d.id) ?? 0 }))
       .sort((a, b) => Number(b.emergencyDoctor) - Number(a.emergencyDoctor) || a.activeCases - b.activeCases || a.name.localeCompare(b.name));
+  }
+
+  /** The ICU doctors the emergency doctor can hand a patient over to, with how many ICU patients each has now. */
+  async icuDoctors(ctx: RequestContext) {
+    const users = await this.notifications.recipientsWith(this.prisma, ctx.tenantId, ctx.facilityId, ["ICU_DOCTOR"]);
+    const docs = await this.prisma.practitioner.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE", userId: { in: users } }, select: { id: true, displayName: true, specialty: true }, take: 100 });
+    const load = await this.prisma.admission.groupBy({ by: ["consultantId"], where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ADMITTED", consultantId: { in: docs.map((d) => d.id) } }, _count: { _all: true } });
+    const busy = new Map(load.map((l) => [l.consultantId, l._count._all]));
+    return docs.map((d) => ({ id: d.id, name: d.displayName, specialty: d.specialty, patients: busy.get(d.id) ?? 0 })).sort((a, b) => a.patients - b.patients || a.name.localeCompare(b.name));
   }
 
   /** The operation theatre and the ICU: each room's bed, and whether it is free now. */
@@ -327,8 +339,21 @@ export class EmergencyService {
         const wardCode = await this.settings.get(tx, ctx.tenantId, ctx.facilityId, input.disposition === "OT" ? "EMERGENCY_OT_WARD_CODE" : "EMERGENCY_ICU_WARD_CODE");
         const bed = await tx.bed.findFirst({ where: { id: input.bedId as string, tenantId: ctx.tenantId, facilityId: ctx.facilityId, ward: { code: wardCode } }, select: { id: true } });
         if (!bed) throw new DomainError("VALIDATION_FAILED", `Choose a bed of the ${input.disposition === "OT" ? "operation theatre" : "ICU"}`, 400, [{ path: "bedId", message: "Not a bed of that ward" }]);
+        // The doctor who takes over in the ICU must be an ICU doctor.
+        let icuDoctorUser: string | null = null;
+        if (input.disposition === "ICU" && input.consultantId) {
+          const p = await tx.practitioner.findFirst({ where: { id: input.consultantId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { userId: true } });
+          const icuDoctors = await this.notifications.recipientsWith(tx, ctx.tenantId, ctx.facilityId, ["ICU_DOCTOR"]);
+          if (!p?.userId || !icuDoctors.includes(p.userId)) throw new DomainError("VALIDATION_FAILED", "Choose an ICU doctor to take over the patient", 400, [{ path: "consultantId", message: "Not an ICU doctor" }]);
+          icuDoctorUser = p.userId;
+        }
         const adm = await this.admissions.admitFromEmergency(tx, ctx, { encounterId: c.encounterId, patientId: c.patientId, consultantId: input.consultantId ?? c.doctorId, bedId: bed.id, reason: `From the emergency ward (${c.caseNumber}): ${input.note}`.slice(0, 300) });
         admissionId = adm.id; admissionNumber = adm.admissionNumber;
+        // The handover: the ICU nurses and the ICU doctor are told, and find the whole emergency record on the patient's ICU page.
+        if (input.disposition === "ICU") {
+          const icuNurses = await this.notifications.recipientsWith(tx, ctx.tenantId, ctx.facilityId, ["ICU_NURSE"]);
+          await this.notifications.notify(tx, [...icuNurses, ...(icuDoctorUser ? [icuDoctorUser] : [])], { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "ICU_ADMITTED", entityType: "Admission", entityId: adm.id, dedupeKey: `ICU_ADMITTED:${adm.id}` });
+        }
       }
       // What was charged during the emergency is frozen on an issued bill, to be paid at the emergency desk; later charges belong to the admission.
       const issued = await this.bill.issueOpen(tx, ctx, c.encounterId);

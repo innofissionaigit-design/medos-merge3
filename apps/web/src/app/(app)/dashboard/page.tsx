@@ -42,6 +42,7 @@ export default function Dashboard() {
   // Registrations and their fees, live: refreshed every 15 seconds for the Cashier, Manager and Administrator.
   const reg = useQuery({ queryKey: ["dash-reg"], queryFn: () => api.get<RegReport>("/reports/registrations"), enabled: can("REPORT_READ", "REPORT_FINANCE"), refetchInterval: 15_000 });
   const er = useQuery({ queryKey: ["dash-er"], queryFn: () => api.page<unknown>("/emergency/cases", { view: "active", pageSize: 1 }), enabled: can("ER_READ"), refetchInterval: 15_000 });
+  const icu = useQuery({ queryKey: ["dash-icu"], queryFn: () => api.page<unknown>("/icu/stays", { pageSize: 1 }), enabled: can("ICU_READ"), refetchInterval: 15_000 });
   const nav = visibleNav(new Set(me.permissions), features, me.roles).filter((n) => n.href !== "/dashboard");
   const waiting = queue.data?.filter((q) => q.status === "WAITING" || q.status === "CALLED").length;
 
@@ -49,6 +50,7 @@ export default function Dashboard() {
     <>
       <PageHeader title={`${t("Welcome,")} ${me.fullName}`} subtitle={`${me.facility?.name ?? ""} · ${new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "full", timeZone: me.facility?.timezone ?? me.tenant.timezone }).format(new Date())}`} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {can("ICU_READ") && <Stat label="In the ICU now" value={icu.data?.meta.total} href="/icu" />}
         {can("ER_READ") && <Stat label="In the emergency ward now" value={er.data?.meta.total} href="/emergency" />}
         {can("QUEUE_READ") && <Stat label="Waiting in OPD" value={waiting} href="/queue" />}
         {can("REPORT_READ", "REPORT_OPD") && <Stat label="OPD visits today" value={opd.data?.total} href="/reports" />}

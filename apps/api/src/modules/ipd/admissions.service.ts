@@ -104,7 +104,7 @@ export class AdmissionsService {
     const bed = await this.lockBed(tx, ctx, input.bedId);
     this.assertAllocatable(bed);
     const admissionNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "ADMISSION");
-    const converted = await tx.encounter.updateMany({ where: { id: input.encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "EMERGENCY", status: "ACTIVE" }, data: { type: "IPD" } });
+    const converted = await tx.encounter.updateMany({ where: { id: input.encounterId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "EMERGENCY", status: "ACTIVE" }, data: { type: "IPD", practitionerId: consultant.id, departmentId: consultant.departmentId } });
     if (converted.count !== 1) throw new DomainError("INVALID_STATE", "This emergency visit is no longer open", 409);
     const admission = await tx.admission.create({
       data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, encounterId: input.encounterId, admissionNumber, consultantId: consultant.id, departmentId: consultant.departmentId, reason: input.reason, createdById: ctx.userId },

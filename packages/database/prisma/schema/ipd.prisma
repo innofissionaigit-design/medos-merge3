@@ -116,6 +116,9 @@ model Admission {
   finalInvoiceId String? @db.Uuid
   wardIssues     StockLocationIssue[]
   emergencyCase  EmergencyCase?
+  icuVitalsOrders IcuVitalsOrder[]
+  icuInstructions IcuInstruction[]
+  icuDayNotes    IcuDayNote[]
   finalInvoice   Invoice? @relation("AdmissionFinalInvoice", fields: [finalInvoiceId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, id])

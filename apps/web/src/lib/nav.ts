@@ -12,6 +12,8 @@ export const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   // The emergency ward (docs/emergency.md): the desk, the emergency nurse and the doctor who was called work from one board.
   { href: "/emergency", label: "Emergency", anyOf: ["ER_READ"] },
+  // The intensive care unit (docs/icu.md): the ICU doctor and the ICU nurse work from one board.
+  { href: "/icu", label: "ICU", anyOf: ["ICU_READ"] },
   { href: "/patients", label: "Patients", anyOf: ["PATIENT_READ"] },
   { href: "/appointments", label: "Appointments", anyOf: ["APPOINTMENT_READ"] },
   { href: "/queue", label: "OPD queue", anyOf: ["QUEUE_READ"] },
@@ -36,6 +38,8 @@ const ROLE_ORDER: Record<string, string[]> = {
   RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/lims", "/ipd", "/billing"],
   DOCTOR: ["/queue", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
   EMERGENCY_RECEPTIONIST: ["/emergency", "/patients", "/billing", "/dashboard"],
+  ICU_DOCTOR: ["/icu", "/patients", "/ipd", "/dashboard"],
+  ICU_NURSE: ["/icu", "/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   EMERGENCY_NURSE: ["/emergency", "/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   NURSE: ["/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   PHARMACIST: ["/pharmacy", "/billing", "/patients", "/dashboard"],

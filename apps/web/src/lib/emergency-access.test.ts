@@ -34,6 +34,22 @@ test("each emergency permission belongs to the role whose job it is", () => {
   const holders = (p: string) => Object.entries(SYSTEM_ROLES).filter(([, perms]) => perms.includes(p as never)).map(([r]) => r).sort();
   assert.deepEqual(holders("ER_REGISTER"), ["EMERGENCY_RECEPTIONIST"]);
   assert.deepEqual(holders("ER_TRIAGE"), ["EMERGENCY_NURSE"]);
-  assert.deepEqual(holders("ER_TREAT"), ["DOCTOR"]);
+  assert.deepEqual(holders("ER_TREAT"), ["DOCTOR", "ICU_DOCTOR"]);
   assert.deepEqual(holders("ER_BILL"), ["EMERGENCY_RECEPTIONIST"]);
+});
+
+test("the ICU nurse is a nurse and the ICU doctor is a doctor, each with the ICU's permissions and nothing else", () => {
+  const perms = (r: string) => SYSTEM_ROLES[r] ?? [];
+  assert.deepEqual([...perms("ICU_NURSE")].filter((p) => !perms("NURSE").includes(p)).sort(), ["ICU_NURSE", "ICU_READ"]);
+  assert.deepEqual(perms("NURSE").filter((p) => !perms("ICU_NURSE").includes(p)), []);
+  assert.deepEqual([...perms("ICU_DOCTOR")].filter((p) => !perms("DOCTOR").includes(p)).sort(), ["ICU_DOCTOR", "ICU_READ"]);
+  assert.deepEqual(perms("DOCTOR").filter((p) => !perms("ICU_DOCTOR").includes(p)), []);
+  const holders = (p: string) => Object.entries(SYSTEM_ROLES).filter(([, ps]) => ps.includes(p as never)).map(([r]) => r).sort();
+  assert.deepEqual(holders("ICU_DOCTOR"), ["ICU_DOCTOR"]);
+  assert.deepEqual(holders("ICU_NURSE"), ["ICU_NURSE"]);
+  assert.deepEqual(holders("ICU_READ"), ["ADMINISTRATOR", "ICU_DOCTOR", "ICU_NURSE", "MANAGER"]);
+  assert.equal(nav("ICU_NURSE")[0], "/icu");
+  assert.equal(nav("ICU_DOCTOR")[0], "/icu");
+  for (const role of ["NURSE", "DOCTOR", "EMERGENCY_NURSE", "CASHIER", "PHARMACIST"]) assert.ok(!nav(role).includes("/icu"), `${role} has no ICU board`);
+  for (const role of ["ADMINISTRATOR", "MANAGER"]) assert.ok(nav(role).includes("/icu"), `${role} can follow the ICU`);
 });

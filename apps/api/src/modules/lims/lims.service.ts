@@ -12,6 +12,7 @@ import { EncountersService } from "../encounters/encounters.service";
 import { LabService, rejectSampleSchema } from "../lab/lab.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NumberingService } from "../numbering/numbering.service";
+import { SettingsService } from "../settings/settings.service";
 import { performSchema, RadiologyService } from "../radiology/radiology.service";
 import { endOfLocalDay, localDateStr } from "../../common/time";
 import { computeLine, fmt } from "../billing/billing.domain";
@@ -122,7 +123,7 @@ export class LimsService {
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly core: LimsCoreService, private readonly messages: LimsMessagesService, private readonly schedule: LimsScheduleService,
     private readonly numbering: NumberingService, private readonly notifications: NotificationsService, private readonly lab: LabService, private readonly rad: RadiologyService,
-    private readonly encounters: EncountersService, private readonly clinicians: ClinicianService, private readonly billing: LimsBillingService,
+    private readonly encounters: EncountersService, private readonly clinicians: ClinicianService, private readonly billing: LimsBillingService, private readonly settings: SettingsService,
   ) {}
 
   // ───── helpers ─────
@@ -269,7 +270,7 @@ export class LimsService {
    * The nurse for an admitted patient's sample, chosen automatically: of the nurses who take samples at this facility, the one with the fewest samples waiting (then by name), so
    * the work is shared. The LIMS manager can still change it. Returns null when no nurse is set up, and the nurses are asked together instead.
    */
-  private async autoNurse(tx: Db, ctx: RequestContext, prefer?: "ER_TRIAGE"): Promise<string | null> {
+  private async autoNurse(tx: Db, ctx: RequestContext, prefer?: "ER_TRIAGE" | "ICU_NURSE"): Promise<string | null> {
     const pool = (extra: Prisma.UserWhereInput[]) => tx.user.findMany({
       where: { tenantId: ctx.tenantId, status: "ACTIVE", isService: false, facilities: { some: { facilityId: ctx.facilityId } }, AND: [{ roles: { some: { role: { permissions: { some: { permission: "LIMS_COLLECT" } } } } } }, ...extra] },
       select: { id: true, fullName: true }, orderBy: [{ fullName: "asc" }, { id: "asc" }], take: 200,
@@ -307,7 +308,10 @@ export class LimsService {
       const made: { id: string; priority: LimsPriority }[] = [];
       const orders: { id: string; name: string; category: TestCategory }[] = [];
       // An admitted patient is never held back by how busy the lab is, and the nurse is chosen at once (the LIMS manager can change it).
-      const nurseId = toLab ? await this.autoNurse(tx, ctx, enc.type === "EMERGENCY" ? "ER_TRIAGE" : undefined) : null;
+      // An emergency patient's sample is taken by an emergency nurse, an ICU patient's by an ICU nurse (and the nurse is told), when there is one.
+      const icuCode = enc.type === "IPD" ? await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "EMERGENCY_ICU_WARD_CODE") : null;
+      const inIcu = icuCode ? (await tx.bedAssignment.count({ where: { tenantId: ctx.tenantId, releasedAt: null, admission: { encounterId: enc.id }, bed: { ward: { code: icuCode } } } })) > 0 : false;
+      const nurseId = toLab ? await this.autoNurse(tx, ctx, enc.type === "EMERGENCY" ? "ER_TRIAGE" : inIcu ? "ICU_NURSE" : undefined) : null;
       for (const t of wanted.values()) {
         const m = { serviceId: t.serviceId, name: t.name };
         const order = await tx.testOrder.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: enc.patientId, encounterId: enc.id, category: t.category, name: m.name, serviceId: m.serviceId, source: "LIMS", orderedById: ctx.userId }, select: { id: true, name: true, category: true } });

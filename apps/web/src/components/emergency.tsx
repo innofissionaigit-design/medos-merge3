@@ -331,10 +331,12 @@ export function DecisionCard({ c, onChange }: { c: CaseDetail; onChange: () => v
   const [choice, setChoice] = useState<"OT" | "ICU" | "DISCHARGE" | null>(null);
   const [bedId, setBedId] = useState("");
   const [note, setNote] = useState("");
+  const [icuDoctor, setIcuDoctor] = useState("");
   const key = useRef(newKey());
+  const icuDocs = useQuery({ queryKey: ["er-icu-doctors"], queryFn: () => api.get<{ id: string; name: string; patients: number }[]>("/emergency/icu-doctors"), enabled: c.calledByMe && isOpen(c.status) });
   const beds = useQuery({ queryKey: ["er-beds"], queryFn: () => api.get<{ OT: BedRow[]; ICU: BedRow[] }>("/emergency/beds"), refetchInterval: 15_000 });
   const decide = useMutation({
-    mutationFn: () => api.post(`/emergency/cases/${c.id}/decision`, { disposition: choice, ...(choice !== "DISCHARGE" ? { bedId } : {}), note: note.trim() }, key.current),
+    mutationFn: () => api.post(`/emergency/cases/${c.id}/decision`, { disposition: choice, ...(choice !== "DISCHARGE" ? { bedId } : {}), ...(choice === "ICU" && icuDoctor ? { consultantId: icuDoctor } : {}), note: note.trim() }, key.current),
     onSuccess: () => { onChange(); void beds.refetch(); },
     onError: () => { key.current = newKey(); },
   });
@@ -372,10 +374,13 @@ export function DecisionCard({ c, onChange }: { c: CaseDetail; onChange: () => v
           </Field>
         )}
         {choice && choice !== "DISCHARGE" && free.length === 0 && <Notice tone="error">No free {choice === "OT" ? "operating room" : "ICU bed"} right now.</Notice>}
+        {choice === "ICU" && (icuDocs.data?.length ?? 0) > 0 && (
+          <Field label="ICU doctor who takes over"><Select value={icuDoctor} onChange={(e) => setIcuDoctor(e.target.value)}><option value="">Choose…</option>{icuDocs.data?.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.patients} in the ICU now)</option>)}</Select></Field>
+        )}
         {choice && <Field label="Reason for the decision"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={choice === "DISCHARGE" ? "Treated, condition and advice" : "Why the patient needs this now"} /></Field>}
         <ErrorNote error={decide.error} />
-        {choice && <ConfirmButton variant="primary" label={choice === "DISCHARGE" ? "Send the patient home" : `Send to the ${choice === "OT" ? "operation theatre" : "ICU"}`} confirmLabel="Yes, do it now" disabled={note.trim().length < 3 || (choice !== "DISCHARGE" && !bedId)} loading={decide.isPending} onConfirm={() => decide.mutate()} />}
-        <p className="text-xs text-slate-500">The patient is admitted to the bed on this same record: vitals, medicines and tests stay with the patient. The emergency bill is issued for payment at the emergency desk.</p>
+        {choice && <ConfirmButton variant="primary" label={choice === "DISCHARGE" ? "Send the patient home" : `Send to the ${choice === "OT" ? "operation theatre" : "ICU"}`} confirmLabel="Yes, do it now" disabled={note.trim().length < 3 || (choice !== "DISCHARGE" && !bedId) || (choice === "ICU" && (icuDocs.data?.length ?? 0) > 0 && !icuDoctor)} loading={decide.isPending} onConfirm={() => decide.mutate()} />}
+        <p className="text-xs text-slate-500">The patient is admitted to the bed on this same record: vitals, medicines and tests stay with the patient, and the ICU doctor and nurses see everything done here. The emergency bill is issued for payment at the emergency desk.</p>
       </div>
     </Card>
   );
