@@ -130,3 +130,9 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - A notice to the ICU nurse the moment vitals become late when no page is open (today the alert bar, the board and the page show it), and escalation to the doctor.
 - A ward-to-ICU transfer from the admission page that offers the ICU doctor and sets the vitals interval; a handover summary printout.
 - Equipment charged by the hour or by use count (today a whole calendar day, from the day it is started to the day it is stopped), tiered ICU bed prices (ventilated vs not), and a package price for a typical ICU day.
+
+## Emergency ward beds, nurse requests and manager overview follow-ups
+
+- Emergency bed charges (today the emergency fee covers the bed), a bed waiting list for a full ward, and the general admissions bed pickers hiding the emergency ward's beds.
+- Nurse requests for other things (a procedure, a consult from another doctor, oxygen or fluids), a request template per ward, and the doctor answering from the notification.
+- Manager overview: trends over time, targets, and alerts to the manager's phone; a daily summary by email.

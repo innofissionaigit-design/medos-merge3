@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Gate } from "@/components/gate";
-import { AcceptBanner, BillCard, CancelArrival, DecisionCard, isOpen, NotesCard, patientLine, TriageBadge, TriageCard, useErCase, useRefreshEmergency } from "@/components/emergency";
+import { AcceptBanner, BedCard, BillCard, CancelArrival, DecisionCard, isOpen, NotesCard, patientLine, TriageBadge, TriageCard, useErCase, useRefreshEmergency } from "@/components/emergency";
 import { VitalsCard } from "@/components/ipd-extras";
 import { VisitLabResults } from "@/components/lab";
 import { LimsVisitCard } from "@/components/lims-order";
 import { MedicationOrders } from "@/components/medication-orders";
+import { OrderRequests } from "@/components/requests";
 import { VisitRadiology } from "@/components/radiology";
 import { ErrorNote, KV, Notice, PageHeader, Spinner, StatusBadge } from "@/components/ui";
 import { useMe } from "@/lib/me";
@@ -49,7 +50,9 @@ export default function EmergencyCasePage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <TriageCard c={c} onChange={refresh} />
+          <BedCard c={c} onChange={refresh} />
           {can("VITALS_READ") && <VitalsCard encounterId={c.encounterId} open={open} onChange={refresh} />}
+          <OrderRequests encounterId={c.encounterId} open={open} area="ER" mayDecide={c.calledByMe && can("ER_TREAT")} rxKey={c.encounterId} />
           <NotesCard c={c} onChange={refresh} />
           {can("PRESCRIPTION_READ") && <MedicationOrders encounterId={c.encounterId} open={open} cacheKey={c.encounterId} />}
           {can("LIMS_READ") && (

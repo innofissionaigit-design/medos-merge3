@@ -6,9 +6,9 @@ The ICU is built inside the main app, with role-based access only (no separate p
 
 | Role | What it does | Permissions it adds |
 |---|---|---|
-| `ICU_DOCTOR` | A doctor (every `DOCTOR` permission) who takes over the patient, sets how often vitals are taken, writes instructions for the nurse and the day-by-day record, orders tests and medicines. Sees only the patients under their care. | `ICU_READ`, `ICU_DOCTOR` |
-| `ICU_NURSE` | A nurse (every `NURSE` permission) who records the vitals, carries out and ticks off the doctor's instructions, and takes the samples of the ICU patients' tests. | `ICU_READ`, `ICU_NURSE` |
-| `ADMINISTRATOR`, `MANAGER` | Follow the ICU board and every stay (read only). | `ICU_READ` |
+| `ICU_DOCTOR` | Takes over the patient, sets how often vitals are taken, writes instructions for the nurse and the day-by-day record, orders tests, prescribes and signs, **accepts or declines the nurse's requests**, starts and stops equipment, adds charges, and discharges with the discharge summary. Sees only the patients under their care. Has **no** OPD queue, appointments, video consultations, reports, nursing worklist or general admissions list: the patient's admission is opened from the ICU page. | `ICU_READ`, `ICU_DOCTOR`, patient read, vitals, allergies, prescribing and signing, `LIMS_ORDER`/`LIMS_PRIORITY`, lab and imaging read, consultation read/create/sign/amend (discharge summary), `ADMISSION_READ`, `ADMISSION_DISCHARGE`, `NURSING_READ`, `CHARGE_CREATE` |
+| `ICU_NURSE` | Records the vitals, carries out and ticks off the doctor's instructions, starts and stops equipment, takes the samples of the ICU patients' tests, gives medicines (nursing worklist), adds procedure charges, and **asks the doctor** for a test or a medicine (`docs/emergency.md`, *Nurse requests*). Has **no** OPD queue, reports or general admissions list. | `ICU_READ`, `ICU_NURSE`, `ORDER_REQUEST` + the nursing permissions of `NURSE`, without `QUEUE_READ` and `REPORT_IPD` |
+| `ADMINISTRATOR`, `MANAGER` | Follow the ICU board and every stay (read only), and the status overview. | `ICU_READ`, `OVERVIEW_READ` |
 
 Demo logins from `pnpm seed`: `icu_doctor1`, `icu_nurse1` (menu: **ICU**).
 

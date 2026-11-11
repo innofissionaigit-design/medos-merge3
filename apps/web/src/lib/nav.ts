@@ -11,6 +11,8 @@ const LIMS_NAV = ["LIMS_MANAGE", "LIMS_REPORTS", "LIMS_DEPARTMENTS", "LIMS_ISSUE
 export const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   // The emergency ward (docs/emergency.md): the desk, the emergency nurse and the doctor who was called work from one board.
+  // The manager's read-only status of the emergency ward, the ICU and billing (docs/manager-overview.md).
+  { href: "/overview", label: "Hospital status", anyOf: ["OVERVIEW_READ"] },
   { href: "/emergency", label: "Emergency", anyOf: ["ER_READ"] },
   // The intensive care unit (docs/icu.md): the ICU doctor and the ICU nurse work from one board.
   { href: "/icu", label: "ICU", anyOf: ["ICU_READ"] },
@@ -26,8 +28,9 @@ export const NAV: NavItem[] = [
   { href: "/lims", label: "Laboratory (LIMS)", anyOf: LIMS_NAV },
   // The earlier two-branch laboratory page stays for people who work in it but are not part of the portal.
   { href: "/lis", label: "LIS", anyOf: ["LAB_COLLECT", "LAB_RESULT", "LAB_VERIFY", "LAB_MASTERS", "RAD_PERFORM", "RAD_REPORT"], hideWith: LIMS_NAV },
-  { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], feature: "IPD_ENABLED" },
-  { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], feature: "NURSING_ENABLED" },
+  // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
+  { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED" },
+  { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED" },
   { href: "/reports", label: "Reports", anyOf: REPORT_PERMISSIONS },
   { href: "/admin", label: "Administration", anyOf: ["ADMIN_USERS", "ADMIN_MASTERS", "ADMIN_SETTINGS"] },
   { href: "/audit", label: "Audit", anyOf: ["AUDIT_READ"] },
@@ -38,9 +41,10 @@ const ROLE_ORDER: Record<string, string[]> = {
   RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/lims", "/ipd", "/billing"],
   DOCTOR: ["/queue", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
   EMERGENCY_RECEPTIONIST: ["/emergency", "/patients", "/billing", "/dashboard"],
-  ICU_DOCTOR: ["/icu", "/patients", "/ipd", "/dashboard"],
-  ICU_NURSE: ["/icu", "/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
-  EMERGENCY_NURSE: ["/emergency", "/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
+  EMERGENCY_DOCTOR: ["/emergency", "/patients", "/dashboard"],
+  ICU_DOCTOR: ["/icu", "/patients", "/dashboard"],
+  ICU_NURSE: ["/icu", "/nursing", "/lims", "/patients", "/dashboard"],
+  EMERGENCY_NURSE: ["/emergency", "/lims", "/patients", "/dashboard"],
   NURSE: ["/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   PHARMACIST: ["/pharmacy", "/billing", "/patients", "/dashboard"],
   PAYROLL_OFFICER: ["/payroll", "/patients", "/dashboard"],
@@ -53,8 +57,8 @@ const ROLE_ORDER: Record<string, string[]> = {
   P_LAB_TECH: ["/lims", "/patients", "/dashboard"],
   R_LAB_TECH: ["/lims", "/patients", "/dashboard"],
   CASHIER: ["/billing", "/dashboard", "/patients"],
-  ADMINISTRATOR: ["/dashboard", "/reports", "/admin", "/audit"],
-  MANAGER: ["/dashboard", "/reports", "/billing", "/audit"],
+  ADMINISTRATOR: ["/dashboard", "/overview", "/reports", "/admin", "/audit"],
+  MANAGER: ["/overview", "/dashboard", "/reports", "/billing", "/audit"],
 };
 
 export function visibleNav(permissions: ReadonlySet<string>, features: Record<string, boolean>, roles: string[]): NavItem[] {

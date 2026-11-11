@@ -76,8 +76,8 @@ export class PrescriptionsService {
   }
 
   /** The doctor's working prescription. Replaces the draft's items; the draft is not visible to pharmacy. */
-  async saveDraft(ctx: RequestContext, encounterId: string, input: z.infer<typeof saveDraftSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+  async saveDraft(ctx: RequestContext, encounterId: string, input: z.infer<typeof saveDraftSchema>, outer?: Db) {
+    const run = async (tx: Db) => {
       const enc = await this.encounters.assertActive(tx, ctx, encounterId);
       await this.clinicians.requireActive(tx, ctx);
       await this.assertOpenForPrescribing(tx, ctx, enc.type, encounterId);
@@ -94,7 +94,8 @@ export class PrescriptionsService {
       await this.audit.record(tx, actorOf(ctx), { action: "PRESCRIPTION_DRAFT_SAVED", entityType: "MedicationOrder", entityId: draft.id, metadata: { encounterId, items: input.items.length } });
       const order = await tx.medicationOrder.findFirstOrThrow({ where: { id: draft.id, tenantId: ctx.tenantId }, select: ORDER_VIEW });
       return { order, allergyWarnings: await this.warningsFor(tx, ctx, enc.patientId, input.items.flatMap((i) => [i.genericName, ...(i.brandName ? [i.brandName] : [])])) };
-    });
+    };
+    return outer ? run(outer) : this.prisma.$transaction(run);
   }
 
   async listForEncounter(ctx: RequestContext, encounterId: string) {

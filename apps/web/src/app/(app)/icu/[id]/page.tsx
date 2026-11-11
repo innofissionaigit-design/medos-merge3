@@ -6,6 +6,7 @@ import { DaysCard, EquipmentCard, FromEmergencyCard, IcuBillingCard, Instruction
 import { VisitLabResults } from "@/components/lab";
 import { LimsVisitCard } from "@/components/lims-order";
 import { MedicationOrders } from "@/components/medication-orders";
+import { OrderRequests } from "@/components/requests";
 import { VisitRadiology } from "@/components/radiology";
 import { ErrorNote, KV, Notice, PageHeader, Spinner } from "@/components/ui";
 import { ageText } from "@/lib/format";
@@ -35,6 +36,7 @@ export default function IcuStayPage() {
           <ScheduleCard s={s} onChange={refresh} />
           <IcuVitalsCard s={s} onChange={refresh} />
           <InstructionsCard s={s} onChange={refresh} />
+          <OrderRequests encounterId={s.encounterId} open area="ICU" mayDecide={s.calledByMe && can("ICU_DOCTOR")} rxKey={s.id} />
           <EquipmentCard s={s} onChange={refresh} />
           {can("LIMS_READ") && (
             <div className="space-y-4">

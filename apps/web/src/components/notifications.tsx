@@ -33,10 +33,12 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   ICU_ADMITTED: { text: "A patient has been sent to the ICU", href: "/icu", critical: true },
   ICU_INSTRUCTION: { text: "The doctor gave an instruction for an ICU patient", href: "/icu" },
   ICU_VITALS_SCHEDULE: { text: "The doctor set how often an ICU patient's vitals are taken", href: "/icu" },
+  ORDER_REQUESTED: { text: "A nurse has asked you for a test or a medicine", href: "/emergency" },
+  ORDER_REQUEST_DECIDED: { text: "The doctor has answered your request", href: "/emergency" },
 };
 const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 /** An emergency notice leads straight to the case it is about. */
-const hrefOf = (r: Row): string => r.href ?? (r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : r.type.startsWith("ICU_") && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
+const hrefOf = (r: Row): string => r.href ?? (r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
 
 /**
  * The bell in the top bar. The browser listens to a live stream that says "something changed" and then fetches; if the stream is not open

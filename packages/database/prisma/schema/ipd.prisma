@@ -65,6 +65,7 @@ model Bed {
   ward        Ward            @relation(fields: [tenantId, facilityId, wardId], references: [tenantId, facilityId, id], onDelete: Restrict)
   room        Room            @relation(fields: [tenantId, facilityId, roomId], references: [tenantId, facilityId, id], onDelete: Restrict)
   assignments BedAssignment[]
+  emergencyStays EmergencyBedStay[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])

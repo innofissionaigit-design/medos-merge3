@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { Ctx, id, paginate, parse, RequirePermissions } from "../../common/http";
+import { Ctx, id, paginate, parse, RequireAnyPermission, RequirePermissions } from "../../common/http";
 import { parseIdempotencyKey } from "../../common/idempotency.service";
 import type { RequestContext } from "../../common/request-context";
-import { addChargeSchema, cancelEmergencySchema, decisionSchema, emergencyNoteSchema, EmergencyService, listEmergencySchema, registerEmergencySchema, triageSchema } from "./emergency.service";
+import { addChargeSchema, cancelEmergencySchema, decisionSchema, emergencyNoteSchema, EmergencyService, listEmergencySchema, moveBedSchema, registerEmergencySchema, triageSchema } from "./emergency.service";
 
 /** The emergency ward (docs/emergency.md). Every route checks its permission here, and the service checks the case against the caller's tenant, facility and data scope. */
 @Controller("emergency")
@@ -47,6 +47,12 @@ export class EmergencyController {
   @RequirePermissions("ER_READ")
   @Get("cases/:id")
   async get(@Ctx() ctx: RequestContext, @Param("id") caseId: string) { return { data: await this.emergency.get(ctx, id(caseId)) }; }
+
+  /** Puts the patient in an emergency bed, or moves them to another. */
+  @RequireAnyPermission("ER_TRIAGE", "ER_REGISTER")
+  @Post("cases/:id/bed")
+  @HttpCode(200)
+  async moveBed(@Ctx() ctx: RequestContext, @Param("id") caseId: string, @Body() body: unknown) { return { data: await this.emergency.moveBed(ctx, id(caseId), parse(moveBedSchema, body)) }; }
 
   @RequirePermissions("ER_TRIAGE")
   @Post("cases/:id/triage")

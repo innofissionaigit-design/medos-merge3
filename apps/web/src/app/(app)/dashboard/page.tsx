@@ -56,7 +56,7 @@ export default function Dashboard() {
         {can("REPORT_READ", "REPORT_OPD") && <Stat label="OPD visits today" value={opd.data?.total} href="/reports" />}
         {can("REPORT_READ", "REPORT_FINANCE") && <Stat label="Collected today" value={col.data ? money(col.data.totals.net) : undefined} href="/reports" />}
         {can("REPORT_READ", "REPORT_FINANCE") && <Stat label="Outstanding bills" value={outstanding.data ? `${outstanding.data.total} · ${money(outstanding.data.totalDue)}` : undefined} href="/billing" />}
-        {can("ADMISSION_READ") && features.IPD_ENABLED && <Stat label="Admitted patients" value={adm.data?.meta.total} href="/ipd" />}
+        {can("ADMISSION_READ") && !can("ICU_DOCTOR") && features.IPD_ENABLED && <Stat label="Admitted patients" value={adm.data?.meta.total} href="/ipd" />}
         {can("REPORT_READ", "REPORT_PHARMACY") && features.PHARMACY_ENABLED && <Stat label="Low-stock medicines" value={low.data?.rows.length} href="/pharmacy" />}
       </div>
       {can("REPORT_READ", "REPORT_FINANCE") && reg.data && (reg.data.rows.length > 0 || reg.data.stillDue.count > 0 || Number(reg.data.totals.collected) > 0) && (

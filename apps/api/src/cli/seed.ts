@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < COUNTS.nurses; i++) await mkUser(`nurse${i + 1}`, `Nurse ${pick(FIRST_NAMES_F)} ${pick(LAST_NAMES)}`, "NURSE");
   // The emergency ward (docs/emergency.md): a doctor of the Emergency Medicine department, an emergency nurse and the emergency receptionist. The OT and ICU wards come with the hospital.
   const emDept = await prisma.department.findFirst({ where: { tenantId: prov.tenantId, facilityId: prov.facilityId, code: "EM" } });
-  const erDoctorUser = await mkUser("er_doctor1", "Dr. Emergency Doctor One", "DOCTOR");
+  const erDoctorUser = await mkUser("er_doctor1", "Dr. Emergency Doctor One", "EMERGENCY_DOCTOR");
   await prisma.practitioner.create({ data: { tenantId: prov.tenantId, facilityId: prov.facilityId, userId: erDoctorUser, departmentId: emDept?.id ?? null, displayName: "Dr. Emergency Doctor One", specialty: "Emergency Medicine" } });
   await mkUser("er_nurse1", "Emergency Nurse One", "EMERGENCY_NURSE");
   await mkUser("er_reception1", "Emergency Desk One", "EMERGENCY_RECEPTIONIST");

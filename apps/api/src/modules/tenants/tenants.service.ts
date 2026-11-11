@@ -84,6 +84,10 @@ export class TenantsService {
           await tx.bed.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: ward.id, roomId: room.id, code: bed, dailyRate: w.rate } });
         }
       }
+      // The emergency ward: one emergency room with six beds, where an emergency patient lies until the doctor decides (no bed charge: the emergency fee covers it).
+      const erWard = await tx.ward.create({ data: { tenantId: tenant.id, facilityId: facility.id, name: "Emergency Ward", code: "ER" } });
+      const erRoom = await tx.room.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: erWard.id, name: "Emergency Room", code: "ER-1" } });
+      for (let n = 1; n <= 6; n++) await tx.bed.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: erWard.id, roomId: erRoom.id, code: `ER${n}`, dailyRate: "0.00" } });
       await tx.numberSequenceConfig.createMany({
         data: DEFAULT_SEQUENCES.map((s) => ({ tenantId: tenant.id, facilityId: facility.id, type: s.type, pattern: s.pattern, padding: s.padding, resetPolicy: s.resetPolicy })),
       });

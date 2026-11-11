@@ -83,6 +83,7 @@ model EmergencyCase {
   admission Admission?   @relation(fields: [admissionId], references: [id], onDelete: Restrict)
   triages   EmergencyTriage[]
   notes     EmergencyNote[]
+  bedStays  EmergencyBedStay[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])
@@ -133,4 +134,65 @@ model EmergencyNote {
 
   @@unique([tenantId, id])
   @@index([tenantId, caseId, createdAt(sort: Desc)])
+}
+
+/// The bed an emergency patient lies in while in the emergency ward (docs/emergency.md). One row for each stay in a bed, so where the patient was is never lost; the open row (not released) is where the
+/// patient is now. A patient who has no bed yet (the ward is full) simply has no open row. Released when the doctor decides, or the case is cancelled.
+model EmergencyBedStay {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  facilityId   String    @db.Uuid
+  caseId       String    @db.Uuid
+  bedId        String    @db.Uuid
+  assignedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  assignedById String    @db.Uuid
+  releasedAt   DateTime? @db.Timestamptz(3)
+  releasedById String?   @db.Uuid
+
+  case EmergencyCase @relation(fields: [tenantId, facilityId, caseId], references: [tenantId, facilityId, id], onDelete: Restrict)
+  bed  Bed           @relation(fields: [tenantId, facilityId, bedId], references: [tenantId, facilityId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, caseId, assignedAt(sort: Desc)])
+  @@index([tenantId, bedId, assignedAt(sort: Desc)])
+}
+
+enum OrderRequestKind {
+  TEST
+  MEDICINE
+}
+
+enum OrderRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+/// A nurse's request for a test or a medicine for a patient in the emergency ward or the ICU. The doctor in charge of the visit accepts it (the test is then ordered, or the medicine is put on the
+/// doctor's draft prescription to review and sign) or declines it with a reason. The request is kept as the nurse wrote it; only its decision is added.
+model OrderRequest {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String             @db.Uuid
+  facilityId    String             @db.Uuid
+  encounterId   String             @db.Uuid
+  patientId     String             @db.Uuid
+  kind          OrderRequestKind
+  status        OrderRequestStatus @default(PENDING)
+  /// A line the lists show: the tests, or the medicine with its dose.
+  summary       String
+  /// What exactly is asked, checked when the request is made: the tests (and priority) or the medicine's order line.
+  payload       Json
+  note          String?
+  requestedById String             @db.Uuid
+  requestedAt   DateTime           @default(now()) @db.Timestamptz(3)
+  decidedById   String?            @db.Uuid
+  decidedAt     DateTime?          @db.Timestamptz(3)
+  decisionNote  String?
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, encounterId, requestedAt(sort: Desc)])
+  @@index([tenantId, facilityId, status, requestedAt])
 }

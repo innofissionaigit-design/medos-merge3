@@ -263,6 +263,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/emergency/cases` | ER_REGISTER |  |
 | GET | `/emergency/cases/:id` | ER_READ |  |
 | POST | `/emergency/cases/:id/accept` | ER_TREAT |  |
+| POST | `/emergency/cases/:id/bed` | any of ER_TRIAGE / ER_REGISTER |  |
 | POST | `/emergency/cases/:id/bill/charges` | ER_BILL |  |
 | POST | `/emergency/cases/:id/bill/issue` | ER_BILL |  |
 | POST | `/emergency/cases/:id/cancel` | ER_REGISTER |  |
@@ -507,6 +508,12 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/ocr/config/disconnect` | ADMIN_SETTINGS |  |
 | POST | `/ocr/config/test` | ADMIN_SETTINGS |  |
 
+## Overview
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/overview/` | OVERVIEW_READ |  |
+
 ## Patients
 
 | Method | Path | Access | Module flag |
@@ -718,6 +725,15 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/reports/pharmacy/stock` | any of REPORT_READ / REPORT_PHARMACY | PHARMACY_ENABLED |
 | GET | `/reports/pharmacy/stock-movement` | any of REPORT_READ / REPORT_PHARMACY | PHARMACY_ENABLED |
 | GET | `/reports/registrations` | any of REPORT_READ / REPORT_FINANCE |  |
+
+## Requests
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/order-requests/` | any of ORDER_REQUEST / ER_TREAT / ICU_DOCTOR |  |
+| POST | `/order-requests/` | ORDER_REQUEST |  |
+| POST | `/order-requests/:id/cancel` | ORDER_REQUEST |  |
+| POST | `/order-requests/:id/decision` | any of ER_TREAT / ICU_DOCTOR |  |
 
 ## Scans
 

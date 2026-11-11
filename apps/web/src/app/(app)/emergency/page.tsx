@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Gate } from "@/components/gate";
-import { isOpen, LEVELS, patientLine, RegisterArrival, TriageBadge, type CaseRow, type Level } from "@/components/emergency";
+import { isOpen, LEVELS, patientLine, RegisterArrival, TriageBadge, WardMap, type CaseRow, type Level } from "@/components/emergency";
 import { Badge, Button, Card, PageHeader, Spinner, StatusBadge, Table, Tabs, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/me";
@@ -34,13 +34,15 @@ export default function EmergencyBoard() {
           {untriaged > 0 && <Badge tone="amber">{untriaged} waiting for triage</Badge>}
         </div>
       )}
+      {view === "active" && <div className="mb-3"><WardMap /></div>}
       <Card>
         {list.isLoading ? <Spinner /> : (
-          <Table head={["Level", "Patient", "Complaint", "Arrived", "Doctor", "Where it stands", "Bill due", ""]} {...(rows.length === 0 ? { empty: view === "active" ? "No patient in the emergency ward." : "Nobody yet." } : {})}>
+          <Table head={["Level", "Patient", "Bed", "Complaint", "Arrived", "Doctor", "Where it stands", "Bill due", ""]} {...(rows.length === 0 ? { empty: view === "active" ? "No patient in the emergency ward." : "Nobody yet." } : {})}>
             {rows.map((r) => (
               <tr key={r.id} className={r.triageLevel && isOpen(r.status) ? LEVELS[r.triageLevel].row : ""}>
                 <Td><TriageBadge level={r.triageLevel} /></Td>
                 <Td><div className="font-medium">{r.patient?.name ?? r.caseNumber}</div><div className="text-xs text-slate-500">{patientLine(r.patient)}</div></Td>
+                <Td>{r.bed ? <span className="font-medium">{r.bed.code}</span> : isOpen(r.status) ? <span className="text-xs text-amber-800">no bed</span> : <span className="text-slate-400">—</span>}</Td>
                 <Td className="max-w-xs"><div className="truncate" title={r.chiefComplaint}>{r.chiefComplaint}</div><div className="text-xs text-slate-500">{r.arrivalMode.replace("_", " ").toLowerCase()}</div></Td>
                 <Td><div>{dateTime(r.arrivedAt)}</div><div className="text-xs text-slate-500">{isOpen(r.status) ? minutesAgo(r.arrivedAt) : ""}</div></Td>
                 <Td>{r.doctorName}{isOpen(r.status) && !r.doctorAccepted && <div className="text-xs text-red-700">not accepted yet</div>}</Td>

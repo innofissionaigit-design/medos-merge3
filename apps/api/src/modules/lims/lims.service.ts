@@ -33,7 +33,7 @@ const norm = (s: string): string => s.trim().replace(/\s+/g, " ").toLowerCase();
 const nameOf = (p: { firstName: string; lastName: string | null }) => [p.firstName, p.lastName].filter(Boolean).join(" ");
 
 /** A test is chosen from the test list (its department decides who runs it), or typed with its kind. A typed name that matches the list is routed by the list. */
-const testItem = z.object({ serviceId: uuid.optional(), name: z.string().trim().min(2).max(120).optional(), category: z.enum(["LABORATORY", "RADIOLOGY"]).optional() }).strict()
+export const testItem = z.object({ serviceId: uuid.optional(), name: z.string().trim().min(2).max(120).optional(), category: z.enum(["LABORATORY", "RADIOLOGY"]).optional() }).strict()
   .refine((t) => !!t.serviceId || (!!t.name && !!t.category), "Choose a test from the list, or type its name and kind");
 
 export const orderSchema = z.object({
@@ -288,9 +288,10 @@ export class LimsService {
    * A doctor orders laboratory or imaging tests for a visit. For an admitted patient the tests go straight to the laboratory (no separate consent is asked), and the doctor can
    * mark them urgent or emergency so they come to the top of the queue. For an outpatient the order waits at reception, which launches it once the patient agrees.
    */
-  async order(ctx: RequestContext, input: z.infer<typeof orderSchema>) {
+  /** Orders tests for a visit. `outer` lets the caller do it inside its own transaction (a doctor accepting a nurse's request). */
+  async order(ctx: RequestContext, input: z.infer<typeof orderSchema>, outer?: Db) {
     if (input.priority !== undefined && input.priority !== "ROUTINE" && !ctx.permissions.has("LIMS_PRIORITY")) throw new DomainError("FORBIDDEN", "You may not mark a test urgent or emergency", 403);
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Db) => {
       await assertEncounterVisible(tx, ctx, input.encounterId);
       const enc = await this.encounters.assertActive(tx, ctx, input.encounterId);
       // The tests of a patient in the emergency ward are tagged emergency unless the doctor chose otherwise.
@@ -327,7 +328,8 @@ export class LimsService {
       await this.audit.record(tx, actorOf(ctx), { action: "LIMS_TESTS_ORDERED", entityType: "Encounter", entityId: enc.id, metadata: { tests: orders.length, visitType: enc.type, priority: prio } });
       await this.announce(tx, ctx, made, nurseId);
       return { encounterId: enc.id, visitType: enc.type, priority: prio, routedToLab: toLab, nurseAssigned: nurseId, tests: orders.map((o) => ({ testOrderId: o.id, name: o.name, category: o.category })) };
-    });
+    };
+    return outer ? run(outer) : this.prisma.$transaction(run);
   }
 
   // ───── reception: outpatient requests ─────

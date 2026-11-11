@@ -25,6 +25,16 @@ export function MedicationOrders({ encounterId, open, cacheKey }: { encounterId:
   const [ack, setAck] = useState<RxWarning[] | null>(null);
   const [ackChecked, setAckChecked] = useState(false);
   useEffect(() => { if (rx.data && !loaded) { setItems(draft?.items.map((i) => ({ ...i })) ?? []); setLoaded(true); } }, [rx.data, loaded, draft]);
+  // A medicine added to the draft from outside this form (a nurse's request the doctor accepted) appears at once, without losing rows being typed.
+  const draftIds = (draft?.items ?? []).map((i) => i.id).join(",");
+  useEffect(() => {
+    if (!loaded || !draft) return;
+    setItems((prev) => {
+      const have = new Set(prev.flatMap((p) => (p.id ? [p.id] : [])));
+      const add = draft.items.filter((i) => !have.has(i.id)).map((i) => ({ ...i }));
+      return add.length ? [...prev.filter((p) => p.genericName.trim()), ...add] : prev;
+    });
+  }, [draftIds, loaded]);
   // Fetch the saved copy FIRST, then refill the rows from it: refilling from the copy loaded before the save would blank what was just typed.
   const resync = async () => { await Promise.all([qc.invalidateQueries({ queryKey: ["ipd-rx", cacheKey] }), qc.invalidateQueries({ queryKey: ["mar", cacheKey] })]); setLoaded(false); };
   const filled = () => items.filter((i) => i.genericName.trim()).map(toPayload);

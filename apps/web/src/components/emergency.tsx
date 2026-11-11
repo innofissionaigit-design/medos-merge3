@@ -31,6 +31,8 @@ export interface CaseRow {
   id: string; caseNumber: string; status: string; arrivalMode: string; chiefComplaint: string; broughtBy: string | null; arrivedAt: string; triageLevel: Level | null; needsTriage: boolean; doctorAccepted: boolean;
   doctorName: string; calledByMe: boolean; encounterId: string; patientId: string; disposition: "OT" | "ICU" | "DISCHARGE" | null; dispositionNote: string | null; dispositionAt: string | null; cancelReason: string | null;
   patient: PersonView | null; admission: { id: string; admissionNumber: string | null; bed: string | null } | null;
+  /** The emergency bed the patient lies in now (none when the ward was full). */
+  bed: { id: string; code: string; room: string; since: string } | null;
   bill: { open: string; billed: string; paid: string; due: string };
 }
 interface BillInvoice { id: string; invoiceNumber: string | null; status: string; kind: string; total: string; paidTotal: string; balanceDue: string; lines: { lineNo: number; description: string; quantity: string; unitPrice: string; lineTotal: string; source: string | null }[] }
@@ -47,7 +49,7 @@ export const isOpen = (status: string): boolean => ["ARRIVED", "TRIAGED", "IN_TR
 export const useErCase = (id: string) => useQuery({ queryKey: ["er-case", id], queryFn: () => api.get<CaseDetail>(`/emergency/cases/${id}`), refetchInterval: 8_000 });
 export function useRefreshEmergency() {
   const qc = useQueryClient();
-  return () => { for (const k of ["er-case", "er-cases", "er-alerts", "notif-unread", "notif-list"]) void qc.invalidateQueries({ queryKey: [k] }); };
+  return () => { for (const k of ["er-case", "er-cases", "er-alerts", "er-beds", "order-requests", "notif-unread", "notif-list"]) void qc.invalidateQueries({ queryKey: [k] }); };
 }
 
 // ───────────────────────── the desk: register an arriving patient ─────────────────────────
@@ -67,6 +69,8 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
   const [complaint, setComplaint] = useState("");
   const [mode, setMode] = useState("AMBULANCE");
   const [broughtBy, setBroughtBy] = useState("");
+  const [bedId, setBedId] = useState("");
+  const wardBeds = useQuery({ queryKey: ["er-beds"], queryFn: () => api.get<WardBeds>("/emergency/beds") });
   const created = useRef<string | null>(null); // a patient made in this form is not made again if the next step has to be retried
   const docs = useQuery({ queryKey: ["er-doctors"], queryFn: () => api.get<Doc[]>("/emergency/doctors") });
   const fee = useQuery({ queryKey: ["reg-fee-config"], queryFn: () => api.get<{ enabled: boolean; exemptReasons: string[] }>("/patients/registration-fee/config") });
@@ -86,7 +90,7 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
         patientId = (await api.post<{ id: string }>("/patients", body, newKey())).id;
         created.current = patientId;
       }
-      return api.post<{ id: string }>("/emergency/cases", { patientId, doctorId: doctor, chiefComplaint: complaint.trim(), arrivalMode: mode, ...(broughtBy.trim() ? { broughtBy: broughtBy.trim() } : {}) }, newKey());
+      return api.post<{ id: string }>("/emergency/cases", { patientId, doctorId: doctor, chiefComplaint: complaint.trim(), arrivalMode: mode, ...(broughtBy.trim() ? { broughtBy: broughtBy.trim() } : {}), ...(bedId ? { bedId } : {}) }, newKey());
     },
     onSuccess: (c) => { refresh(); onClose(); router.push(`/emergency/${c.id}`); },
   });
@@ -121,6 +125,7 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
           <Field label="Doctor to call"><Select value={doctor} onChange={(e) => setDoctorId(e.target.value)}>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.name}{d.department ? ` — ${d.department}` : ""} ({d.activeCases} now)</option>)}</Select></Field>
           <Field label="How did the patient come?"><Select value={mode} onChange={(e) => setMode(e.target.value)}>{ARRIVAL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
           <Field label="Brought by (optional)"><Input value={broughtBy} onChange={(e) => setBroughtBy(e.target.value)} placeholder="Name or relation" /></Field>
+          <Field label="Emergency bed"><Select aria-label="Emergency bed" value={bedId} onChange={(e) => setBedId(e.target.value)}><option value="">First free bed ({wardBeds.data?.ER.filter((b) => b.free).length ?? 0} free)</option>{wardBeds.data?.ER.filter((b) => b.free).map((b) => <option key={b.id} value={b.id}>{b.code}</option>)}</Select></Field>
         </div>
         {duplicates ? (
           <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -136,6 +141,58 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!ready} loading={submit.isPending} onClick={() => submit.mutate(undefined)}>Register and call the doctor</Button></div>
       </div>
     </Modal>
+  );
+}
+
+// ───────────────────────── the emergency ward's beds ─────────────────────────
+
+export interface WardBed { id: string; code: string; room: string; ward: string; status: string; free: boolean; occupant: { caseId: string; caseNumber: string; triageLevel: Level | null; patientName: string | null } | null }
+export interface WardBeds { ER: WardBed[]; OT: WardBed[]; ICU: WardBed[] }
+export const useWardBeds = () => useQuery({ queryKey: ["er-beds"], queryFn: () => api.get<WardBeds>("/emergency/beds"), refetchInterval: 10_000 });
+
+/** The emergency ward as a row of beds: who lies in each, in the colour of their triage, and which are free. */
+export function WardMap() {
+  const beds = useWardBeds();
+  const ward = beds.data?.ER ?? [];
+  if (ward.length === 0) return null;
+  return (
+    <Card title="Emergency ward beds" actions={<span className="text-sm text-slate-600">{ward.filter((b) => b.free).length} of {ward.length} free</span>}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" data-testid="ward-map">
+        {ward.map((b) => {
+          const o = b.occupant;
+          const tone = o ? (o.triageLevel ? LEVELS[o.triageLevel].row : "border-l-4 border-slate-400 bg-slate-50") : b.free ? "border border-green-200 bg-green-50" : "border border-slate-200 bg-slate-100";
+          return (
+            <div key={b.id} className={`rounded-md p-2 text-sm ${tone}`}>
+              <div className="flex items-center justify-between"><span className="font-semibold">{b.code}</span><span className="text-[11px] text-slate-500">{o ? "in use" : b.free ? "free" : b.status.toLowerCase()}</span></div>
+              {o ? <Link href={`/emergency/${o.caseId}`} className="mt-0.5 block truncate text-brand-700 hover:underline">{o.patientName ?? o.caseNumber}</Link> : <div className="mt-0.5 text-xs text-slate-400">&nbsp;</div>}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/** Where the patient lies now. The emergency nurse or the desk can move the patient to another free bed, or give one when the ward was full. */
+export function BedCard({ c, onChange }: { c: CaseDetail; onChange: () => void }) {
+  const { can } = useMe();
+  const beds = useWardBeds();
+  const qc = useQueryClient();
+  const [pick, setPick] = useState("");
+  const move = useMutation({ mutationFn: () => api.post(`/emergency/cases/${c.id}/bed`, { bedId: pick }), onSuccess: () => { setPick(""); void qc.invalidateQueries({ queryKey: ["er-beds"] }); onChange(); } });
+  const free = beds.data?.ER.filter((b) => b.free) ?? [];
+  const mayMove = isOpen(c.status) && (can("ER_TRIAGE") || can("ER_REGISTER"));
+  return (
+    <Card title="Bed in the emergency ward">
+      <p className="mb-2 text-sm">{c.bed ? <>Lying in <span className="font-semibold">{c.bed.code}</span> ({c.bed.room}).</> : isOpen(c.status) ? <span className="text-amber-800">No bed yet: the ward was full when the patient arrived.</span> : "The patient has left the emergency ward."}</p>
+      {mayMove && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Select aria-label="Move to bed" className="min-w-0 flex-1" value={pick} onChange={(e) => setPick(e.target.value)}><option value="">{c.bed ? "Move to another bed…" : "Give a bed…"}</option>{free.map((b) => <option key={b.id} value={b.id}>{b.code}</option>)}</Select>
+          <Button disabled={!pick} loading={move.isPending} onClick={() => move.mutate()}>{c.bed ? "Move" : "Give bed"}</Button>
+        </div>
+      )}
+      <ErrorNote error={move.error} />
+    </Card>
   );
 }
 
@@ -275,7 +332,7 @@ export function BillCard({ c, onChange }: { c: CaseDetail; onChange: () => void 
   const open = isOpen(c.status);
   const [paying, setPaying] = useState<BillInvoice | null>(null);
   const [f, setF] = useState({ serviceId: "", description: "", unitPrice: "", quantity: "1" });
-  const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<{ id: string; name: string; price: string }>("/services", { pageSize: 100 }), enabled: can("ER_BILL") });
+  const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<{ id: string; name: string; price: string; category: string }>("/services", { pageSize: 100 }), enabled: can("ER_BILL") });
   const add = useMutation({
     mutationFn: () => api.post(`/emergency/cases/${c.id}/bill/charges`, f.serviceId ? { serviceId: f.serviceId, quantity: f.quantity } : { description: f.description.trim(), unitPrice: f.unitPrice, quantity: f.quantity }),
     onSuccess: () => { setF({ serviceId: "", description: "", unitPrice: "", quantity: "1" }); onChange(); },
@@ -309,7 +366,7 @@ export function BillCard({ c, onChange }: { c: CaseDetail; onChange: () => void 
       <ErrorNote error={issue.error} />
       {open && can("ER_BILL") && (
         <form className="mt-3 grid grid-cols-12 gap-2" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          <Select aria-label="Service" className="col-span-12 sm:col-span-4" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}><option value="">Other charge…</option>{services.data?.data.map((s) => <option key={s.id} value={s.id}>{s.name} · {money(s.price)}</option>)}</Select>
+          <Select aria-label="Service" className="col-span-12 sm:col-span-4" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}><option value="">Other charge…</option>{services.data?.data.filter((s) => s.category !== "ROOM_BED").map((s) => <option key={s.id} value={s.id}>{s.name} · {money(s.price)}</option>)}</Select>
           {!f.serviceId && <><Input className="col-span-6 sm:col-span-4" placeholder="Description" aria-label="Description" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /><Input className="col-span-3 sm:col-span-2" placeholder="Rate" aria-label="Rate" inputMode="decimal" value={f.unitPrice} onChange={(e) => setF({ ...f, unitPrice: e.target.value })} /></>}
           <Input className="col-span-3 sm:col-span-1" aria-label="Quantity" inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} />
           <Button type="submit" className="col-span-12 sm:col-span-1" loading={add.isPending} disabled={!f.serviceId && (!f.description.trim() || !f.unitPrice)}>Add</Button>

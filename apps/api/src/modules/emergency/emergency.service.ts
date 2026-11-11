@@ -26,7 +26,11 @@ export const registerEmergencySchema = z.object({
   chiefComplaint: z.string().trim().min(3).max(300),
   arrivalMode: z.enum(["WALK_IN", "AMBULANCE", "POLICE", "REFERRED", "OTHER"]).default("WALK_IN"),
   broughtBy: z.string().trim().min(2).max(100).optional(),
+  /** The emergency bed to lie in; left out, the first free bed of the emergency ward is given (none when the ward is full: the patient is still registered). */
+  bedId: uuid.optional(),
 }).strict();
+
+export const moveBedSchema = z.object({ bedId: uuid }).strict();
 
 export const triageSchema = z.object({
   level: z.enum(["RED", "ORANGE", "YELLOW", "GREEN", "BLUE"]),
@@ -75,6 +79,7 @@ const CASE = {
   patient: { select: { firstName: true, lastName: true, gender: true, dateOfBirth: true, estimatedAgeYears: true, ageRecordedOn: true, bloodGroup: true, mobile: true, emergencyContactName: true, emergencyContactMobile: true, identifiers: { where: { type: "MRN" as const }, select: { value: true } } } },
   doctor: { select: { displayName: true, userId: true } },
   admission: { select: { admissionNumber: true, assignments: { where: { releasedAt: null }, select: { bed: { select: { code: true, ward: { select: { name: true } } } } }, take: 1 } } },
+  bedStays: { where: { releasedAt: null }, select: { assignedAt: true, bed: { select: { id: true, code: true, room: { select: { name: true } } } } }, take: 1 },
 } satisfies Prisma.EmergencyCaseSelect;
 type CaseRow = Prisma.EmergencyCaseGetPayload<{ select: typeof CASE }>;
 
@@ -115,6 +120,8 @@ export class EmergencyService {
         mobile: c.patient.mobile, emergencyContactName: c.patient.emergencyContactName, emergencyContactMobile: c.patient.emergencyContactMobile,
       } : null,
       admission: c.admissionId ? { id: c.admissionId, admissionNumber: c.admission?.admissionNumber ?? null, bed: bed ? `${bed.ward.name} ${bed.code}` : null } : null,
+      /** The emergency bed the patient lies in now; null when the ward was full, or once the patient has moved on. */
+      bed: c.bedStays[0] ? { id: c.bedStays[0].bed.id, code: c.bedStays[0].bed.code, room: c.bedStays[0].bed.room.name, since: c.bedStays[0].assignedAt } : null,
     };
   }
 
@@ -192,17 +199,23 @@ export class EmergencyService {
     return docs.map((d) => ({ id: d.id, name: d.displayName, specialty: d.specialty, patients: busy.get(d.id) ?? 0 })).sort((a, b) => a.patients - b.patients || a.name.localeCompare(b.name));
   }
 
-  /** The operation theatre and the ICU: each room's bed, and whether it is free now. */
+  /** The emergency ward (with who lies in each bed), the operation theatre and the ICU: each room's bed, and whether it is free now. */
   async beds(ctx: RequestContext) {
-    const [otCode, icuCode] = await Promise.all([
-      this.settings.get(this.prisma, ctx.tenantId, ctx.facilityId, "EMERGENCY_OT_WARD_CODE"), this.settings.get(this.prisma, ctx.tenantId, ctx.facilityId, "EMERGENCY_ICU_WARD_CODE"),
+    const [erCode, otCode, icuCode] = await Promise.all([
+      this.settings.get(this.prisma, ctx.tenantId, ctx.facilityId, "EMERGENCY_WARD_CODE"), this.settings.get(this.prisma, ctx.tenantId, ctx.facilityId, "EMERGENCY_OT_WARD_CODE"), this.settings.get(this.prisma, ctx.tenantId, ctx.facilityId, "EMERGENCY_ICU_WARD_CODE"),
     ]);
     const rows = await this.prisma.bed.findMany({
-      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, active: "ACTIVE", ward: { code: { in: [otCode, icuCode] }, status: "ACTIVE" }, room: { status: "ACTIVE" } },
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, active: "ACTIVE", ward: { code: { in: [erCode, otCode, icuCode] }, status: "ACTIVE" }, room: { status: "ACTIVE" } },
       select: { id: true, code: true, status: true, dailyRate: true, room: { select: { name: true } }, ward: { select: { code: true, name: true } } }, orderBy: [{ code: "asc" }],
     });
-    const shape = (code: string) => rows.filter((b) => b.ward.code === code).map((b) => ({ id: b.id, code: b.code, room: b.room.name, ward: b.ward.name, status: b.status, free: b.status === "AVAILABLE", dailyRate: fmt(b.dailyRate) }));
-    return { OT: shape(otCode), ICU: shape(icuCode) };
+    // Who lies in each emergency bed now (the case, and the name only for people who may see patients).
+    const stays = await this.prisma.emergencyBedStay.findMany({
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, releasedAt: null }, select: { bedId: true, case: { select: { id: true, caseNumber: true, triageLevel: true, patient: { select: { firstName: true, lastName: true } } } } },
+    });
+    const seesPatient = ctx.permissions.has("PATIENT_READ");
+    const occupant = new Map(stays.map((s) => [s.bedId, { caseId: s.case.id, caseNumber: s.case.caseNumber, triageLevel: s.case.triageLevel, patientName: seesPatient ? nameOf(s.case.patient) : null }]));
+    const shape = (code: string) => rows.filter((b) => b.ward.code === code).map((b) => ({ id: b.id, code: b.code, room: b.room.name, ward: b.ward.name, status: b.status, free: b.status === "AVAILABLE", dailyRate: fmt(b.dailyRate), occupant: occupant.get(b.id) ?? null }));
+    return { ER: shape(erCode), OT: shape(otCode), ICU: shape(icuCode) };
   }
 
   async get(ctx: RequestContext, id: string) {
@@ -268,6 +281,7 @@ export class EmergencyService {
         },
         select: { id: true },
       });
+      await this.giveBed(tx, ctx, made.id, input.bedId ?? null);
       // The emergency bill opens now, with the registration and doctor's fee when the hospital has set one.
       const fee = new Decimal(await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "EMERGENCY_FEE_AMOUNT"));
       if (fee.gt(0)) await this.bill.addLines(tx, ctx, { id: enc.id, patientId: patient.id }, [{ description: "Emergency registration and doctor's fee", quantity: new Decimal(1), unitPrice: fee, taxPercent: new Decimal(0), sourceType: "ER_FEE", sourceId: made.id }]);
@@ -350,6 +364,7 @@ export class EmergencyService {
         }
         const adm = await this.admissions.admitFromEmergency(tx, ctx, { encounterId: c.encounterId, patientId: c.patientId, consultantId: input.consultantId ?? c.doctorId, bedId: bed.id, reason: `From the emergency ward (${c.caseNumber}): ${input.note}`.slice(0, 300) });
         admissionId = adm.id; admissionNumber = adm.admissionNumber;
+        await this.passDraftPrescription(tx, ctx, c.encounterId, c.patientId, input.consultantId ?? c.doctorId);
         await this.charges.postBedDays(ctx, adm.id, tx); // the first day of the OT or ICU bed is charged at once
         // The handover: the ICU nurses and the ICU doctor are told, and find the whole emergency record on the patient's ICU page.
         if (input.disposition === "ICU") {
@@ -368,6 +383,7 @@ export class EmergencyService {
         },
       });
       if (res.count !== 1) throw new DomainError("INVALID_STATE", "This emergency case was changed by someone else", 409);
+      await this.releaseBed(tx, ctx, caseId, now); // the emergency bed is free for the next patient
       await this.audit.record(tx, actorOf(ctx), { action: "EMERGENCY_DECISION", entityType: "EmergencyCase", entityId: caseId, metadata: { disposition: input.disposition, admissionId, admissionNumber, billIssued: issued?.invoiceNumber ?? null } });
       const tell = await this.notifications.recipientsWith(tx, ctx.tenantId, ctx.facilityId, ["ER_TRIAGE", "ER_REGISTER"]);
       await this.notifications.notify(tx, tell, { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "EMERGENCY_DECISION", entityType: "EmergencyCase", entityId: caseId, dedupeKey: `EMERGENCY_DECISION:${caseId}` });
@@ -420,12 +436,75 @@ export class EmergencyService {
       await this.encounters.transition(tx, ctx, c.encounterId, "CANCELLED", input.reason);
       const res = await tx.emergencyCase.updateMany({ where: { id: caseId, tenantId: ctx.tenantId, status: "ARRIVED" }, data: { status: "CANCELLED", cancelReason: input.reason, version: { increment: 1 } } });
       if (res.count !== 1) throw new DomainError("INVALID_STATE", "This emergency case was changed by someone else", 409);
+      await this.releaseBed(tx, ctx, caseId, new Date());
       await this.audit.record(tx, actorOf(ctx), { action: "EMERGENCY_CANCELLED", entityType: "EmergencyCase", entityId: caseId, metadata: { reason: input.reason } });
       return this.detail(tx, ctx, await this.row(tx, ctx, caseId));
     });
   }
 
+  /** The nurse or the desk puts the patient in a bed of the emergency ward, or moves them to another one. */
+  async moveBed(ctx: RequestContext, caseId: string, input: z.infer<typeof moveBedSchema>) {
+    return this.prisma.$transaction(async (tx) => {
+      const c = await this.lockOpen(tx, ctx, caseId);
+      const open = await tx.emergencyBedStay.findFirst({ where: { tenantId: ctx.tenantId, caseId, releasedAt: null }, select: { bedId: true } });
+      if (open?.bedId === input.bedId) throw new DomainError("VALIDATION_FAILED", "The patient is already in this bed", 400);
+      const fromBed = open?.bedId ?? null;
+      if (open) await this.releaseBed(tx, ctx, caseId, new Date());
+      await this.giveBed(tx, ctx, caseId, input.bedId);
+      await this.audit.record(tx, actorOf(ctx), { action: "EMERGENCY_BED_CHANGED", entityType: "EmergencyCase", entityId: caseId, metadata: { caseNumber: c.caseNumber, fromBedId: fromBed, toBedId: input.bedId } });
+      return this.detail(tx, ctx, await this.row(tx, ctx, caseId));
+    });
+  }
+
   // ───── internals ─────
+
+  /**
+   * The doctor who takes over cannot edit the emergency doctor's unsigned draft prescription (a draft belongs to the doctor who started it). So the draft's medicines are copied to a new draft for
+   * the doctor in charge, to review and sign, and the old draft is cancelled. Nothing is signed or sent to the pharmacy by this.
+   */
+  private async passDraftPrescription(tx: Db, ctx: RequestContext, encounterId: string, patientId: string, consultantId: string): Promise<void> {
+    const to = await tx.practitioner.findFirst({ where: { id: consultantId, tenantId: ctx.tenantId }, select: { userId: true } });
+    if (!to?.userId) return;
+    const draft = await tx.medicationOrder.findFirst({
+      where: { tenantId: ctx.tenantId, encounterId, status: "DRAFT", source: "DIGITAL", orderedById: { not: to.userId } },
+      select: { id: true, items: { orderBy: { lineNo: "asc" }, select: { medicineId: true, genericName: true, brandName: true, strength: true, dosage: true, route: true, frequency: true, frequencyText: true, foodRelation: true, durationDays: true, quantity: true, instructions: true } } },
+    });
+    if (!draft) return;
+    // A visit has one draft at a time, so the old one is closed first.
+    await tx.medicationOrder.updateMany({ where: { id: draft.id, tenantId: ctx.tenantId, status: "DRAFT" }, data: { status: "CANCELLED" } });
+    if (draft.items.length > 0) {
+      const next = await tx.medicationOrder.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId, encounterId, orderedById: to.userId }, select: { id: true } });
+      await tx.medicationOrderItem.createMany({ data: draft.items.map((i, n) => ({ tenantId: ctx.tenantId, orderId: next.id, lineNo: n + 1, ...i })) });
+    }
+    await this.audit.record(tx, actorOf(ctx), { action: "PRESCRIPTION_DRAFT_HANDED_OVER", entityType: "MedicationOrder", entityId: draft.id, metadata: { encounterId, items: draft.items.length } });
+  }
+
+  /** Puts the patient in an emergency bed: the one asked for (it must be a free bed of the emergency ward), or the first free one. A full ward does not stop an emergency registration. */
+  private async giveBed(tx: Db, ctx: RequestContext, caseId: string, bedId: string | null): Promise<void> {
+    const erCode = await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "EMERGENCY_WARD_CODE");
+    const rows = bedId
+      ? await tx.$queryRaw<{ id: string; status: string; ward: string }[]>`SELECT b.id, b.status::text AS status, w.code AS ward FROM "Bed" b JOIN "Ward" w ON w.id = b."wardId" WHERE b.id = ${bedId}::uuid AND b."tenantId" = ${ctx.tenantId}::uuid AND b."facilityId" = ${ctx.facilityId}::uuid AND b.active = 'ACTIVE' FOR UPDATE OF b`
+      : await tx.$queryRaw<{ id: string; status: string; ward: string }[]>`SELECT b.id, b.status::text AS status, w.code AS ward FROM "Bed" b JOIN "Ward" w ON w.id = b."wardId" JOIN "Room" r ON r.id = b."roomId" WHERE b."tenantId" = ${ctx.tenantId}::uuid AND b."facilityId" = ${ctx.facilityId}::uuid AND b.active = 'ACTIVE' AND b.status = 'AVAILABLE' AND w.code = ${erCode} AND w.status = 'ACTIVE' AND r.status = 'ACTIVE' ORDER BY b.code LIMIT 1 FOR UPDATE OF b SKIP LOCKED`;
+    const bed = rows[0];
+    if (!bed) {
+      if (bedId) throw new DomainError("NOT_FOUND", "Resource not found", 404);
+      return; // the ward is full: the patient is registered without a bed and the nurse gives one when it is free
+    }
+    if (bed.ward !== erCode) throw new DomainError("VALIDATION_FAILED", "Choose a bed of the emergency ward", 400, [{ path: "bedId", message: "Not a bed of the emergency ward" }]);
+    if (bed.status !== "AVAILABLE") throw new DomainError("BED_NOT_AVAILABLE", "That bed is not free", 409);
+    await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: bed.id } }, data: { status: "OCCUPIED", version: { increment: 1 } } });
+    await tx.emergencyBedStay.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, caseId, bedId: bed.id, assignedById: ctx.userId } });
+  }
+
+  /** The patient leaves the emergency bed (moved, handed over, sent home or cancelled): the stay ends and the bed is cleaned or free, as the hospital's setting says for any bed. */
+  private async releaseBed(tx: Db, ctx: RequestContext, caseId: string, at: Date): Promise<void> {
+    const open = await tx.emergencyBedStay.findFirst({ where: { tenantId: ctx.tenantId, caseId, releasedAt: null }, select: { id: true, bedId: true } });
+    if (!open) return;
+    await tx.$queryRaw`SELECT id FROM "Bed" WHERE id = ${open.bedId}::uuid AND "tenantId" = ${ctx.tenantId}::uuid FOR UPDATE`;
+    await tx.emergencyBedStay.updateMany({ where: { id: open.id, tenantId: ctx.tenantId, releasedAt: null }, data: { releasedAt: at, releasedById: ctx.userId } });
+    const to = (await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "BED_AFTER_DISCHARGE")) as "CLEANING" | "AVAILABLE";
+    await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: open.bedId } }, data: { status: to, version: { increment: 1 } } });
+  }
 
   private async row(db: Db, ctx: RequestContext, id: string): Promise<CaseRow> {
     return db.emergencyCase.findFirstOrThrow({ where: { id, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: CASE });

@@ -77,6 +77,9 @@ const SEED: Record<string, Json> = {
   "POST /icu/stays/:id/instructions": { text: "Sweep instruction" },
   "POST /icu/stays/:id/notes": { text: "Sweep note text" },
   "POST /icu/stays/:id/equipment": { serviceId: "00000000-0000-4000-8000-000000000001" },
+  "POST /emergency/cases/:id/bed": { bedId: "00000000-0000-4000-8000-000000000002" },
+  "POST /order-requests": { kind: "TEST", encounterId: "00000000-0000-4000-8000-000000000003", tests: [{ name: "CBC", category: "LABORATORY" }] },
+  "POST /order-requests/:id/decision": { action: "DECLINE", note: "Sweep decision" },
 };
 /** Fields to try, one by one, when a change route answers "no changes supplied" (a field the route does not know is removed again from the next answer). */
 const CHANGE_FIELDS = ["name", "displayName", "title", "description", "notes", "label", "phone", "address", "fullName", "email", "specialty", "remarks", "code", "city", "contactPhone"];
