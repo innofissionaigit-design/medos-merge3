@@ -140,6 +140,8 @@ export class AdmissionsService {
       if (closed.count !== 1) throw new DomainError("INVALID_STATE", "The admission was changed by someone else", 409);
       await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: current.bedId } }, data: { status: "CLEANING", version: { increment: 1 } } });
       await this.openAssignment(tx, ctx, admissionId, target, input.reason, now);
+      const from = await tx.bed.findFirstOrThrow({ where: { id: current.bedId, tenantId: ctx.tenantId }, select: { wardId: true } });
+      if (from.wardId !== target.wardId) await this.stopEquipment(tx, ctx, admissionId, now);
       await this.audit.record(tx, actorOf(ctx), { action: "BED_TRANSFERRED", entityType: "Admission", entityId: admissionId, metadata: { fromBedId: current.bedId, toBedId: target.id, reason: input.reason } });
       return this.view(tx, ctx, admissionId);
     });
@@ -205,9 +207,16 @@ export class AdmissionsService {
     const closed = await tx.bedAssignment.updateMany({ where: { id: current.id, tenantId: ctx.tenantId, releasedAt: null }, data: { releasedAt: at } });
     if (closed.count !== 1) throw new DomainError("INVALID_STATE", "The admission was changed by someone else", 409);
     await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: current.bedId } }, data: { status: to, version: { increment: 1 } } });
+    await this.stopEquipment(tx, ctx, admissionId, at);
   }
 
   // ───── internals ─────
+
+  /** Equipment still in use when the patient leaves the bed's ward or goes home is stopped at that moment, so it is not charged for days it was no longer on the patient (docs/icu.md). */
+  private async stopEquipment(tx: Db, ctx: RequestContext, admissionId: string, at: Date): Promise<void> {
+    const stopped = await tx.icuEquipmentUse.updateMany({ where: { tenantId: ctx.tenantId, admissionId, stoppedAt: null }, data: { stoppedAt: at, stoppedById: ctx.userId } });
+    if (stopped.count > 0) await this.audit.record(tx, actorOf(ctx), { action: "ICU_EQUIPMENT_STOPPED", entityType: "Admission", entityId: admissionId, metadata: { count: stopped.count, automatic: true } });
+  }
 
   private async lockBed(tx: Db, ctx: RequestContext, bedId: string) {
     const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Bed" WHERE id = ${bedId}::uuid AND "tenantId" = ${ctx.tenantId}::uuid AND "facilityId" = ${ctx.facilityId}::uuid FOR UPDATE`;

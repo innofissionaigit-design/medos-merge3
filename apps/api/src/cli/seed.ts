@@ -170,7 +170,7 @@ async function main(): Promise<void> {
 
   step(`billing: ${COUNTS.invoices} invoices`);
   const services: string[] = [];
-  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"]] as const) {
+  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"], ["ICUVENT", "ICU ventilator (per day)", "2500", "ROOM_BED"], ["ICUMON", "ICU cardiac monitor (per day)", "800", "ROOM_BED"], ["ICUPUMP", "ICU infusion pump (per day)", "300", "ROOM_BED"], ["CVLINE", "Central line insertion", "1200", "PROCEDURE"]] as const) {
     services.push((await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0 }))["id"] as string);
   }
   // The hospital's lab-test and investigation list, which feeds the Lab test dropdown of the prescription and the Cashier's test billing (synthetic prices).

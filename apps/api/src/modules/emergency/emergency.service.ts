@@ -13,6 +13,7 @@ import { EmergencyBillService } from "../billing/emergency-bill.service";
 import { amount, quantity } from "../billing/money.schema";
 import { EncountersService } from "../encounters/encounters.service";
 import { AdmissionsService } from "../ipd/admissions.service";
+import { ChargesService } from "../ipd/charges.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NumberingService } from "../numbering/numbering.service";
 import { currentAge } from "../patients/patient.domain";
@@ -89,7 +90,7 @@ export class EmergencyService {
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService, private readonly encounters: EncountersService,
     private readonly idempotency: IdempotencyService, private readonly notifications: NotificationsService, private readonly bill: EmergencyBillService, private readonly admissions: AdmissionsService,
-    private readonly settings: SettingsService,
+    private readonly settings: SettingsService, private readonly charges: ChargesService,
   ) {}
 
   // ───── reading ─────
@@ -349,6 +350,7 @@ export class EmergencyService {
         }
         const adm = await this.admissions.admitFromEmergency(tx, ctx, { encounterId: c.encounterId, patientId: c.patientId, consultantId: input.consultantId ?? c.doctorId, bedId: bed.id, reason: `From the emergency ward (${c.caseNumber}): ${input.note}`.slice(0, 300) });
         admissionId = adm.id; admissionNumber = adm.admissionNumber;
+        await this.charges.postBedDays(ctx, adm.id, tx); // the first day of the OT or ICU bed is charged at once
         // The handover: the ICU nurses and the ICU doctor are told, and find the whole emergency record on the patient's ICU page.
         if (input.disposition === "ICU") {
           const icuNurses = await this.notifications.recipientsWith(tx, ctx.tenantId, ctx.facilityId, ["ICU_NURSE"]);

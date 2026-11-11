@@ -8,7 +8,7 @@ import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, Notice, Se
 interface Service { id: string; code: string; name: string; category: string; price: string; taxPercent: string; sacCode: string | null; status: "ACTIVE" | "INACTIVE" }
 
 const CATEGORIES: [string, string][] = [
-  ["CONSULTATION", "Consultation"], ["ROOM_BED", "Room and bed"], ["PROCEDURE", "Procedure"], ["NURSING", "Nursing"],
+  ["CONSULTATION", "Consultation"], ["ROOM_BED", "Room, bed and ICU equipment"], ["PROCEDURE", "Procedure"], ["NURSING", "Nursing"],
   ["INJECTION_DRESSING", "Injection and dressing"], ["INVESTIGATION", "Investigation"], ["OTHER", "Other"],
 ];
 const categoryLabel = (c: string) => CATEGORIES.find(([k]) => k === c)?.[1] ?? c;

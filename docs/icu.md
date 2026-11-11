@@ -21,19 +21,21 @@ Demo logins from `pnpm seed`: `icu_doctor1`, `icu_nurse1` (menu: **ICU**).
 5. **Instructions.** The doctor writes instructions for the nurse (optionally **urgent**: an alert until done). The nurse is told (`ICU_INSTRUCTION`) and marks each done once, with an optional note; the doctor sees who did it and when. The words of an instruction are never changed.
 6. **Tests.** The ICU doctor orders laboratory and imaging tests from the same page (admitted patients' tests go straight to the laboratory). The sample is assigned to an **ICU nurse** (the one with the fewest samples waiting), who is told, and the LIMS manager sees it in the laboratory board. Results appear on the page; charges go to the admission (`docs/lims-portal.md`).
 7. **Day by day.** The doctor writes a note (and a plan for the next day) for each day; the page shows every day from arrival ("Day 1, Day 2 ...", hospital time) with that day's notes, how many vitals sets were taken and their ranges, instructions given and done, and tests ordered. Notes are append-only: a correction is a new note.
-8. **Leaving the ICU.** Transfer to a ward, discharge and billing are done on the admission page (`/ipd/:id`), as for any inpatient; the stay then leaves the ICU board.
+8. **Equipment.** The nurse (or the doctor in charge) starts equipment on the patient from the price list (ventilator, monitor, infusion pump ... any service in the category *Room, bed and ICU equipment*), and stops it when it is taken off. The page shows what is in use, who started and stopped it and when. Equipment still in use is **stopped by the system** (and audited) when the patient is moved to a bed in another ward, or goes home, so a ward day is never charged for a ventilator.
+9. **Billing.** Everything done in the ICU goes on the admission's bill, and the page shows it under **Billing for this stay**: the **ICU bed for every calendar day** (the first day charged when the patient arrives from the emergency ward), **each piece of equipment for every calendar day it is in use**, tests (when the report is issued), medicines (when the pharmacy gives them) and procedures added from the price list. Days are counted in hospital time and each is charged once, however often the page is opened. The cashier sees the charges under *unbilled charges* and they are paid with the final bill at discharge.
+10. **Leaving the ICU.** Transfer to a ward, discharge and billing are done on the admission page (`/ipd/:id`), as for any inpatient; the stay then leaves the ICU board.
 
 ## What the database keeps
 
-Vitals orders and day notes cannot be changed or deleted; an instruction can change once, from open to done; nothing can be added to a stay once the patient is no longer admitted; the interval can only be 5, 15, 60 or 120 minutes.
+Vitals orders and day notes cannot be changed or deleted; an instruction can change once, from open to done; nothing can be added to a stay once the patient is no longer admitted; equipment is in use on a patient once at a time, is stopped once and never rewritten or deleted; the interval can only be 5, 15, 60 or 120 minutes.
 
 ## Settings
 
-The ICU ward is found by its code, `EMERGENCY_ICU_WARD_CODE` (default `ICU`).
+The ICU ward is found by its code, `EMERGENCY_ICU_WARD_CODE` (default `ICU`). The price of the ICU bed is the ward's bed price; the price of equipment is the price in the price list, which the hospital edits like any other service.
 
 ## Audit events
 
-`ICU_VITALS_SCHEDULE_SET`, `ICU_INSTRUCTION_GIVEN`, `ICU_INSTRUCTION_DONE`, `ICU_DAY_NOTE_ADDED`, `EMERGENCY_DECISION` (with the ICU doctor), `ADMISSION_CREATED` (source `EMERGENCY`).
+`ICU_VITALS_SCHEDULE_SET`, `ICU_INSTRUCTION_GIVEN`, `ICU_INSTRUCTION_DONE`, `ICU_DAY_NOTE_ADDED`, `ICU_EQUIPMENT_STARTED`, `ICU_EQUIPMENT_STOPPED`, `ICU_EQUIPMENT_CHARGES_POSTED`, `EMERGENCY_DECISION` (with the ICU doctor), `ADMISSION_CREATED` (source `EMERGENCY`).
 
 ## Routes
 
@@ -43,6 +45,8 @@ The ICU ward is found by its code, `EMERGENCY_ICU_WARD_CODE` (default `ICU`).
 | GET | `/icu/alerts` | `ICU_READ` (vitals late, urgent instructions open: for the nurse) |
 | GET | `/icu/stays/:id` | `ICU_READ` |
 | POST | `/icu/stays/:id/vitals-schedule`, `/instructions`, `/notes` | `ICU_DOCTOR` and the doctor in charge |
+| GET | `/icu/equipment` | `ICU_READ` (the equipment in the price list, with the price per day) |
+| POST | `/icu/stays/:id/equipment`, `/icu/equipment/:id/stop` | `ICU_NURSE` or the doctor in charge |
 | POST | `/icu/instructions/:id/done` | `ICU_NURSE` |
 | GET | `/emergency/icu-doctors` | `ER_TREAT` (the doctors who can take over) |
 

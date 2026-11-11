@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { type AgeValue } from "@/lib/format";
 import { useMe } from "@/lib/me";
-import { Badge, Button, Card, ErrorNote, Field, Input, Notice, Textarea } from "./ui";
+import { Badge, Button, Card, ErrorNote, Field, Input, Notice, Select, Table, Td, Textarea } from "./ui";
 
 export interface IcuRow {
   id: string; admissionNumber: string; encounterId: string; bed: string | null; doctorName: string; calledByMe: boolean; inIcuSince: string; fromEmergency: string | null;
@@ -23,6 +23,8 @@ export interface IcuStay {
   id: string; admissionNumber: string; encounterId: string; reason: string | null; admittedAt: string; inIcuSince: string; bed: string | null; doctorName: string; calledByMe: boolean;
   patient: { id: string; name: string; mrn: string | null; gender: string; age: AgeValue; bloodGroup: string | null };
   schedule: { intervalMinutes: number | null; nextDueAt: string | null; overdue: boolean; minutesLate: number; lastVitalsAt: string | null; setBy: string | null; setAt: string | null; reason: string | null; history: { intervalMinutes: number; setAt: string; setBy: string | null; reason: string | null }[] };
+  equipment: { id: string; name: string; pricePerDay: string; startedAt: string; startedBy: string | null; stoppedAt: string | null; stoppedBy: string | null; active: boolean }[];
+  billing: { pendingTotal: string; items: { id: string; type: string; description: string; quantity: string; unitPrice: string; lineTotal: string; status: string; chargedAt: string; source: "BED" | "EQUIPMENT" | "TEST" | "MEDICINE" | "OTHER" }[] };
   latest: Record<string, { value: string; unit: string; at: string }>; readings: Reading[]; instructions: Instruction[]; days: Day[]; allergies: { allergen: string; severity: string; reaction: string | null }[]; tests: { total: number; pending: number };
   fromEmergency: null | { caseId: string | null; caseNumber: string; complaint: string; arrivedAt: string; arrivalMode: string; doctor: string; handoverNote: string | null; handedOverAt: string | null;
     triages: { level: string; consciousness: string; airwayClear: boolean; breathingOk: boolean; circulationOk: boolean; painScore: number | null; note: string | null; at: string; by: string | null }[]; notes: { kind: string; text: string; diagnosis: string | null; at: string; by: string | null }[] };
@@ -179,6 +181,74 @@ export function FromEmergencyCard({ e }: { e: NonNullable<IcuStay["fromEmergency
         {e.triages.length > 0 && <div><div className="text-xs font-semibold uppercase text-slate-500">Triage</div>{e.triages.map((t, i) => <div key={i}>{t.level.toLowerCase()} · {t.consciousness.toLowerCase()}{t.painScore !== null ? ` · pain ${t.painScore}/10` : ""} · airway {t.airwayClear ? "clear" : "at risk"}, breathing {t.breathingOk ? "normal" : "abnormal"}, circulation {t.circulationOk ? "good" : "poor"}{t.note ? ` — ${t.note}` : ""} <span className="text-xs text-slate-500">({dateTime(t.at)}, {t.by})</span></div>)}</div>}
         {e.notes.length > 0 && <div><div className="text-xs font-semibold uppercase text-slate-500">Emergency doctor's notes</div>{e.notes.map((n, i) => <div key={i} className="mt-1 border-l-2 border-slate-200 pl-2">{n.diagnosis && <div className="font-medium">Diagnosis: {n.diagnosis}</div>}<div className="whitespace-pre-wrap">{n.text}</div><div className="text-xs text-slate-500">{dateTime(n.at)} · {n.by}</div></div>)}</div>}
       </div>
+    </Card>
+  );
+}
+
+/** Equipment in use on the patient (ventilator, monitor, pumps) from the price list. The nurse or the doctor starts and stops each; every day it is in use is charged. */
+export function EquipmentCard({ s, onChange }: { s: IcuStay; onChange: () => void }) {
+  const { can, dateTime, money } = useMe();
+  const [pick, setPick] = useState("");
+  const catalogue = useQuery({ queryKey: ["icu-equipment"], queryFn: () => api.get<{ id: string; name: string; pricePerDay: string }[]>("/icu/equipment") });
+  const start = useMutation({ mutationFn: () => api.post(`/icu/stays/${s.id}/equipment`, { serviceId: pick }), onSuccess: () => { setPick(""); onChange(); } });
+  const stop = useMutation({ mutationFn: (id: string) => api.post(`/icu/equipment/${id}/stop`), onSuccess: onChange });
+  const mayHandle = can("ICU_NURSE") || (s.calledByMe && can("ICU_DOCTOR"));
+  const inUse = new Set(s.equipment.filter((e) => e.active).map((e) => e.name));
+  return (
+    <Card title="Equipment in use" actions={<Badge tone="blue">{`${inUse.size} in use`}</Badge>}>
+      {mayHandle && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Select aria-label="Equipment" className="min-w-0 flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">Start equipment…</option>
+            {catalogue.data?.filter((c) => !inUse.has(c.name)).map((c) => <option key={c.id} value={c.id}>{`${c.name} · ${money(c.pricePerDay)} a day`}</option>)}
+          </Select>
+          <Button disabled={!pick} loading={start.isPending} onClick={() => start.mutate()}>Start</Button>
+        </div>
+      )}
+      <ErrorNote error={start.error ?? stop.error} />
+      <Table head={["Equipment", "Per day", "Started", "Stopped", ""]} {...(s.equipment.length === 0 ? { empty: "No equipment in use." } : {})}>
+        {s.equipment.map((e) => (
+          <tr key={e.id}>
+            <Td>{e.name}</Td>
+            <Td>{money(e.pricePerDay)}</Td>
+            <Td>{dateTime(e.startedAt)}<div className="text-xs text-slate-500">{e.startedBy}</div></Td>
+            <Td>{e.stoppedAt ? <>{dateTime(e.stoppedAt)}<div className="text-xs text-slate-500">{e.stoppedBy}</div></> : <Badge tone="green">in use</Badge>}</Td>
+            <Td>{e.active && mayHandle && <Button variant="secondary" loading={stop.isPending && stop.variables === e.id} onClick={() => stop.mutate(e.id)}>Stop</Button>}</Td>
+          </tr>
+        ))}
+      </Table>
+    </Card>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = { BED: "ICU bed", EQUIPMENT: "Equipment", TEST: "Test", MEDICINE: "Medicine", OTHER: "Other" };
+
+/** Everything charged to this stay so far: the ICU bed for each day, equipment for each day in use, tests, medicines and charges added by hand. It is paid with the final bill at discharge. */
+export function IcuBillingCard({ s, onChange }: { s: IcuStay; onChange: () => void }) {
+  const { can, dateTime, money } = useMe();
+  const [serviceId, setServiceId] = useState("");
+  const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<{ id: string; name: string; price: string; category: string }>("/services", { pageSize: 100 }), enabled: can("CHARGE_CREATE") });
+  const add = useMutation({ mutationFn: () => api.post(`/admissions/${s.id}/charges`, { type: "SERVICE", serviceId, quantity: 1 }), onSuccess: () => { setServiceId(""); onChange(); } });
+  const total = (src: string) => s.billing.items.filter((c) => c.source === src).reduce((n, c) => n + Math.round(Number(c.lineTotal) * 100), 0) / 100;
+  return (
+    <Card title="Billing for this stay" actions={<span className="text-sm text-slate-600">{`Waiting to be billed ${money(s.billing.pendingTotal)}`}</span>}>
+      <div className="mb-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4" data-testid="icu-billing-totals">
+        {(["BED", "EQUIPMENT", "TEST", "MEDICINE"] as const).map((k) => <div key={k} className="rounded border border-slate-200 p-2"><div className="text-xs text-slate-500">{SOURCE_LABEL[k]}</div><div className="font-semibold">{money(total(k))}</div></div>)}
+      </div>
+      {can("CHARGE_CREATE") && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Select aria-label="Charge" className="min-w-0 flex-1" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+            <option value="">Add a procedure or service…</option>
+            {services.data?.data.filter((x) => !["ROOM_BED", "INVESTIGATION", "CONSULTATION"].includes(x.category)).map((x) => <option key={x.id} value={x.id}>{`${x.name} · ${money(x.price)}`}</option>)}
+          </Select>
+          <Button disabled={!serviceId} loading={add.isPending} onClick={() => add.mutate()}>Add to the bill</Button>
+        </div>
+      )}
+      <ErrorNote error={add.error} />
+      <Table head={["When", "Charge", "Type", "Amount"]} {...(s.billing.items.length === 0 ? { empty: "Nothing charged yet." } : {})}>
+        {s.billing.items.map((c) => <tr key={c.id}><Td>{dateTime(c.chargedAt)}</Td><Td>{c.description}</Td><Td>{SOURCE_LABEL[c.source]}</Td><Td>{money(c.lineTotal)}</Td></tr>)}
+      </Table>
+      <p className="mt-2 text-xs text-slate-500">The bed and the equipment are charged for every calendar day, the first day from the moment the patient arrives. Tests are added when the report is issued and medicines when the pharmacy gives them.</p>
     </Card>
   );
 }

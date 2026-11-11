@@ -9,7 +9,9 @@ import type { RequestContext } from "../../common/request-context";
 import { dateOnly, localDateStr, startOfLocalDay, endOfLocalDay } from "../../common/time";
 import { NotificationsService } from "../notifications/notifications.service";
 import { currentAge } from "../patients/patient.domain";
+import { ChargesService } from "../ipd/charges.service";
 import { SettingsService } from "../settings/settings.service";
+import { fmt } from "../billing/billing.domain";
 
 export const INTERVALS = [5, 15, 60, 120] as const;
 
@@ -17,6 +19,7 @@ export const vitalsScheduleSchema = z.object({ intervalMinutes: z.union([z.liter
 export const instructionSchema = z.object({ text: z.string().trim().min(3).max(1000), urgent: z.boolean().default(false) }).strict();
 export const instructionDoneSchema = z.object({ note: z.string().trim().min(1).max(500).optional() }).strict();
 export const dayNoteSchema = z.object({ text: z.string().trim().min(3).max(4000), plan: z.string().trim().min(3).max(2000).optional() }).strict();
+export const equipmentStartSchema = z.object({ serviceId: z.string().uuid() }).strict();
 export const listStaysSchema = z.object({ q: z.string().trim().min(2).max(60).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50) }).strict();
 
 const nameOf = (p: { firstName: string; lastName: string | null }): string => [p.firstName, p.lastName].filter(Boolean).join(" ");
@@ -38,7 +41,7 @@ type StayRow = Prisma.AdmissionGetPayload<{ select: typeof STAY }>;
  */
 @Injectable()
 export class IcuService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly notifications: NotificationsService, private readonly settings: SettingsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly notifications: NotificationsService, private readonly settings: SettingsService, private readonly charges: ChargesService) {}
 
   private icuCode(db: Db | PrismaService, ctx: RequestContext) { return this.settings.get(db, ctx.tenantId, ctx.facilityId, "EMERGENCY_ICU_WARD_CODE"); }
   private async tz(db: Db | PrismaService, ctx: RequestContext): Promise<string> {
@@ -129,11 +132,19 @@ export class IcuService {
     return a;
   }
 
+  /** The ICU equipment the hospital has in its price list (category "Room and bed"), with the price per day. */
+  async equipmentCatalogue(ctx: RequestContext) {
+    const rows = await this.prisma.service.findMany({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE", category: "ROOM_BED" }, select: { id: true, code: true, name: true, price: true, taxPercent: true }, orderBy: { name: "asc" }, take: 100 });
+    return rows.map((r) => ({ id: r.id, code: r.code, name: r.name, pricePerDay: fmt(r.price) }));
+  }
+
   async get(ctx: RequestContext, admissionId: string) {
     const a = await this.load(this.prisma, ctx, admissionId);
+    // The bed and the equipment are charged for every day so far, so the bill is always up to date when the stay is looked at (days already charged are not charged again).
+    const billing = await this.charges.postBedDays(ctx, admissionId);
     const tz = await this.tz(this.prisma, ctx);
     const since = a.assignments[0]?.assignedAt ?? a.admittedAt;
-    const [orders, instr, notes, obs, lims, allergies, caseRow] = await Promise.all([
+    const [orders, instr, notes, obs, lims, allergies, caseRow, equipment] = await Promise.all([
       this.prisma.icuVitalsOrder.findMany({ where: { tenantId: ctx.tenantId, admissionId }, orderBy: { setAt: "desc" }, take: 50 }),
       this.prisma.icuInstruction.findMany({ where: { tenantId: ctx.tenantId, admissionId }, orderBy: { createdAt: "desc" }, take: 200 }),
       this.prisma.icuDayNote.findMany({ where: { tenantId: ctx.tenantId, admissionId }, orderBy: [{ day: "desc" }, { createdAt: "desc" }], take: 300 }),
@@ -141,8 +152,9 @@ export class IcuService {
       this.prisma.limsRequest.findMany({ where: { tenantId: ctx.tenantId, encounterId: a.encounterId, status: { not: "CANCELLED" } }, select: { status: true, priority: true, createdAt: true } }),
       this.prisma.allergy.findMany({ where: { tenantId: ctx.tenantId, patientId: a.patientId, status: "ACTIVE" }, select: { allergen: true, severity: true, reaction: true }, take: 20 }),
       a.encounter.emergencyCase ? this.prisma.emergencyCase.findFirst({ where: { id: a.encounter.emergencyCase.id, tenantId: ctx.tenantId }, select: { caseNumber: true, chiefComplaint: true, arrivedAt: true, arrivalMode: true, dispositionNote: true, dispositionAt: true, doctor: { select: { displayName: true } }, triages: { orderBy: { triagedAt: "desc" }, take: 20 }, notes: { orderBy: { createdAt: "asc" }, take: 50 } } }) : Promise.resolve(null),
+      this.prisma.icuEquipmentUse.findMany({ where: { tenantId: ctx.tenantId, admissionId }, orderBy: { startedAt: "desc" }, take: 100, include: { service: { select: { name: true, price: true } } } }),
     ]);
-    const users = new Map((await this.prisma.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: [...new Set([...orders.map((o) => o.setById), ...instr.flatMap((i) => [i.createdById, ...(i.doneById ? [i.doneById] : [])]), ...notes.map((n) => n.authorId), ...obs.map((o) => o.recordedById), ...(caseRow?.triages.map((t) => t.triagedById) ?? []), ...(caseRow?.notes.map((n) => n.authorId) ?? [])])] } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+    const users = new Map((await this.prisma.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: [...new Set([...orders.map((o) => o.setById), ...instr.flatMap((i) => [i.createdById, ...(i.doneById ? [i.doneById] : [])]), ...notes.map((n) => n.authorId), ...obs.map((o) => o.recordedById), ...(caseRow?.triages.map((t) => t.triagedById) ?? []), ...(caseRow?.notes.map((n) => n.authorId) ?? []), ...equipment.flatMap((e) => [e.startedById, ...(e.stoppedById ? [e.stoppedById] : [])])])] } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
     // Readings grouped by the minute they were taken, in the ICU or before it (in the emergency ward).
     const groups = new Map<string, { at: Date; by: string | null; phase: "ICU" | "BEFORE"; values: Record<string, { value: string; unit: string }> }>();
     for (const o of obs) {
@@ -180,6 +192,11 @@ export class IcuService {
       latest, readings: readings.slice(0, 120),
       instructions: instr.map((i) => ({ id: i.id, text: i.text, urgent: i.urgent, status: i.status, createdAt: i.createdAt, createdBy: users.get(i.createdById) ?? null, doneAt: i.doneAt, doneBy: i.doneById ? users.get(i.doneById) ?? null : null, doneNote: i.doneNote })),
       days, allergies,
+      equipment: equipment.map((e) => ({ id: e.id, name: e.service.name, pricePerDay: fmt(e.service.price), startedAt: e.startedAt, startedBy: users.get(e.startedById) ?? null, stoppedAt: e.stoppedAt, stoppedBy: e.stoppedById ? users.get(e.stoppedById) ?? null : null, active: e.stoppedAt === null })),
+      billing: {
+        pendingTotal: billing.pendingTotal,
+        items: billing.items.filter((c) => c.status !== "VOIDED").map((c) => ({ id: c.id, type: c.type, description: c.description, quantity: c.quantity, unitPrice: c.unitPrice, lineTotal: c.lineTotal, status: c.status, chargedAt: c.chargedAt, source: c.sourceKey?.startsWith("BED:") ? "BED" : c.sourceKey?.startsWith("ICUEQ:") ? "EQUIPMENT" : c.sourceKey?.startsWith("LIMS:") ? "TEST" : c.sourceKey?.startsWith("DISPENSE_ITEM:") ? "MEDICINE" : "OTHER" })).reverse(),
+      },
       tests: { total: lims.length, pending: lims.filter((l) => !["ISSUED", "HANDED_OVER"].includes(l.status)).length },
       fromEmergency: caseRow ? {
         caseId: a.encounter.emergencyCase?.id ?? null, caseNumber: caseRow.caseNumber, complaint: caseRow.chiefComplaint, arrivedAt: caseRow.arrivedAt, arrivalMode: caseRow.arrivalMode, doctor: caseRow.doctor.displayName, handoverNote: caseRow.dispositionNote, handedOverAt: caseRow.dispositionAt,
@@ -229,6 +246,41 @@ export class IcuService {
       const day = dateOnly(localDateStr(new Date(), await this.tz(tx, ctx)));
       const row = await tx.icuDayNote.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, admissionId, day, text: input.text, plan: input.plan ?? null, authorId: ctx.userId }, select: { id: true } });
       await this.audit.record(tx, actorOf(ctx), { action: "ICU_DAY_NOTE_ADDED", entityType: "Admission", entityId: admissionId, metadata: { noteId: row.id } });
+    });
+    return this.get(ctx, admissionId);
+  }
+
+  // ───── equipment (the ICU nurse or the doctor in charge) ─────
+
+  private async assertMayHandleEquipment(tx: Db, ctx: RequestContext, a: StayRow): Promise<void> {
+    if (ctx.permissions.has("ICU_NURSE")) return;
+    await this.assertCalledDoctor(tx, ctx, a);
+  }
+
+  async startEquipment(ctx: RequestContext, admissionId: string, input: z.infer<typeof equipmentStartSchema>) {
+    await this.prisma.$transaction(async (tx) => {
+      const a = await this.lock(tx, ctx, admissionId);
+      await this.assertMayHandleEquipment(tx, ctx, a);
+      const s = await tx.service.findFirst({ where: { id: input.serviceId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE", category: "ROOM_BED" }, select: { id: true, name: true } });
+      if (!s) throw new DomainError("VALIDATION_FAILED", "Choose equipment from the ICU equipment list", 400, [{ path: "serviceId", message: "Not ICU equipment" }]);
+      const already = await tx.icuEquipmentUse.findFirst({ where: { tenantId: ctx.tenantId, admissionId, serviceId: s.id, stoppedAt: null }, select: { id: true } });
+      if (already) throw new DomainError("CONFLICT", `${s.name} is already in use for this patient`, 409);
+      const row = await tx.icuEquipmentUse.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, admissionId, serviceId: s.id, startedById: ctx.userId }, select: { id: true } });
+      await this.audit.record(tx, actorOf(ctx), { action: "ICU_EQUIPMENT_STARTED", entityType: "Admission", entityId: admissionId, metadata: { useId: row.id, serviceId: s.id } });
+    });
+    return this.get(ctx, admissionId);
+  }
+
+  async stopEquipment(ctx: RequestContext, useId: string) {
+    const admissionId = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.icuEquipmentUse.findFirst({ where: { id: useId, tenantId: ctx.tenantId, facilityId: ctx.facilityId }, select: { id: true, admissionId: true } });
+      if (!u) throw new DomainError("NOT_FOUND", "Resource not found", 404);
+      const a = await this.lock(tx, ctx, u.admissionId);
+      await this.assertMayHandleEquipment(tx, ctx, a);
+      const res = await tx.icuEquipmentUse.updateMany({ where: { id: u.id, tenantId: ctx.tenantId, stoppedAt: null }, data: { stoppedAt: new Date(), stoppedById: ctx.userId } });
+      if (res.count !== 1) throw new DomainError("INVALID_STATE", "This equipment was already stopped", 409);
+      await this.audit.record(tx, actorOf(ctx), { action: "ICU_EQUIPMENT_STOPPED", entityType: "Admission", entityId: u.admissionId, metadata: { useId: u.id } });
+      return u.admissionId;
     });
     return this.get(ctx, admissionId);
   }

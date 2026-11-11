@@ -32,6 +32,7 @@ model Service {
   lines    InvoiceLine[]
   labDefinitions LabTestDefinition[]
   charges  Charge[]
+  icuEquipmentUses IcuEquipmentUse[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, code])

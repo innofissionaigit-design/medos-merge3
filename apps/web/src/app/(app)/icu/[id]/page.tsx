@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Gate } from "@/components/gate";
-import { DaysCard, FromEmergencyCard, InstructionsCard, IcuVitalsCard, ScheduleCard, useIcuStay, useRefreshIcu, vital } from "@/components/icu";
+import { DaysCard, EquipmentCard, FromEmergencyCard, IcuBillingCard, InstructionsCard, IcuVitalsCard, ScheduleCard, useIcuStay, useRefreshIcu, vital } from "@/components/icu";
 import { VisitLabResults } from "@/components/lab";
 import { LimsVisitCard } from "@/components/lims-order";
 import { MedicationOrders } from "@/components/medication-orders";
@@ -35,6 +35,7 @@ export default function IcuStayPage() {
           <ScheduleCard s={s} onChange={refresh} />
           <IcuVitalsCard s={s} onChange={refresh} />
           <InstructionsCard s={s} onChange={refresh} />
+          <EquipmentCard s={s} onChange={refresh} />
           {can("LIMS_READ") && (
             <div className="space-y-4">
               <LimsVisitCard encounterId={s.encounterId} visitType="IPD" active />
@@ -45,6 +46,7 @@ export default function IcuStayPage() {
         </div>
         <div className="space-y-4">
           <DaysCard s={s} onChange={refresh} />
+          <IcuBillingCard s={s} onChange={refresh} />
           {s.fromEmergency && <FromEmergencyCard e={s.fromEmergency} />}
           {can("PRESCRIPTION_READ") && <MedicationOrders encounterId={s.encounterId} open cacheKey={s.id} />}
         </div>

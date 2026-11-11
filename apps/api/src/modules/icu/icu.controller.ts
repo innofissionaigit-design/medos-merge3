@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from "@nestjs/common";
-import { Ctx, id, paginate, parse, RequirePermissions } from "../../common/http";
+import { Ctx, id, paginate, parse, RequireAnyPermission, RequirePermissions } from "../../common/http";
 import type { RequestContext } from "../../common/request-context";
-import { dayNoteSchema, IcuService, instructionDoneSchema, instructionSchema, listStaysSchema, vitalsScheduleSchema } from "./icu.service";
+import { dayNoteSchema, equipmentStartSchema, IcuService, instructionDoneSchema, instructionSchema, listStaysSchema, vitalsScheduleSchema } from "./icu.service";
 
 /** The intensive care unit (docs/icu.md). Each route checks its permission here; the service checks the stay against the caller's tenant, facility and data scope. */
 @Controller("icu")
@@ -39,6 +39,21 @@ export class IcuController {
   @Post("stays/:id/notes")
   @HttpCode(201)
   async note(@Ctx() ctx: RequestContext, @Param("id") admissionId: string, @Body() body: unknown) { return { data: await this.icu.addDayNote(ctx, id(admissionId), parse(dayNoteSchema, body)) }; }
+
+  /** The ICU equipment in the price list, with the price per day. */
+  @RequirePermissions("ICU_READ")
+  @Get("equipment")
+  async equipment(@Ctx() ctx: RequestContext) { return { data: await this.icu.equipmentCatalogue(ctx) }; }
+
+  @RequireAnyPermission("ICU_NURSE", "ICU_DOCTOR")
+  @Post("stays/:id/equipment")
+  @HttpCode(201)
+  async startEquipment(@Ctx() ctx: RequestContext, @Param("id") admissionId: string, @Body() body: unknown) { return { data: await this.icu.startEquipment(ctx, id(admissionId), parse(equipmentStartSchema, body)) }; }
+
+  @RequireAnyPermission("ICU_NURSE", "ICU_DOCTOR")
+  @Post("equipment/:id/stop")
+  @HttpCode(200)
+  async stopEquipment(@Ctx() ctx: RequestContext, @Param("id") useId: string) { return { data: await this.icu.stopEquipment(ctx, id(useId)) }; }
 
   @RequirePermissions("ICU_NURSE")
   @Post("instructions/:id/done")

@@ -124,7 +124,23 @@ export class ChargesService {
       }
       if (rows.length) await tx.charge.createMany({ data: rows, skipDuplicates: true });
       if (rows.length) await this.audit.record(tx, actorOf(ctx), { action: "BED_CHARGES_POSTED", entityType: "Admission", entityId: admissionId, metadata: { days: rows.length } });
-      return rows.length;
+      // Equipment in use in the ICU (ventilator, monitor, pumps): one charge for every calendar day it was in use, at the price list's price (docs/icu.md).
+      const uses = await tx.icuEquipmentUse.findMany({ where: { tenantId: ctx.tenantId, admissionId }, include: { service: { select: { name: true, price: true, taxPercent: true } } } });
+      const haveEq = new Set((await tx.charge.findMany({ where: { tenantId: ctx.tenantId, admissionId, sourceKey: { startsWith: "ICUEQ:" } }, select: { sourceKey: true } })).map((c) => c.sourceKey));
+      const eqRows: Prisma.ChargeCreateManyInput[] = [];
+      for (const u of uses) {
+        for (const day of datesBetween(localDateStr(u.startedAt, tz), u.stoppedAt ? localDateStr(u.stoppedAt, tz) : today)) {
+          const sourceKey = `ICUEQ:${u.id}:${day}`;
+          if (haveEq.has(sourceKey)) continue;
+          haveEq.add(sourceKey);
+          eqRows.push({ tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: adm.patientId, admissionId, type: "SERVICE", serviceId: u.serviceId, description: `${u.service.name} - ${day}`, quantity: "1", unitPrice: u.service.price.toFixed(2), taxPercent: u.service.taxPercent.toFixed(2), sourceKey, chargedById: ctx.userId });
+        }
+      }
+      if (eqRows.length) {
+        await tx.charge.createMany({ data: eqRows, skipDuplicates: true });
+        await this.audit.record(tx, actorOf(ctx), { action: "ICU_EQUIPMENT_CHARGES_POSTED", entityType: "Admission", entityId: admissionId, metadata: { days: eqRows.length } });
+      }
+      return rows.length + eqRows.length;
     };
     const posted = "$transaction" in db ? await (db as PrismaService).$transaction((tx) => run(tx)) : await run(db);
     return { posted, ...(await this.summarise(db, ctx, admissionId)) };

@@ -64,3 +64,22 @@ model IcuDayNote {
   @@unique([tenantId, id])
   @@index([tenantId, admissionId, day(sort: Desc), createdAt(sort: Desc)])
 }
+
+/// A piece of equipment in use on the patient (ventilator, monitor, infusion pump ...), chosen from the price list (category "Room and bed"). It is charged for every calendar day it is in use (docs/icu.md).
+model IcuEquipmentUse {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  facilityId  String    @db.Uuid
+  admissionId String    @db.Uuid
+  serviceId   String    @db.Uuid
+  startedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  startedById String    @db.Uuid
+  stoppedAt   DateTime? @db.Timestamptz(3)
+  stoppedById String?   @db.Uuid
+
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, startedAt(sort: Desc)])
+}

@@ -317,9 +317,12 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | Method | Path | Access | Module flag |
 |---|---|---|---|
 | GET | `/icu/alerts` | ICU_READ |  |
+| GET | `/icu/equipment` | ICU_READ |  |
+| POST | `/icu/equipment/:id/stop` | any of ICU_NURSE / ICU_DOCTOR |  |
 | POST | `/icu/instructions/:id/done` | ICU_NURSE |  |
 | GET | `/icu/stays` | ICU_READ |  |
 | GET | `/icu/stays/:id` | ICU_READ |  |
+| POST | `/icu/stays/:id/equipment` | any of ICU_NURSE / ICU_DOCTOR |  |
 | POST | `/icu/stays/:id/instructions` | ICU_DOCTOR |  |
 | POST | `/icu/stays/:id/notes` | ICU_DOCTOR |  |
 | POST | `/icu/stays/:id/vitals-schedule` | ICU_DOCTOR |  |

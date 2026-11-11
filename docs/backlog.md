@@ -129,3 +129,4 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Bedside charting: fluid balance, ventilator settings, severity scores, drug infusions with rates; more nurse tasks on a schedule than vitals.
 - A notice to the ICU nurse the moment vitals become late when no page is open (today the alert bar, the board and the page show it), and escalation to the doctor.
 - A ward-to-ICU transfer from the admission page that offers the ICU doctor and sets the vitals interval; a handover summary printout.
+- Equipment charged by the hour or by use count (today a whole calendar day, from the day it is started to the day it is stopped), tiered ICU bed prices (ventilated vs not), and a package price for a typical ICU day.

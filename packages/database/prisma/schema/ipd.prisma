@@ -119,6 +119,7 @@ model Admission {
   icuVitalsOrders IcuVitalsOrder[]
   icuInstructions IcuInstruction[]
   icuDayNotes    IcuDayNote[]
+  icuEquipment   IcuEquipmentUse[]
   finalInvoice   Invoice? @relation("AdmissionFinalInvoice", fields: [finalInvoiceId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, id])
