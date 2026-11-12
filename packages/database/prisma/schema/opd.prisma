@@ -52,6 +52,7 @@ model Encounter {
   consultationBill VisitConsultationBill?
   shareEntries DoctorShareEntry[]
   prescriptionDeliveries PrescriptionDelivery[]
+  retentionReviews RecordRetentionReview[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])
@@ -159,6 +160,7 @@ model Appointment {
   teleconsults Teleconsult[]
   advanceDeposits AdvanceDeposit[]
   paymentLink  BookingPaymentLink?
+  aftercareTasks  AftercareTask[]
 
   @@unique([tenantId, id])
   @@index([tenantId, facilityId, startAt])

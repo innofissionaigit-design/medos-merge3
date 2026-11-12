@@ -139,7 +139,10 @@ test("appointments: book then reschedule to another time", async ({ page }) => {
   const book = page.getByRole("dialog", { name: "Book appointment" });
   await book.getByLabel("Patient").fill(p.first);
   await book.getByText(p.mrn).click();
-  await book.getByLabel("Doctor").selectOption({ index: 1 });
+  // An OPD doctor: the emergency and ICU doctors and the RMO in the seed have no OPD hours, so "the first doctor" may have no free time.
+  const doctor = book.getByLabel("Doctor");
+  const opdDoctor = await doctor.locator("option").evaluateAll((os) => os.map((o) => o.textContent ?? "").find((t, i) => i > 0 && !/Emergency|ICU|RMO/.test(t)));
+  await doctor.selectOption({ label: opdDoctor! });
   await book.getByLabel("Date").fill(futureDay(2));
   await book.locator("button:not([disabled])").filter({ hasText: /\d:\d\d/ }).first().click();
   await book.getByRole("button", { name: "Book", exact: true }).click();
@@ -176,7 +179,7 @@ test("pharmacy: add a supplier, receive a purchase, return part of it and adjust
   await buy.getByRole("listitem").first().click();
   await buy.getByLabel("Batch number").fill("E2E-PUR-1");
   await buy.getByLabel("Expiry date").fill(futureDay(400));
-  await buy.getByLabel("Quantity").fill("40");
+  await buy.getByLabel("Quantity", { exact: true }).fill("40");
   await buy.getByLabel("MRP").fill("5");
   await buy.getByLabel("Purchase price").fill("3");
   await buy.getByLabel("Selling price").fill("4.5");

@@ -186,12 +186,12 @@ export interface ProcedureRow { id: string; name: string; performedAt: string; o
 export function ProceduresCard({ admissionId, open }: { admissionId: string; open: boolean }) {
   const { can, dateTime, money } = useMe();
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["procedures", admissionId], queryFn: () => api.get<ProcedureRow[]>(`/admissions/${admissionId}/procedures`) });
+  const list = useQuery({ queryKey: ["procedure-records", admissionId], queryFn: () => api.get<ProcedureRow[]>(`/admissions/${admissionId}/procedure-records`) });
   const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<{ id: string; name: string; price: string }>("/services", { pageSize: 100 }), enabled: can("PROCEDURE_RECORD") });
   const [f, setF] = useState({ name: "", serviceId: "", outcome: "" });
-  const refresh = () => { void qc.invalidateQueries({ queryKey: ["procedures", admissionId] }); void qc.invalidateQueries({ queryKey: ["charges", admissionId] }); void qc.invalidateQueries({ queryKey: ["ward-board"] }); };
-  const save = useMutation({ mutationFn: () => api.post(`/admissions/${admissionId}/procedures`, { name: f.name.trim(), ...(f.serviceId ? { serviceId: f.serviceId } : {}), outcome: f.outcome.trim() }), onSuccess: () => { setF({ name: "", serviceId: "", outcome: "" }); refresh(); } });
-  const wrong = useMutation({ mutationFn: (id: string) => api.post(`/procedures/${id}/enter-in-error`, { reason: "Entered by mistake" }), onSuccess: refresh });
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ["procedure-records", admissionId] }); void qc.invalidateQueries({ queryKey: ["charges", admissionId] }); void qc.invalidateQueries({ queryKey: ["ward-board"] }); };
+  const save = useMutation({ mutationFn: () => api.post(`/admissions/${admissionId}/procedure-records`, { name: f.name.trim(), ...(f.serviceId ? { serviceId: f.serviceId } : {}), outcome: f.outcome.trim() }), onSuccess: () => { setF({ name: "", serviceId: "", outcome: "" }); refresh(); } });
+  const wrong = useMutation({ mutationFn: (id: string) => api.post(`/procedure-records/${id}/enter-in-error`, { reason: "Entered by mistake" }), onSuccess: refresh });
   return (
     <Card title="Procedures">
       {open && can("PROCEDURE_RECORD") && (

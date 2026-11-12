@@ -92,6 +92,19 @@ model Facility {
   wards           Ward[]
   admissions      Admission[]
   settings        Setting[]
+  supplierPayments SupplierPayment[]
+  debitNotes       SupplierDebitNote[]
+  stockCounts      StockCount[]
+  stockRequests    StockRequest[]
+  aftercareTasks   AftercareTask[]
+  patientFeedback  PatientFeedback[]
+  complaints       Complaint[]
+  purchaseOrders   PurchaseOrder[]
+  purchaseIndents  PurchaseIndent[]
+  housekeepingRequests HousekeepingRequest[]
+  supplierPaymentRuns  SupplierPaymentRun[]
+  journalEntries       JournalEntry[]
+  aftercareScripts     AftercareScript[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])

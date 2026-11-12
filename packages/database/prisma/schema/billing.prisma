@@ -33,6 +33,7 @@ model Service {
   labDefinitions LabTestDefinition[]
   charges  Charge[]
   icuEquipmentUses IcuEquipmentUse[]
+  insurerRates   InsurerRate[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, code])
@@ -110,6 +111,7 @@ model Invoice {
   claims      Claim[]
   finalFor    Admission[] @relation("AdmissionFinalInvoice")
   shareEntries DoctorShareEntry[]
+  claimLinks     ClaimInvoice[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, invoiceNumber])

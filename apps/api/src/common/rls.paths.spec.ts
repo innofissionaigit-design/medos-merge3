@@ -160,6 +160,9 @@ describe("row-level security: tenant context, and the explicit paths that have n
   // ───────────────────────── reminder worker ─────────────────────────
   it("the reminder worker lists hospitals through the narrow function and serves each under its own scope", async () => {
     const worker = t.app.get(RemindersService);
+    // The test database is shared by every suite and is never wiped between runs, so reminders that other suites or earlier runs left
+    // pending can have become due by now. This test is about enforcement, not about what else is in the database: clear those first.
+    await t.prisma.appointmentReminder.updateMany({ where: { status: "PENDING", sendAt: { lte: new Date() } }, data: { status: "CANCELLED" } });
     const counts = await worker.runDue();
     // Other specs leave due reminders behind in the shared test database, which the worker skips (their appointments are gone or past), so only a refusal or a send would be wrong here.
     assert.deepEqual({ ...counts, skipped: 0 }, { sent: 0, skipped: 0, retried: 0, failed: 0 }, "runs under enforcement with no refusal and nothing sent");

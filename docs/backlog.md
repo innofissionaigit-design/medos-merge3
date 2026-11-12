@@ -79,7 +79,9 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 
 - Radiology (docs/radiology.md) has reporting, image storage (PNG, JPEG, single DICOM slices) and a simple viewer. Still to do: a PACS (DICOM server), whole series, compressed DICOM, a diagnostic viewer, report templates and structured measurements, preliminary reads, cardiology and procedure work lists.
 
-- Insurance claims (docs/claims.md) track claims by hand and hold the supporting documents. Still to do: electronic submission (insurer portals, NHCX), insurer rate cards and packages, co-pay and deductible calculation, TDS on insurer payments, several invoices per claim.
+- Electronic claim submission to insurers / TPAs (NHCX, insurer portals): needs each payer's gateway and credentials. Built so far: the claim package export (docs/claims.md), which the TPA desk uploads by hand; the TPA desk records what it sends and receives, and the discharge insurance stage and post-discharge tracking read that record. Not built.
+- Cashless insurance extras still open (docs/claims.md): a live eligibility check with the insurer or TPA (needs their online connection details). Built: the insurer check recorded by the desk, enhancement requests, non-payable items, appeals, insurer rate cards and packages, several invoices per claim and TDS on insurer payments.
+- Insurance claims (docs/claims.md; outside MLP-1 but built and, at the user's explicit request, wired into the discharge checklist as the Insurance stage) track claims by hand and hold the supporting documents. Still to do: electronic submission (insurer portals, NHCX).
 
 - Payroll (docs/payroll.md) covers monthly salary only. Attendance, leave (half days, carry-forward), holidays, time-clock import and arrears are built. Still to do: advances and loan recovery, Form 16 and TDS computation, PF/ESI challans and bank transfer files, more salary heads, and the rest of HRMS (recruitment, appraisals).
 
@@ -154,3 +156,9 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Doctor orders from the round screen itself (medicines, tests, imaging in one place); today the doctor opens the chart for them.
 - Handover between shifts (what the day nurses tell the night nurses) and a ward-wise printout of the round.
 - A procedure note for an operation (anaesthesia, team, implants), consent forms, and linking a procedure to the operation theatre record.
+
+## Procurement, insurance and after-discharge follow-ups (docs/procurement.md, docs/claims.md, docs/aftercare.md)
+
+- Procurement: full general-ledger accounting (revenue, patient billing, tax returns) beyond the cost ledger; reading a supplier's own statement file to pay against it.
+- Insurance: insurer-specific adapters that read the insurer's reply (eligibility result, decisions, payment advice) automatically; needs each insurer's interface and credentials.
+- After discharge: a phone-system (PBX or cloud-telephony) connection with audio recording; needs a provider account.

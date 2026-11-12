@@ -68,6 +68,7 @@ model Bed {
   assignments BedAssignment[]
   emergencyStays EmergencyBedStay[]
   plannedAdmissions PlannedAdmission[]
+  turnovers   BedTurnover[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])
@@ -121,12 +122,21 @@ model Admission {
   emergencyCase  EmergencyCase?
   plannedAdmission PlannedAdmission?
   roundNotes     RoundNote[]
-  procedures     ProcedureRecord[]
+  procedureRecords ProcedureRecord[]
+  procedures     Procedure[]
   icuVitalsOrders IcuVitalsOrder[]
   icuInstructions IcuInstruction[]
   icuDayNotes    IcuDayNote[]
   icuEquipment   IcuEquipmentUse[]
   finalInvoice   Invoice? @relation("AdmissionFinalInvoice", fields: [finalInvoiceId], references: [id], onDelete: Restrict)
+  summaryVerifications DischargeSummaryVerification[]
+  departure            AdmissionDeparture?
+  turnover             BedTurnover?
+  recordCompletion     MedicalRecordCompletion?
+  recordCodes          MedicalRecordCode[]
+  recordFileMoves      MedicalRecordFileMovement[]
+  aftercareTasks       AftercareTask[]
+  patientFeedbacks     PatientFeedback[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])

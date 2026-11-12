@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from "@nes
 import { z } from "zod";
 import { Ctx, id, parse, RequireAnyPermission, RequirePermissions } from "../../common/http";
 import type { RequestContext } from "../../common/request-context";
-import { ProceduresService, procedureErrorSchema, procedureSchema } from "./procedures.service";
+import { ProcedureRecordsService, procedureErrorSchema, procedureSchema } from "./procedures.service";
 import { errorSchema, roundNoteSchema, RoundsService, slotSchema, slotUpdateSchema } from "./rounds.service";
 import { WardBoardService } from "./ward-board.service";
 
@@ -11,7 +11,7 @@ const activitySchema = z.object({ limit: z.coerce.number().int().min(5).max(100)
 /** Ward rounds, the ward board and procedures (docs/ward-rounds.md). */
 @Controller()
 export class RoundsController {
-  constructor(private readonly rounds: RoundsService, private readonly board: WardBoardService, private readonly procedures: ProceduresService) {}
+  constructor(private readonly rounds: RoundsService, private readonly board: WardBoardService, private readonly procedures: ProcedureRecordsService) {}
 
   // ───── round times (the ward coordinator sets them; everyone who takes part can read them) ─────
 
@@ -80,16 +80,16 @@ export class RoundsController {
   // ───── procedures ─────
 
   @RequireAnyPermission("ADMISSION_READ", "PROCEDURE_RECORD")
-  @Get("admissions/:id/procedures")
+  @Get("admissions/:id/procedure-records")
   async listProcedures(@Ctx() ctx: RequestContext, @Param("id") admissionId: string) { return { data: await this.procedures.list(ctx, id(admissionId)) }; }
 
   @RequirePermissions("PROCEDURE_RECORD")
-  @Post("admissions/:id/procedures")
+  @Post("admissions/:id/procedure-records")
   @HttpCode(201)
   async recordProcedure(@Ctx() ctx: RequestContext, @Param("id") admissionId: string, @Body() body: unknown) { return { data: await this.procedures.record(ctx, id(admissionId), parse(procedureSchema, body)) }; }
 
   @RequirePermissions("PROCEDURE_RECORD")
-  @Post("procedures/:id/enter-in-error")
+  @Post("procedure-records/:id/enter-in-error")
   @HttpCode(200)
   async procedureError(@Ctx() ctx: RequestContext, @Param("id") procedureId: string, @Body() body: unknown) { return { data: await this.procedures.enterInError(ctx, id(procedureId), parse(procedureErrorSchema, body)) }; }
 }

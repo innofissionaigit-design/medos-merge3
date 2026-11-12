@@ -77,8 +77,8 @@ One active round time per minute for all doctors, and one per doctor; a round ti
 | `GET /rounds/today`, `GET /ward-board`, `GET /ward-board/activity` | `WARD_BOARD_READ` |
 | `POST /admissions/:id/round-notes`, `POST /round-notes/:id/enter-in-error` | `ROUND_DO` (own patients) |
 | `GET /admissions/:id/round-notes` | `ADMISSION_READ` or `ROUND_DO` |
-| `GET /admissions/:id/procedures` | `ADMISSION_READ` or `PROCEDURE_RECORD` |
-| `POST /admissions/:id/procedures`, `POST /procedures/:id/enter-in-error` | `PROCEDURE_RECORD` |
+| `GET /admissions/:id/procedure-records` | `ADMISSION_READ` or `PROCEDURE_RECORD` |
+| `POST /admissions/:id/procedure-records`, `POST /procedure-records/:id/enter-in-error` | `PROCEDURE_RECORD` |
 
 ## Known limits
 

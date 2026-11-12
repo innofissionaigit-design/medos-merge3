@@ -223,7 +223,7 @@ describe("ward rounds: round times, the doctor's rounds, notes, the ward board, 
     for (const tok of [doc.token, nurse.token, rec.token, cashier.token]) { assert.equal((await t.api("get", "/ward-board", tok)).status, 403); assert.equal((await t.api("get", "/ward-board/activity", tok)).status, 403); }
     // The coordinator reads; the coordinator cannot treat, order or write notes.
     assert.equal((await t.api("post", `/admissions/${y.adm.id}/round-notes`, coord.token).send({ note: "Coordinator trying to write a note" })).status, 403);
-    assert.equal((await t.api("post", `/admissions/${y.adm.id}/procedures`, coord.token).send({ name: "Dressing", outcome: "Done" })).status, 403);
+    assert.equal((await t.api("post", `/admissions/${y.adm.id}/procedure-records`, coord.token).send({ name: "Dressing", outcome: "Done" })).status, 403);
     assert.equal((await t.api("get", "/ward-board", bCoord.token)).body.data.totals.admitted, 0);
     assert.equal((await t.api("get", "/ward-board/activity", bCoord.token)).body.data.length, 0);
   });
@@ -247,46 +247,46 @@ describe("ward rounds: round times, the doctor's rounds, notes, the ward board, 
   it("a procedure is recorded and its charge added to the admission; a wrong entry takes its charge off; permissions and isolation hold", async () => {
     const p = await admitted(doc);
     const svcRow = (await t.api("post", "/services", a.admin.token).send({ code: code("PR"), name: "Dressing (large)", category: "PROCEDURE", price: "350", taxPercent: 0 })).body.data as { id: string };
-    const ok = await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "Dressing of the abdominal wound", serviceId: svcRow.id, outcome: "Wound clean, no discharge, sutures intact" });
+    const ok = await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "Dressing of the abdominal wound", serviceId: svcRow.id, outcome: "Wound clean, no discharge, sutures intact" });
     assert.equal(ok.status, 201, JSON.stringify(ok.body));
     assert.equal(ok.body.data.charged.status, "PENDING");
     const charge = await t.prisma.charge.findFirstOrThrow({ where: { admissionId: p.adm.id, type: "PROCEDURE" } });
     assert.equal(charge.unitPrice.toString(), "350");
     assert.equal(charge.sourceKey, `PROC:${ok.body.data.id}`);
-    const none = await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "Bedside ultrasound check", outcome: "No free fluid seen" });
+    const none = await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "Bedside ultrasound check", outcome: "No free fluid seen" });
     assert.equal(none.status, 201);
     assert.equal(none.body.data.charged, null, "no service, no charge");
     assert.equal(await t.prisma.charge.count({ where: { admissionId: p.adm.id, type: "PROCEDURE" } }), 1);
     // Rules.
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "Future procedure", outcome: "Planned", performedAt: new Date(Date.now() + 86_400_000).toISOString() })).status, 400);
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "Unknown service", outcome: "Done", serviceId: randomUUID() })).status, 400);
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "ab", outcome: "Done" })).status, 400);
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, nurse.token).send({ name: "Nurse doing it", outcome: "Done" })).status, 403);
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, doc2.token).send({ name: "Another doctor's patient", outcome: "Done" })).status, 404, "a doctor sees only their own patients");
-    const list = (await t.api("get", `/admissions/${p.adm.id}/procedures`, nurse.token)).body.data as { id: string }[];
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "Future procedure", outcome: "Planned", performedAt: new Date(Date.now() + 86_400_000).toISOString() })).status, 400);
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "Unknown service", outcome: "Done", serviceId: randomUUID() })).status, 400);
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "ab", outcome: "Done" })).status, 400);
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, nurse.token).send({ name: "Nurse doing it", outcome: "Done" })).status, 403);
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc2.token).send({ name: "Another doctor's patient", outcome: "Done" })).status, 404, "a doctor sees only their own patients");
+    const list = (await t.api("get", `/admissions/${p.adm.id}/procedure-records`, nurse.token)).body.data as { id: string }[];
     assert.equal(list.length, 2);
     // A wrong entry: marked, and its charge is voided.
-    assert.equal((await t.api("post", `/procedures/${ok.body.data.id}/enter-in-error`, doc.token).send({ reason: "Recorded on the wrong patient" })).status, 200);
+    assert.equal((await t.api("post", `/procedure-records/${ok.body.data.id}/enter-in-error`, doc.token).send({ reason: "Recorded on the wrong patient" })).status, 200);
     assert.equal((await t.prisma.charge.findFirstOrThrow({ where: { id: charge.id } })).status, "VOIDED");
-    assert.equal((await t.api("post", `/procedures/${ok.body.data.id}/enter-in-error`, doc.token).send({ reason: "Again" })).status, 409);
+    assert.equal((await t.api("post", `/procedure-records/${ok.body.data.id}/enter-in-error`, doc.token).send({ reason: "Again" })).status, 409);
     await assert.rejects(() => t.prisma.procedureRecord.update({ where: { id: none.body.data.id }, data: { name: "Rewritten procedure" } }));
     await assert.rejects(() => t.prisma.procedureRecord.delete({ where: { id: none.body.data.id } }));
     // Isolation.
     const bDoc = await makeDoctor(t, b);
-    assert.equal((await t.api("get", `/admissions/${p.adm.id}/procedures`, bDoc.token)).status, 404);
-    assert.equal((await t.api("post", `/procedures/${none.body.data.id}/enter-in-error`, bDoc.token).send({ reason: "Other hospital trying" })).status, 404);
+    assert.equal((await t.api("get", `/admissions/${p.adm.id}/procedure-records`, bDoc.token)).status, 404);
+    assert.equal((await t.api("post", `/procedure-records/${none.body.data.id}/enter-in-error`, bDoc.token).send({ reason: "Other hospital trying" })).status, 404);
     assert.equal((await t.api("get", `/admissions/${p.adm.id}/round-notes`, bDoc.token)).status, 404);
   });
 
   it("a procedure charge already on a bill cannot be taken off by marking the entry, and a discharged patient takes no new procedure", async () => {
     const p = await admitted(doc);
     const svcRow = (await t.api("post", "/services", a.admin.token).send({ code: code("PB"), name: "Chest tube care", category: "PROCEDURE", price: "500", taxPercent: 0 })).body.data as { id: string };
-    const made = (await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "Chest tube care", serviceId: svcRow.id, outcome: "Drain working, 40 ml serous" })).body.data as { id: string };
+    const made = (await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "Chest tube care", serviceId: svcRow.id, outcome: "Drain working, 40 ml serous" })).body.data as { id: string };
     await t.prisma.charge.updateMany({ where: { admissionId: p.adm.id, type: "PROCEDURE" }, data: { status: "BILLED" } }).catch(() => undefined);
     const billed = await t.prisma.charge.findFirst({ where: { admissionId: p.adm.id, type: "PROCEDURE", status: "BILLED" } });
-    if (billed) assert.equal((await t.api("post", `/procedures/${made.id}/enter-in-error`, doc.token).send({ reason: "Trying after billing" })).status, 409);
+    if (billed) assert.equal((await t.api("post", `/procedure-records/${made.id}/enter-in-error`, doc.token).send({ reason: "Trying after billing" })).status, 409);
     await t.prisma.admission.update({ where: { id: p.adm.id }, data: { status: "DISCHARGED", dischargedAt: new Date(), dischargeType: "ROUTINE" } });
-    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedures`, doc.token).send({ name: "After discharge", outcome: "Done" })).status, 409);
+    assert.equal((await t.api("post", `/admissions/${p.adm.id}/procedure-records`, doc.token).send({ name: "After discharge", outcome: "Done" })).status, 409);
     assert.equal((await t.api("post", `/admissions/${p.adm.id}/round-notes`, doc.token).send({ note: "Note after discharge" })).status, 409);
   });
 });

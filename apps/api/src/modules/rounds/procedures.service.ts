@@ -21,7 +21,7 @@ const VIEW = { id: true, name: true, performedAt: true, performedById: true, out
  * if it has not been billed yet.
  */
 @Injectable()
-export class ProceduresService {
+export class ProcedureRecordsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   async list(ctx: RequestContext, admissionId: string) {

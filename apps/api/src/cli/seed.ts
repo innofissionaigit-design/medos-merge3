@@ -94,6 +94,11 @@ async function main(): Promise<void> {
     await call("PUT", `/practitioners/${pr.id}/schedule`, admin, { windows: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ dayOfWeek, start: "09:00", end: "17:00", slotMinutes: 15 })) });
     doctors.push(pr.id);
   }
+  // The resident medical officer: a registered practitioner (so they may write clinical documents) who covers the whole ward. An empty,
+  // saved schedule (scheduleSet) means nobody can book appointments with them.
+  const rmoName = `Dr. ${pick(FIRST_NAMES_F)} ${pick(LAST_NAMES)} (RMO)`;
+  const rmoUserId = await mkUser("rmo1", rmoName, "RMO");
+  await prisma.practitioner.create({ data: { tenantId: prov.tenantId, facilityId: prov.facilityId, userId: rmoUserId, displayName: rmoName, specialty: "Resident Medical Officer", scheduleSet: true } });
   for (let i = 0; i < COUNTS.nurses; i++) await mkUser(`nurse${i + 1}`, `Nurse ${pick(FIRST_NAMES_F)} ${pick(LAST_NAMES)}`, "NURSE");
   // The emergency ward (docs/emergency.md): a doctor of the Emergency Medicine department, an emergency nurse and the emergency receptionist. The OT and ICU wards come with the hospital.
   const emDept = await prisma.department.findFirst({ where: { tenantId: prov.tenantId, facilityId: prov.facilityId, code: "EM" } });
@@ -110,6 +115,8 @@ async function main(): Promise<void> {
     ["coordinator1", "Ward Coordinator One", "WARD_COORDINATOR"], ["admission1", "Admission Desk One", "ADMISSION_DESK"], ["bedmgr1", "Bed Manager One", "BED_MANAGER"], ["claims1", "Insurance Officer One", "CLAIMS_OFFICER"],
     // The laboratory portal (docs/lims-portal.md): one login for each role.
     ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
+  // After-care roles (docs/discharge-stages.md, docs/procedures.md, docs/housekeeping.md, docs/procurement.md, docs/aftercare.md). The care coordinator is carecoord1 (coordinator1 is the ward coordinator).
+  for (const [u, n, r] of [["labtech1", "Lab Technician One", "LAB_TECHNICIAN"], ["radiographer1", "Radiographer One", "RADIOGRAPHER"], ["otcoord1", "OT Coordinator One", "OT_COORDINATOR"], ["tpa1", "TPA Desk One", "CLAIMS_OFFICER"], ["transport1", "Patient Transport One", "PATIENT_TRANSPORT"], ["housekeeping1", "Housekeeping One", "HOUSEKEEPING"], ["mrd1", "Medical Records One", "MEDICAL_RECORDS"], ["procurement1", "Procurement One", "PROCUREMENT"], ["carecoord1", "Care Coordinator One", "CARE_COORDINATOR"], ["relations1", "Patient Relations One", "PATIENT_RELATIONS"]] as const) await mkUser(u, n, r);
   const [reception, cashier, pharmacist] = await Promise.all([login("reception1"), login("cashier1"), login("pharmacist1")]);
 
   step(`registering ${COUNTS.patients} patients`);
@@ -172,7 +179,7 @@ async function main(): Promise<void> {
 
   step(`billing: ${COUNTS.invoices} invoices`);
   const services: string[] = [];
-  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"], ["ICUVENT", "ICU ventilator (per day)", "2500", "ROOM_BED"], ["ICUMON", "ICU cardiac monitor (per day)", "800", "ROOM_BED"], ["ICUPUMP", "ICU infusion pump (per day)", "300", "ROOM_BED"], ["CVLINE", "Central line insertion", "1200", "PROCEDURE"]] as const) {
+  for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"], ["ICUVENT", "ICU ventilator (per day)", "2500", "ROOM_BED"], ["ICUMON", "ICU cardiac monitor (per day)", "800", "ROOM_BED"], ["ICUPUMP", "ICU infusion pump (per day)", "300", "ROOM_BED"], ["CVLINE", "Central line insertion", "1200", "PROCEDURE"], ["APPEN", "Appendectomy", "15000", "PROCEDURE"], ["HERNIA", "Hernia repair", "18000", "PROCEDURE"], ["ARTHRO", "Knee arthroscopy", "22000", "PROCEDURE"], ["IMPLT", "Orthopaedic plate and screws (implant)", "8500", "OTHER"], ["IMPMS", "Surgical mesh (implant)", "3500", "OTHER"], ["CONKT", "Surgical consumables kit", "1800", "OTHER"], ["CONSU", "Suture pack", "600", "OTHER"]] as const) {
     services.push((await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0 }))["id"] as string);
   }
   // The hospital's lab-test and investigation list, which feeds the Lab test dropdown of the prescription and the Cashier's test billing (synthetic prices).
@@ -211,7 +218,14 @@ async function main(): Promise<void> {
   }
 
   await app.close();
-  process.stdout.write(`\nSeed complete. Tenant code: ${code}\nLogin as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, reception1, cashier1, pharmacist1, manager1.\nEmergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_doctor1 (doctor).\nIntensive care (menu: ICU): icu_doctor1, icu_nurse1.\nLaboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.\n`);
+  process.stdout.write(`
+Seed complete. Tenant code: ${code}
+Login as admin, doctor1..doctor${COUNTS.doctors}, nurse1..nurse${COUNTS.nurses}, rmo1, reception1, cashier1, pharmacist1, manager1.
+Emergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_doctor1 (doctor).
+Intensive care (menu: ICU): icu_doctor1, icu_nurse1.
+Laboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.
+After-care: labtech1, radiographer1, otcoord1, tpa1, transport1, housekeeping1, mrd1, procurement1, carecoord1 (care coordinator), relations1.
+`);
   process.stdout.write(generated ? `Password (generated, shown once): ${password}\n` : "Password: the value of SEED_PASSWORD\n");
 }
 

@@ -1167,5 +1167,31 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       const r = await only(encounterId, "Special assay");
       assert.equal(await t.prisma.charge.count({ where: { sourceKey: `LIMS:${r.id}` } }), 0);
     });
+
+    it("the discharge 'Laboratory / radiology' stage follows a LIMS test of an admitted patient: pending until the report is issued, then cleared with no cashier step", async () => {
+      const x = await passedLab();
+      const adm = await t.prisma.admission.findFirstOrThrow({ where: { encounterId: x.encounterId }, select: { id: true } });
+      const labStep = async () => ((await t.api("get", `/admissions/${adm.id}/discharge`, doc.token)).body.data.steps as { step: string; status: string; checks: { name: string; ok: boolean }[] }[]).find((s) => s.step === "LAB_RADIOLOGY")!;
+      const tests = async () => (await t.api("get", `/admissions/${adm.id}/test-orders`, doc.token)).body.data as { name: string; state: string }[];
+      assert.equal((await t.api("post", `/admissions/${adm.id}/discharge/clear`, doc.token).send({ step: "MEDICALLY_FIT" })).status, 200);
+      // Passed but not issued: no charge yet, and never "to be billed by the cashier".
+      assert.equal((await tests()).find((o) => o.name === cbc.name)?.state, "IN_LAB");
+      assert.equal((await labStep()).status, "PENDING");
+      assert.equal((await act(x.r.id, "issue", pTech.token)).status, 200);
+      const after = await labStep();
+      assert.equal(after.status, "CLEARED", JSON.stringify(after));
+      assert.ok(after.checks.every((c) => c.ok), JSON.stringify(after.checks));
+      assert.equal((await tests()).find((o) => o.name === cbc.name)?.state, "DONE");
+    });
+
+    it("the discharge stage waits for a LIMS test of an admitted patient that is not yet reported", async () => {
+      const x = await collectedLab();
+      const adm = await t.prisma.admission.findFirstOrThrow({ where: { encounterId: x.encounterId }, select: { id: true } });
+      assert.equal((await t.api("post", `/admissions/${adm.id}/discharge/clear`, doc.token).send({ step: "MEDICALLY_FIT" })).status, 200);
+      const d = (await t.api("get", `/admissions/${adm.id}/discharge`, doc.token)).body.data as { steps: { step: string; status: string }[] };
+      assert.equal(d.steps.find((s) => s.step === "LAB_RADIOLOGY")?.status, "PENDING");
+      const state = ((await t.api("get", `/admissions/${adm.id}/test-orders`, doc.token)).body.data as { name: string; state: string }[]).find((o) => o.name === cbc.name)?.state;
+      assert.equal(state, "IN_LAB");
+    });
   });
 });

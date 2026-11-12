@@ -41,6 +41,8 @@ model Insurer {
   updatedAt DateTime    @updatedAt @db.Timestamptz(3)
 
   policies PatientPolicy[]
+  rates    InsurerRate[]
+  packages InsurerPackage[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
@@ -114,6 +116,19 @@ model Claim {
   settlements ClaimSettlement[]
   documents   ClaimDocument[]
   plannedAdmissions PlannedAdmission[]
+  packageId            String?            @db.Uuid
+  packageName          String?
+  packagePrice         Decimal?           @db.Decimal(14, 2)
+  verification         ClaimVerification?
+  verifiedAt           DateTime?          @db.Timestamptz(3)
+  verifiedById         String?            @db.Uuid
+  verificationRef      String?
+  verificationNote     String?
+  enhancements  ClaimEnhancement[]
+  nonPayables   ClaimNonPayable[]
+  extraInvoices ClaimInvoice[]
+  appeals       ClaimAppeal[]
+  transmissions ClaimTransmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, claimNumber])
@@ -152,6 +167,7 @@ model ClaimSettlement {
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   claim Claim @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+  tdsAmount   Decimal  @default(0) @db.Decimal(14, 2)
 
   @@unique([tenantId, id])
   @@index([tenantId, claimId])
@@ -182,4 +198,162 @@ model ClaimDocument {
 
   @@unique([tenantId, id])
   @@index([tenantId, claimId, status, uploadedAt])
+}
+
+enum ClaimVerification {
+  VERIFIED
+  NOT_ELIGIBLE
+}
+
+enum EnhancementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AppealStatus {
+  PENDING
+  OVERTURNED
+  UPHELD
+}
+
+model ClaimEnhancement {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String            @db.Uuid
+  claimId         String            @db.Uuid
+  requestedAmount Decimal           @db.Decimal(14, 2)
+  reason          String
+  status          EnhancementStatus @default(PENDING)
+  approvedAmount  Decimal?          @db.Decimal(14, 2)
+  decisionNote    String?
+  requestedById   String            @db.Uuid
+  requestedAt     DateTime          @default(now()) @db.Timestamptz(3)
+  decidedById     String?           @db.Uuid
+  decidedAt       DateTime?         @db.Timestamptz(3)
+
+  claim Claim @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, claimId, requestedAt])
+}
+
+model ClaimNonPayable {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String            @db.Uuid
+  claimId      String            @db.Uuid
+  description  String
+  amount       Decimal           @db.Decimal(14, 2)
+  reason       String
+  status       PatientFileStatus @default(ACTIVE)
+  recordedById String            @db.Uuid
+  recordedAt   DateTime          @default(now()) @db.Timestamptz(3)
+  removedById  String?           @db.Uuid
+  removedAt    DateTime?         @db.Timestamptz(3)
+  removeReason String?
+
+  claim Claim @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, claimId, status])
+}
+
+model ClaimAppeal {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String       @db.Uuid
+  claimId        String       @db.Uuid
+  reason         String
+  status         AppealStatus @default(PENDING)
+  approvedAmount Decimal?     @db.Decimal(14, 2)
+  decisionNote   String?
+  requestedById  String       @db.Uuid
+  requestedAt    DateTime     @default(now()) @db.Timestamptz(3)
+  decidedById    String?      @db.Uuid
+  decidedAt      DateTime?    @db.Timestamptz(3)
+
+  claim Claim @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, claimId, requestedAt])
+}
+
+model InsurerRate {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String      @db.Uuid
+  insurerId String      @db.Uuid
+  serviceId String      @db.Uuid
+  price     Decimal     @db.Decimal(12, 2)
+  status    PayerStatus @default(ACTIVE)
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(3)
+
+  insurer Insurer @relation(fields: [tenantId, insurerId], references: [tenantId, id], onDelete: Restrict)
+  service Service @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, insurerId, serviceId])
+}
+
+model InsurerPackage {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String      @db.Uuid
+  insurerId String      @db.Uuid
+  code      String
+  name      String
+  price     Decimal     @db.Decimal(14, 2)
+  status    PayerStatus @default(ACTIVE)
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(3)
+
+  insurer Insurer @relation(fields: [tenantId, insurerId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, insurerId, code])
+}
+
+model ClaimInvoice {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  claimId     String   @db.Uuid
+  invoiceId   String   @db.Uuid
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  claim   Claim   @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+  invoice Invoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, claimId, invoiceId])
+  @@index([tenantId, invoiceId])
+}
+
+enum TransmissionKind {
+  ELIGIBILITY
+  CLAIM
+}
+
+enum TransmissionStatus {
+  SENT
+  FAILED
+  NOT_SENT
+}
+
+model ClaimTransmission {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String             @db.Uuid
+  claimId     String             @db.Uuid
+  kind        TransmissionKind
+  status      TransmissionStatus
+  channel     String
+  /// A fingerprint of what was built, so a resend of the same content is recognisable. Not the content itself.
+  payloadHash String
+  httpStatus  Int?
+  externalRef String?
+  detail      String?
+  sentById    String             @db.Uuid
+  at          DateTime           @default(now()) @db.Timestamptz(3)
+
+  claim Claim @relation(fields: [tenantId, claimId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, claimId, at])
 }

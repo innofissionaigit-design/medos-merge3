@@ -78,7 +78,7 @@ model Patient {
   emergencyCases EmergencyCase[]
   plannedAdmissions PlannedAdmission[]
   roundNotes     RoundNote[]
-  procedures     ProcedureRecord[]
+  procedureRecords ProcedureRecord[]
   policies     PatientPolicy[]
   appointmentRequests AppointmentRequest[]
   teleconsults Teleconsult[]
@@ -107,6 +107,9 @@ model Patient {
   prescriptionScans PrescriptionScan[]
   prescriptionShares PrescriptionShare[]
   registration PatientRegistration?
+  aftercareTasks      AftercareTask[]
+  patientFeedback     PatientFeedback[]
+  complaints          Complaint[]
 
   @@unique([tenantId, id])
   @@index([tenantId, mobile])
