@@ -6,6 +6,7 @@ import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { PasswordService } from "../auth/password.service";
 import { DEFAULT_SEQUENCES } from "../numbering/numbering.service";
+import { DEFAULT_ROUND_SLOTS } from "../rounds/rounds.domain";
 
 const tzSchema = z.string().min(3).max(64).refine((tz) => {
   try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; }
@@ -88,6 +89,7 @@ export class TenantsService {
       const erWard = await tx.ward.create({ data: { tenantId: tenant.id, facilityId: facility.id, name: "Emergency Ward", code: "ER" } });
       const erRoom = await tx.room.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: erWard.id, name: "Emergency Room", code: "ER-1" } });
       for (let n = 1; n <= 6; n++) await tx.bed.create({ data: { tenantId: tenant.id, facilityId: facility.id, wardId: erWard.id, roomId: erRoom.id, code: `ER${n}`, dailyRate: "0.00" } });
+      await tx.roundSlot.createMany({ data: DEFAULT_ROUND_SLOTS.map((s) => ({ tenantId: tenant.id, facilityId: facility.id, label: s.label, minutesOfDay: s.minutesOfDay })) });
       await tx.numberSequenceConfig.createMany({
         data: DEFAULT_SEQUENCES.map((s) => ({ tenantId: tenant.id, facilityId: facility.id, type: s.type, pattern: s.pattern, padding: s.padding, resetPolicy: s.resetPolicy })),
       });

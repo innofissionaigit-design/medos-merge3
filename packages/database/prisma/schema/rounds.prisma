@@ -1,0 +1,132 @@
+// ───────────────────────── Ward rounds (docs/ward-rounds.md) ─────────────────────────
+// The ward coordinator sets the times of the doctors' rounds (by default 7:00 AM and 12:00 PM). At each time the doctors who have admitted patients are told, start the round, write a
+// note for each patient (with instructions for the nurses) and finish it. Procedures done on an admitted patient are recorded and charged to the admission.
+
+enum RoundStatus {
+  /// The time has come and the doctor has been told.
+  NOTIFIED
+  STARTED
+  COMPLETED
+  /// The doctor did not start the round in time; the coordinator was told.
+  MISSED
+}
+
+enum RoundCondition {
+  IMPROVING
+  STABLE
+  WORSENING
+  CRITICAL
+}
+
+/// A time of day at which a round is made. With no doctor named it applies to every doctor who has admitted patients; with a doctor it applies to that doctor only.
+model RoundSlot {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String       @db.Uuid
+  facilityId     String       @db.Uuid
+  label          String
+  /// Minutes after local midnight in the facility's time zone (7:00 AM is 420).
+  minutesOfDay   Int
+  practitionerId String?      @db.Uuid
+  status         ActiveStatus @default(ACTIVE)
+  createdById    String?      @db.Uuid
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  facility     Facility      @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
+  practitioner Practitioner? @relation(fields: [practitionerId], references: [id], onDelete: Restrict)
+  rounds       WardRound[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, facilityId, status])
+}
+
+/// One doctor's round at one time on one day.
+model WardRound {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String      @db.Uuid
+  facilityId     String      @db.Uuid
+  practitionerId String      @db.Uuid
+  slotId         String      @db.Uuid
+  roundDate      DateTime    @db.Date
+  scheduledAt    DateTime    @db.Timestamptz(3)
+  label          String
+  status         RoundStatus @default(NOTIFIED)
+  notifiedAt     DateTime    @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime?   @db.Timestamptz(3)
+  completedAt    DateTime?   @db.Timestamptz(3)
+  missedAt       DateTime?   @db.Timestamptz(3)
+  patientsTotal  Int?
+  patientsSeen   Int?
+
+  facility     Facility     @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
+  practitioner Practitioner @relation(fields: [practitionerId], references: [id], onDelete: Restrict)
+  slot         RoundSlot    @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  notes        RoundNote[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, practitionerId, slotId, roundDate])
+  @@index([tenantId, facilityId, roundDate, status])
+}
+
+/// The doctor's note on one patient at a round. Append-only: a correction is an addendum or an "entered in error" mark, never a rewrite.
+model RoundNote {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String         @db.Uuid
+  facilityId     String         @db.Uuid
+  roundId        String?        @db.Uuid
+  admissionId    String         @db.Uuid
+  patientId      String         @db.Uuid
+  encounterId    String         @db.Uuid
+  practitionerId String         @db.Uuid
+  authorId       String         @db.Uuid
+  condition      RoundCondition?
+  note           String
+  plan           String?
+  /// The instructions the doctor gave the nurses with this note (each also became a nursing task).
+  instructions   Json?
+  addendumOfId   String?        @db.Uuid
+  status         NoteStatus     @default(ACTIVE)
+  errorReason    String?
+  errorById      String?        @db.Uuid
+  errorAt        DateTime?      @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  round     WardRound?    @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  admission Admission     @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+  patient   Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  addendumOf RoundNote?   @relation("RoundAddendum", fields: [addendumOfId], references: [id], onDelete: Restrict)
+  addenda   RoundNote[]   @relation("RoundAddendum")
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, createdAt])
+  @@index([roundId])
+}
+
+/// A procedure done on an admitted patient (a dressing, a drain, a tap). Append-only; when it names a service of the price list, its charge is posted to the admission in the same step.
+model ProcedureRecord {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String     @db.Uuid
+  facilityId    String     @db.Uuid
+  admissionId   String     @db.Uuid
+  patientId     String     @db.Uuid
+  encounterId   String     @db.Uuid
+  serviceId     String?    @db.Uuid
+  name          String
+  performedAt   DateTime   @db.Timestamptz(3)
+  performedById String     @db.Uuid
+  /// What was done and found.
+  outcome       String
+  chargeId      String?    @unique @db.Uuid
+  status        NoteStatus @default(ACTIVE)
+  errorReason   String?
+  errorById     String?    @db.Uuid
+  errorAt       DateTime?  @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
+
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+  patient   Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  charge    Charge?   @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, admissionId, performedAt])
+}

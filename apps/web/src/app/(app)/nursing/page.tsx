@@ -8,7 +8,7 @@ import { useMe } from "@/lib/me";
 
 interface Row {
   admissionId: string; admissionNumber: string; patientName: string; mrn: string | null; gender: string; bed: string | null; ward: string | null; doctor: string;
-  admittedAt: string; hasAllergies: boolean; pendingTasks: number; overdueTasks: number; tasks: { id: string; title: string; dueAt: string }[]; medicationDue: number; medicationOverdue: number; nextMedicationAt: string | null; vitalsDue: boolean;
+  admittedAt: string; hasAllergies: boolean; pendingTasks: number; overdueTasks: number; tasks: { id: string; title: string; dueAt: string }[]; medicationDue: number; medicationOverdue: number; nextMedicationAt: string | null; vitalsDue: boolean; newMedicineOrders?: number;
 }
 
 export default function NursingPage() {
@@ -27,7 +27,7 @@ export default function NursingPage() {
                 <Td>{r.doctor}</Td>
                 <Td>{r.medicationOverdue > 0 ? <Badge tone="red">{r.medicationOverdue} overdue</Badge> : r.medicationDue > 0 ? <Badge tone="amber">{r.medicationDue} due</Badge> : <span className="text-slate-500">none due</span>}</Td>
                 <Td>{r.pendingTasks > 0 ? <span className="text-sm">{r.tasks.slice(0, 2).map((t) => `${t.title} (${dateTime(t.dueAt).split(", ").pop()})`).join("; ")}{r.overdueTasks > 0 ? <> <Badge tone="red">{r.overdueTasks} overdue</Badge></> : null}</span> : <span className="text-slate-500">—</span>}</Td>
-                <Td>{r.hasAllergies ? <Badge tone="red">allergy on record</Badge> : null} {r.vitalsDue ? <Badge tone="amber">vitals due</Badge> : null}</Td>
+                <Td>{r.hasAllergies ? <Badge tone="red">allergy on record</Badge> : null} {(r.newMedicineOrders ?? 0) > 0 ? <Badge tone="amber">{`new medicine order: start the schedule`}</Badge> : null} {r.vitalsDue ? <Badge tone="amber">vitals due</Badge> : null}</Td>
               </tr>
             ))}
           </Table>

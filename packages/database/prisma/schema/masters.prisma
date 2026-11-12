@@ -57,6 +57,8 @@ model Practitioner {
   admissions   Admission[]
   emergencyCases EmergencyCase[]
   plannedAdmissions PlannedAdmission[]
+  roundSlots     RoundSlot[]
+  wardRounds     WardRound[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, userId])

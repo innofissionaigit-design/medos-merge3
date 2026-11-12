@@ -77,6 +77,8 @@ model Patient {
   limsRequests LimsRequest[]
   emergencyCases EmergencyCase[]
   plannedAdmissions PlannedAdmission[]
+  roundNotes     RoundNote[]
+  procedures     ProcedureRecord[]
   policies     PatientPolicy[]
   appointmentRequests AppointmentRequest[]
   teleconsults Teleconsult[]

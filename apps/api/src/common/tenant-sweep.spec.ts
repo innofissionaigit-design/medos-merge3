@@ -93,6 +93,11 @@ const SEED: Record<string, Json> = {
   "POST /planned-admissions/:id/waive": { reason: "Sweep waiver reason" },
   "POST /planned-admissions/:id/bed": { bedId: "00000000-0000-4000-8000-000000000002" },
   "POST /planned-admissions/:id/cancel": { reason: "Sweep cancel reason" },
+  "PATCH /rounds/slots/:id": { label: "Sweep round" },
+  "POST /admissions/:id/round-notes": { note: "Sweep round note" },
+  "POST /round-notes/:id/enter-in-error": { reason: "Sweep reason" },
+  "POST /admissions/:id/procedures": { name: "Sweep procedure", outcome: "Sweep outcome" },
+  "POST /procedures/:id/enter-in-error": { reason: "Sweep reason" },
 };
 /** Fields to try, one by one, when a change route answers "no changes supplied" (a field the route does not know is removed again from the next answer). */
 const CHANGE_FIELDS = ["name", "displayName", "title", "description", "notes", "label", "phone", "address", "fullName", "email", "specialty", "remarks", "code", "city", "contactPhone"];

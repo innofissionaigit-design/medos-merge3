@@ -9,6 +9,7 @@ import { CancelAdmission, DoseReasonModal, TasksCard, VitalsCard, WaiveButton } 
 import { todayIn, useAvailableBeds } from "@/components/pickers";
 import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Tabs, Td, Textarea } from "@/components/ui";
 import { MedicationOrders } from "@/components/medication-orders";
+import { ProceduresCard, RoundNotesCard } from "@/components/rounds";
 import { WardStoreCard } from "@/components/ward-store";
 import { VisitLabResults } from "@/components/lab";
 import { LimsVisitCard } from "@/components/lims-order";
@@ -280,7 +281,7 @@ export default function AdmissionPage() {
   const { id } = useParams<{ id: string }>();
   const { dateTime, can, money } = useMe();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "orders" | "nursing" | "tests" | "discharge">("overview");
+  const [tab, setTab] = useState<"overview" | "orders" | "rounds" | "nursing" | "tests" | "discharge">("overview");
   const adm = useQuery({ queryKey: ["admission", id], queryFn: () => api.get<Admission>(`/admissions/${id}`) });
   const refresh = () => { void qc.invalidateQueries({ queryKey: ["admission", id] }); void qc.invalidateQueries({ queryKey: ["board"] }); };
   if (adm.isLoading) return <Spinner />;
@@ -297,9 +298,10 @@ export default function AdmissionPage() {
       />
       {a.reason && <div className="mb-3"><KV label="Reason for admission">{a.reason}</KV></div>}
       {a.planned && <div className="mb-3"><Notice tone="info"><span>{`Planned admission ${a.planned.requestNumber}: estimate ${money(a.planned.estimate)}, deposit held ${money(a.planned.depositHeld)}. `}<Link className="text-brand-700 hover:underline" href={`/planned/${a.planned.id}`}>Open the request</Link>{". The deposit is set against the final bill from the cashier (advance payments)."}</span></Notice></div>}
-      <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "nursing", label: "Nursing and medication" }, ...(can("LIMS_READ") ? [{ id: "tests" as const, label: "Lab and imaging" }] : []), { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "rounds", label: "Rounds and procedures" }, { id: "nursing", label: "Nursing and medication" }, ...(can("LIMS_READ") ? [{ id: "tests" as const, label: "Lab and imaging" }] : []), { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
       {tab === "overview" && <Overview adm={a} refresh={refresh} />}
       {tab === "orders" && <MedicationOrders encounterId={a.encounterId} open={a.status === "ADMITTED"} cacheKey={a.id} />}
+      {tab === "rounds" && <div className="space-y-4"><RoundNotesCard admissionId={a.id} open={a.status === "ADMITTED"} /><ProceduresCard admissionId={a.id} open={a.status === "ADMITTED"} /></div>}
       {tab === "nursing" && <><Nursing adm={a} /><WardStoreCard admissionId={a.id} open={a.status === "ADMITTED"} /></>}
       {tab === "tests" && <div className="space-y-4"><LimsVisitCard encounterId={a.encounterId} visitType="IPD" active={a.status === "ADMITTED"} /><VisitLabResults encounterId={a.encounterId} /><VisitRadiology encounterId={a.encounterId} /></div>}
       {tab === "discharge" && <DischargePanel adm={a} refresh={refresh} />}

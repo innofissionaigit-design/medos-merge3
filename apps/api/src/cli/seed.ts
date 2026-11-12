@@ -107,7 +107,7 @@ async function main(): Promise<void> {
   await mkUser("icu_nurse1", "ICU Nurse One", "ICU_NURSE");
   for (const [u, n, r] of [["reception1", "Reception One", "RECEPTIONIST"], ["reception2", "Reception Two", "RECEPTIONIST"], ["cashier1", "Cashier One", "CASHIER"], ["cashier2", "Cashier Two", "CASHIER"], ["pharmacist1", "Pharmacist One", "PHARMACIST"], ["manager1", "Manager One", "MANAGER"],
     // Planned admission (docs/planned-admission.md): the admission desk, bed management and the insurance team.
-    ["admission1", "Admission Desk One", "ADMISSION_DESK"], ["bedmgr1", "Bed Manager One", "BED_MANAGER"], ["claims1", "Insurance Officer One", "CLAIMS_OFFICER"],
+    ["coordinator1", "Ward Coordinator One", "WARD_COORDINATOR"], ["admission1", "Admission Desk One", "ADMISSION_DESK"], ["bedmgr1", "Bed Manager One", "BED_MANAGER"], ["claims1", "Insurance Officer One", "CLAIMS_OFFICER"],
     // The laboratory portal (docs/lims-portal.md): one login for each role.
     ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
   const [reception, cashier, pharmacist] = await Promise.all([login("reception1"), login("cashier1"), login("pharmacist1")]);

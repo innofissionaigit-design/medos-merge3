@@ -57,6 +57,8 @@ model NursingTask {
   completedById  String?    @db.Uuid
   completedAt    DateTime?  @db.Timestamptz(3)
   closeNote      String?
+  /// Set when the system made the task (an instruction written at a doctor's round), so the same instruction never makes two tasks.
+  sourceKey      String?
   createdById    String     @db.Uuid
   createdAt      DateTime   @default(now()) @db.Timestamptz(3)
 
@@ -64,6 +66,7 @@ model NursingTask {
   admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
+  @@unique([tenantId, sourceKey])
   @@index([tenantId, facilityId, status, dueAt])
   @@index([tenantId, admissionId, status])
 }

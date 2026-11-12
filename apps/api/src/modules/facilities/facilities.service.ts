@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AuditService, actorOf } from "../../common/audit.service";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
+import { DEFAULT_ROUND_SLOTS } from "../rounds/rounds.domain";
 
 const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const phone = z.string().trim().regex(/^[+0-9][0-9 ()-]{6,19}$/, "Invalid phone number");
@@ -62,6 +63,8 @@ export class FacilitiesService {
       const tenant = await tx.tenant.findFirstOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true } });
       const f = await tx.facility.create({ data: { ...input, tenantId: ctx.tenantId, timezone: tenant.timezone }, select: SELECT });
       await tx.userFacility.create({ data: { tenantId: ctx.tenantId, userId: ctx.userId, facilityId: f.id } });
+      // The two round times every facility starts with (7:00 AM and 12:00 PM); the ward coordinator may change them.
+      await tx.roundSlot.createMany({ data: DEFAULT_ROUND_SLOTS.map((s) => ({ tenantId: ctx.tenantId, facilityId: f.id, label: s.label, minutesOfDay: s.minutesOfDay })) });
       await this.audit.record(tx, { ...actorOf(ctx), facilityId: f.id }, { action: "FACILITY_CREATED", entityType: "Facility", entityId: f.id, metadata: { code: f.code } });
       return f;
     });

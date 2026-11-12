@@ -762,6 +762,27 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/order-requests/:id/cancel` | ORDER_REQUEST |  |
 | POST | `/order-requests/:id/decision` | any of ER_TREAT / ICU_DOCTOR |  |
 
+## Rounds
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/admissions/:id/procedures` | any of ADMISSION_READ / PROCEDURE_RECORD |  |
+| POST | `/admissions/:id/procedures` | PROCEDURE_RECORD |  |
+| GET | `/admissions/:id/round-notes` | any of ADMISSION_READ / ROUND_DO |  |
+| POST | `/admissions/:id/round-notes` | ROUND_DO |  |
+| POST | `/procedures/:id/enter-in-error` | PROCEDURE_RECORD |  |
+| POST | `/round-notes/:id/enter-in-error` | ROUND_DO |  |
+| GET | `/rounds/:id` | ROUND_DO |  |
+| POST | `/rounds/:id/complete` | ROUND_DO |  |
+| POST | `/rounds/:id/start` | ROUND_DO |  |
+| GET | `/rounds/mine` | ROUND_DO |  |
+| GET | `/rounds/slots` | any of ROUND_READ / ROUND_MANAGE / ROUND_DO / WARD_BOARD_READ |  |
+| POST | `/rounds/slots` | ROUND_MANAGE |  |
+| PATCH | `/rounds/slots/:id` | ROUND_MANAGE |  |
+| GET | `/rounds/today` | WARD_BOARD_READ |  |
+| GET | `/ward-board` | WARD_BOARD_READ |  |
+| GET | `/ward-board/activity` | WARD_BOARD_READ |  |
+
 ## Scans
 
 | Method | Path | Access | Module flag |

@@ -30,6 +30,9 @@ export const NAV: NavItem[] = [
   { href: "/lis", label: "LIS", anyOf: ["LAB_COLLECT", "LAB_RESULT", "LAB_VERIFY", "LAB_MASTERS", "RAD_PERFORM", "RAD_REPORT"], hideWith: LIMS_NAV },
   // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
   // Planned admission (docs/planned-admission.md): the request queue for reception, the doctor, the admission desk, billing, insurance and bed management.
+  // Ward rounds (docs/ward-rounds.md): the ward coordinator's board of every ward, and the doctor's own rounds.
+  { href: "/wards", label: "Ward board", anyOf: ["WARD_BOARD_READ"], feature: "IPD_ENABLED" },
+  { href: "/rounds", label: "My rounds", anyOf: ["ROUND_DO"], feature: "IPD_ENABLED" },
   { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED" },
   { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED" },
   { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED" },
@@ -43,7 +46,8 @@ const ROLE_ORDER: Record<string, string[]> = {
   RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/planned", "/lims", "/ipd", "/billing"],
   ADMISSION_DESK: ["/planned", "/ipd", "/patients", "/appointments", "/dashboard"],
   BED_MANAGER: ["/planned", "/ipd", "/dashboard"],
-  DOCTOR: ["/queue", "/planned", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
+  WARD_COORDINATOR: ["/wards", "/ipd", "/nursing", "/planned", "/patients", "/dashboard"],
+  DOCTOR: ["/queue", "/rounds", "/planned", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
   EMERGENCY_RECEPTIONIST: ["/emergency", "/patients", "/billing", "/dashboard"],
   EMERGENCY_DOCTOR: ["/emergency", "/patients", "/dashboard"],
   ICU_DOCTOR: ["/icu", "/patients", "/dashboard"],
@@ -62,7 +66,7 @@ const ROLE_ORDER: Record<string, string[]> = {
   R_LAB_TECH: ["/lims", "/patients", "/dashboard"],
   CASHIER: ["/billing", "/planned", "/dashboard", "/patients"],
   ADMINISTRATOR: ["/dashboard", "/overview", "/reports", "/admin", "/audit"],
-  MANAGER: ["/overview", "/dashboard", "/reports", "/billing", "/audit"],
+  MANAGER: ["/overview", "/wards", "/dashboard", "/reports", "/billing", "/audit"],
 };
 
 export function visibleNav(permissions: ReadonlySet<string>, features: Record<string, boolean>, roles: string[]): NavItem[] {

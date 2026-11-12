@@ -3,13 +3,14 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Card, ErrorNote, Field, Input, KV, Notice, PageHeader } from "@/components/ui";
 import { MyPayslips } from "@/components/payroll";
+import { MyRoundTimes } from "@/components/rounds";
 import { MyLeave } from "@/components/attendance";
 import { api } from "@/lib/api";
 import { LANGUAGES, useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 
 export default function AccountPage() {
-  const { me } = useMe();
+  const { me, can } = useMe();
   const { lang, setLang } = useI18n();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -28,6 +29,7 @@ export default function AccountPage() {
     <>
       <PageHeader title="My account" subtitle={`${me.fullName} · ${me.username}`} />
       <div className="grid max-w-3xl gap-4">
+        {can("ROUND_DO") && <MyRoundTimes />}
         <Card title="Language">
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Language">
             {LANGUAGES.map((l) => (

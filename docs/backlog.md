@@ -145,3 +145,12 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Electronic pre-authorisation with insurers and TPAs (needs each payer gateway), and attaching the patient's reports and the outside doctor's papers to the request (patient documents are not linked to it yet).
 - Closing an open planned request automatically when the same patient is admitted by the ordinary Admit button, and linking the deposit to the admission so the final bill offers it.
 - Planned admission reports: requests by source, time from request to admission, cancelled and no-show rates, deposit waivers.
+
+## Ward rounds follow-ups (docs/ward-rounds.md)
+
+- A covering doctor for another doctor's patients on a round (leave, night cover), a round per ward or per specialty, and the coordinator moving a round that is already due.
+- Telling the doctor by SMS or phone push as well as in the app, and a reminder if the round is not started halfway to the missed time.
+- Posting the bed charge every day automatically (today when the cashier makes the final bill or presses Post bed days), posting the planned-admission estimate as charges, and a visit charge for each doctor's round.
+- Doctor orders from the round screen itself (medicines, tests, imaging in one place); today the doctor opens the chart for them.
+- Handover between shifts (what the day nurses tell the night nurses) and a ward-wise printout of the round.
+- A procedure note for an operation (anaesthesia, team, implants), consent forms, and linking a procedure to the operation theatre record.

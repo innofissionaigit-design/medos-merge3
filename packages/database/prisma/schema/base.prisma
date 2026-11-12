@@ -67,6 +67,8 @@ model Facility {
   limsDepartments LimsDepartment[]
   emergencyCases  EmergencyCase[]
   plannedAdmissions PlannedAdmission[]
+  roundSlots      RoundSlot[]
+  wardRounds      WardRound[]
   stockTransfers  StockTransfer[]
   prescriptionTemplates PrescriptionTemplate[]
   prescriptionScans PrescriptionScan[]

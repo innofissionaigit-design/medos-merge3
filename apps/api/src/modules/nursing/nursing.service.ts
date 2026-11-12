@@ -215,6 +215,8 @@ export class NursingService {
     const admIds = adms.map((a) => a.id);
     const encIds = adms.map((a) => a.encounterId);
     const chart = await linkedIdsByPatient(this.prisma, ctx.tenantId, [...new Set(adms.map((a) => a.patientId))]);
+    // Medicines the doctor has signed that have no dose schedule yet: the nurse starts the schedule from the medication chart.
+    const unscheduled = await this.prisma.medicationOrderItem.findMany({ where: { tenantId: ctx.tenantId, status: "ACTIVE", order: { encounterId: { in: encIds }, status: "SIGNED" }, administrations: { none: {} } }, select: { order: { select: { encounterId: true } } }, take: 2000 });
     const [tasks, dueMar, lastVitals, allergies] = await Promise.all([
       this.prisma.nursingTask.findMany({ where: { tenantId: ctx.tenantId, admissionId: { in: admIds }, status: "PENDING" }, orderBy: { dueAt: "asc" }, select: { id: true, admissionId: true, type: true, title: true, dueAt: true, assignedToId: true } }),
       this.prisma.medicationAdministration.groupBy({ by: ["admissionId"], where: { tenantId: ctx.tenantId, admissionId: { in: admIds }, status: "DUE", scheduledAt: { lte: new Date(now + 60 * 60_000) }, item: { status: "ACTIVE" } }, _count: { _all: true }, _min: { scheduledAt: true } }),
@@ -234,6 +236,7 @@ export class NursingService {
         hasAllergies: allergies.some((x) => (chart.get(a.patientId) ?? [a.patientId]).includes(x.patientId)),
         pendingTasks: myTasks.length, overdueTasks: myTasks.filter((t) => t.dueAt.getTime() < now).length, tasks: myTasks.slice(0, 5),
         medicationDue: due?._count._all ?? 0, medicationOverdue: overdueRows.find((o) => o.admissionId === a.id)?._count._all ?? 0, nextMedicationAt: due?._min.scheduledAt ?? null,
+        newMedicineOrders: unscheduled.filter((u) => u.order.encounterId === a.encounterId).length,
         lastVitalsAt: lastV, vitalsDue: !lastV || now - lastV.getTime() > VITALS_INTERVAL_MIN * 60_000,
       };
     }).sort((x, y) => (y.medicationOverdue - x.medicationOverdue) || (y.overdueTasks - x.overdueTasks) || ((x.bed ?? "").localeCompare(y.bed ?? "")));

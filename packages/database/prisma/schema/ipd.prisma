@@ -120,6 +120,8 @@ model Admission {
   wardIssues     StockLocationIssue[]
   emergencyCase  EmergencyCase?
   plannedAdmission PlannedAdmission?
+  roundNotes     RoundNote[]
+  procedures     ProcedureRecord[]
   icuVitalsOrders IcuVitalsOrder[]
   icuInstructions IcuInstruction[]
   icuDayNotes    IcuDayNote[]
@@ -196,6 +198,7 @@ model Charge {
   patient   Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
   service   Service?  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  procedure ProcedureRecord?
 
   @@unique([tenantId, id])
   @@unique([tenantId, sourceKey])
