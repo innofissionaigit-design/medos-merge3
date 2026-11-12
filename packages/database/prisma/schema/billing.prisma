@@ -296,9 +296,12 @@ model AdvanceDeposit {
   receivedById  String   @db.Uuid
   receivedAt    DateTime @default(now()) @db.Timestamptz(3)
   shiftId       String?  @db.Uuid
+  /// Set when this advance is the deposit asked for a planned admission (docs/planned-admission.md).
+  plannedAdmissionId String? @db.Uuid
 
   patient Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
   appointment Appointment? @relation(fields: [tenantId, appointmentId], references: [tenantId, id], onDelete: Restrict)
+  plannedAdmission PlannedAdmission? @relation(fields: [plannedAdmissionId], references: [id], onDelete: Restrict)
   shift   CashierShift? @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   tenders AdvanceTender[]
   uses    AdvanceUse[]
@@ -309,6 +312,7 @@ model AdvanceDeposit {
   @@unique([tenantId, facilityId, receiptNumber])
   @@index([tenantId, patientId, receivedAt(sort: Desc)])
   @@index([tenantId, appointmentId])
+  @@index([tenantId, plannedAdmissionId])
   @@index([shiftId])
 }
 

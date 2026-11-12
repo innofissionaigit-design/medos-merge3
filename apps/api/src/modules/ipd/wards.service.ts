@@ -152,6 +152,9 @@ export class WardsService {
       if (!MANUAL_FROM[input.status]?.includes(from)) {
         throw new DomainError("BED_NOT_AVAILABLE", `A ${from.toLowerCase()} bed cannot be set to ${input.status.toLowerCase()} manually`, 409);
       }
+      if (from === "RESERVED" && (await tx.plannedAdmission.count({ where: { tenantId: ctx.tenantId, bedId: id, status: "READY" } })) > 0) {
+        throw new DomainError("BED_NOT_AVAILABLE", "This bed is held for a planned admission. Cancel the planned admission or change its bed first.", 409);
+      }
       const b = await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id } }, data: { status: input.status, version: { increment: 1 } }, select: BED });
       await this.audit.record(tx, actorOf(ctx), { action: "BED_STATUS_CHANGED", entityType: "Bed", entityId: id, metadata: { from, to: input.status, ...(input.reason ? { reason: input.reason } : {}) } });
       return toBed(b);

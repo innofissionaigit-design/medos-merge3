@@ -52,13 +52,14 @@ function IpdInner() {
   const pre = params.get("admit");
   const [tab, setTab] = useState<"board" | "list">("board");
   const [admit, setAdmit] = useState(!!pre);
+  const planned = useQuery({ queryKey: ["planned-summary"], queryFn: () => api.get<{ open: number; counts: Record<string, number> }>("/planned-admissions/summary"), enabled: can("PLANNED_READ"), refetchInterval: 30_000 });
   const preP = useQuery({ queryKey: ["pre-patient", pre], queryFn: () => api.get<{ id: string; mrn: string | null; firstName: string; lastName: string | null }>(`/patients/${pre}`), enabled: !!pre });
   const board = useQuery({ queryKey: ["board"], queryFn: () => api.get<Board>("/beds/board"), enabled: tab === "board", refetchInterval: 30_000 });
   const list = useQuery({ queryKey: ["admissions"], queryFn: () => api.page<AdmissionRow>("/admissions", { status: "ADMITTED", pageSize: 100 }), enabled: tab === "list" });
   const setStatus = useMutation({ mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/beds/${id}/status`, { status }), onSuccess: () => qc.invalidateQueries({ queryKey: ["board"] }) });
   return (
     <Gate anyOf={["ADMISSION_READ"]} feature="IPD_ENABLED">
-      <PageHeader title="Admissions and beds" actions={can("ADMISSION_CREATE") ? <Button onClick={() => setAdmit(true)}>Admit patient</Button> : undefined} />
+      <PageHeader title="Admissions and beds" actions={<>{can("PLANNED_READ") && <Link href="/planned" className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50">{`${t("Planned admissions")}${planned.data ? ` (${planned.data.counts.READY ?? 0} ready, ${planned.data.open} open)` : ""}`}</Link>}{can("ADMISSION_CREATE") && <Button onClick={() => setAdmit(true)}>Admit patient</Button>}</>} />
       <Tabs tabs={[{ id: "board", label: "Bed board" }, { id: "list", label: "Admitted patients" }]} value={tab} onChange={setTab} />
       {tab === "board" && (board.isLoading ? <Spinner /> : board.data && (
         <div className="space-y-4">

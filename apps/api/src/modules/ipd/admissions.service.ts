@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { DomainError } from "@medos/shared";
+import { Decimal, DomainError } from "@medos/shared";
 import { RegistrationFeeService } from "../patients/registration-fee.service";
 import type { Prisma } from "@medos/database";
 import { z } from "zod";
@@ -116,6 +116,35 @@ export class AdmissionsService {
     return { id: admission.id, admissionNumber, bedCode: bed.code };
   }
 
+  /**
+   * Admits a patient whose planned admission is ready (docs/planned-admission.md), in the caller's transaction. The bed was held (RESERVED) for this patient by bed management and now
+   * becomes OCCUPIED. The registration-fee rule applies as for any admission. Returns the new admission.
+   */
+  async admitFromPlanned(tx: Db, ctx: RequestContext, input: { patientId: string; consultantId: string; bedId: string; reason: string }) {
+    const patient = await tx.patient.findFirst({ where: { id: input.patientId, tenantId: ctx.tenantId, status: "ACTIVE" }, select: { id: true } });
+    if (!patient) throw new DomainError("PATIENT_NOT_FOUND", "Patient not found", 404);
+    await this.registrationFee.gate(tx, ctx, patient.id);
+    const consultant = await tx.practitioner.findFirst({ where: { id: input.consultantId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, status: "ACTIVE" }, select: { id: true, departmentId: true } });
+    if (!consultant) throw new DomainError("VALIDATION_FAILED", "Consultant not found or inactive at this facility", 400, [{ path: "consultantId", message: "Unknown consultant" }]);
+    const existing = await tx.admission.findFirst({ where: { tenantId: ctx.tenantId, patientId: input.patientId, status: "ADMITTED" }, select: { admissionNumber: true } });
+    if (existing) throw new DomainError("CONFLICT", `This patient is already admitted (${existing.admissionNumber})`, 409);
+    const bed = await this.lockBed(tx, ctx, input.bedId);
+    this.assertInService(bed);
+    if (bed.status !== "RESERVED") throw new DomainError("BED_NOT_AVAILABLE", `Bed ${bed.code} is no longer held for this patient`, 409, { status: bed.status });
+    const admissionNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "ADMISSION");
+    const encounter = await tx.encounter.create({
+      data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, encounterNumber: admissionNumber, type: "IPD", practitionerId: consultant.id, departmentId: consultant.departmentId, createdById: ctx.userId },
+    });
+    const admission = await tx.admission.create({
+      data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: input.patientId, encounterId: encounter.id, admissionNumber, consultantId: consultant.id, departmentId: consultant.departmentId, reason: input.reason, createdById: ctx.userId },
+      select: { id: true },
+    });
+    await this.openAssignment(tx, ctx, admission.id, bed, "Planned admission", new Date());
+    await this.audit.record(tx, actorOf(ctx), { action: "ENCOUNTER_OPENED", entityType: "Encounter", entityId: encounter.id, metadata: { type: "IPD", encounterNumber: admissionNumber } });
+    await this.audit.record(tx, actorOf(ctx), { action: "ADMISSION_CREATED", entityType: "Admission", entityId: admission.id, metadata: { admissionNumber, bedId: bed.id, consultantId: consultant.id, source: "PLANNED" } });
+    return { id: admission.id, admissionNumber, encounterId: encounter.id, bedCode: bed.code };
+  }
+
   // ───── transfer ─────
 
   /** Moves the patient to another bed, closing the current assignment and opening a new one so the full path is preserved. */
@@ -185,7 +214,15 @@ export class AdmissionsService {
   async get(ctx: RequestContext, id: string) {
     const a = await this.prisma.admission.findFirst({ where: { id, tenantId: ctx.tenantId, facilityId: ctx.facilityId, AND: [admissionScope(ctx)] }, select: { id: true } });
     if (!a) throw new DomainError("NOT_FOUND", "Resource not found", 404);
-    return { ...(await this.view(this.prisma, ctx, id)), bedHistory: await this.bedHistory(this.prisma, ctx, id) };
+    return { ...(await this.view(this.prisma, ctx, id)), bedHistory: await this.bedHistory(this.prisma, ctx, id), planned: ctx.permissions.has("PLANNED_READ") ? await this.plannedOrigin(ctx, id) : null };
+  }
+
+  /** The planned admission this stay came from (docs/planned-admission.md): its number, what billing estimated and the deposit still held for it. */
+  private async plannedOrigin(ctx: RequestContext, admissionId: string) {
+    const p = await this.prisma.plannedAdmission.findFirst({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, admissionId }, select: { id: true, requestNumber: true, estimateTotal: true, deposits: { select: { amount: true, refunds: { select: { amount: true } } } } } });
+    if (!p) return null;
+    const held = p.deposits.reduce((a, d) => a.plus(d.amount.toString()).minus(d.refunds.reduce((x, r) => x.plus(r.amount.toString()), new Decimal(0))), new Decimal(0));
+    return { id: p.id, requestNumber: p.requestNumber, estimate: fmt(p.estimateTotal), depositHeld: fmt(held) };
   }
 
   /** The complete path: e.g. Ward A -> ICU -> Ward B, with times and the rate in force. */
@@ -224,9 +261,13 @@ export class AdmissionsService {
     return tx.bed.findFirstOrThrow({ where: { id: bedId, tenantId: ctx.tenantId }, include: { ward: { select: { status: true } }, room: { select: { status: true } } } });
   }
 
-  private assertAllocatable(bed: { code: string; status: string; active: string; ward?: { status: string }; room?: { status: string } }): void {
-    // A bed is in service only while the bed, its room and its ward are all switched on.
+  /** A bed is in service only while the bed, its room and its ward are all switched on. */
+  private assertInService(bed: { code: string; active: string; ward?: { status: string }; room?: { status: string } }): void {
     if (bed.active !== "ACTIVE" || (bed.ward && bed.ward.status !== "ACTIVE") || (bed.room && bed.room.status !== "ACTIVE")) throw new DomainError("BED_NOT_AVAILABLE", `Bed ${bed.code} is not in service`, 409);
+  }
+
+  private assertAllocatable(bed: { code: string; status: string; active: string; ward?: { status: string }; room?: { status: string } }): void {
+    this.assertInService(bed);
     if (bed.status !== "AVAILABLE") throw new DomainError("BED_NOT_AVAILABLE", `Bed ${bed.code} is ${bed.status.toLowerCase()} and cannot be allocated`, 409, { status: bed.status });
   }
 

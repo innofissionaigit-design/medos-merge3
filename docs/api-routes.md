@@ -578,6 +578,33 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/pharmacy/suppliers` | PHARMACY_MASTERS | PHARMACY_ENABLED |
 | PATCH | `/pharmacy/suppliers/:id` | PHARMACY_MASTERS | PHARMACY_ENABLED |
 
+## Planned
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/encounters/:id/planned-admission` | any of PLANNED_DOCTOR / PLANNED_READ |  |
+| POST | `/encounters/:id/planned-admission` | PLANNED_DOCTOR |  |
+| GET | `/planned-admissions` | PLANNED_READ |  |
+| POST | `/planned-admissions` | PLANNED_REQUEST |  |
+| GET | `/planned-admissions/:id` | PLANNED_READ |  |
+| POST | `/planned-admissions/:id/admit` | PLANNED_DESK + ADMISSION_CREATE |  |
+| POST | `/planned-admissions/:id/bed` | PLANNED_BED |  |
+| POST | `/planned-admissions/:id/cancel` | any of PLANNED_DESK / PLANNED_REQUEST / PLANNED_DOCTOR |  |
+| POST | `/planned-admissions/:id/consent` | PLANNED_REQUEST |  |
+| POST | `/planned-admissions/:id/deposit` | PLANNED_BILLING + PAYMENT_CREATE |  |
+| PUT | `/planned-admissions/:id/deposit-required` | PLANNED_BILLING |  |
+| POST | `/planned-admissions/:id/doctor` | PLANNED_DOCTOR |  |
+| PUT | `/planned-admissions/:id/estimate` | PLANNED_BILLING |  |
+| POST | `/planned-admissions/:id/financial-check` | PLANNED_BILLING |  |
+| POST | `/planned-admissions/:id/patient-ready` | any of PLANNED_REQUEST / PLANNED_DESK |  |
+| POST | `/planned-admissions/:id/payer` | any of PLANNED_BILLING / PLANNED_INSURANCE |  |
+| POST | `/planned-admissions/:id/preauth` | PLANNED_INSURANCE |  |
+| POST | `/planned-admissions/:id/reschedule` | PLANNED_DESK |  |
+| POST | `/planned-admissions/:id/tariff-done` | any of PLANNED_BILLING / PLANNED_INSURANCE |  |
+| POST | `/planned-admissions/:id/verify` | PLANNED_DESK |  |
+| POST | `/planned-admissions/:id/waive` | PLANNED_APPROVE |  |
+| GET | `/planned-admissions/summary` | PLANNED_READ |  |
+
 ## Portal
 
 | Method | Path | Access | Module flag |

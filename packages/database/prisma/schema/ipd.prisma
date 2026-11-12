@@ -21,6 +21,7 @@ model Ward {
   facility Facility @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
   rooms    Room[]
   beds     Bed[]
+  plannedAdmissions PlannedAdmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])
@@ -66,6 +67,7 @@ model Bed {
   room        Room            @relation(fields: [tenantId, facilityId, roomId], references: [tenantId, facilityId, id], onDelete: Restrict)
   assignments BedAssignment[]
   emergencyStays EmergencyBedStay[]
+  plannedAdmissions PlannedAdmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])
@@ -117,6 +119,7 @@ model Admission {
   finalInvoiceId String? @db.Uuid
   wardIssues     StockLocationIssue[]
   emergencyCase  EmergencyCase?
+  plannedAdmission PlannedAdmission?
   icuVitalsOrders IcuVitalsOrder[]
   icuInstructions IcuInstruction[]
   icuDayNotes    IcuDayNote[]

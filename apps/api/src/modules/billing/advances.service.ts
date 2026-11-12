@@ -48,9 +48,13 @@ export class AdvancesService {
   // ───── take ─────
 
   /** `forAppointment` makes the advance the booking fee of that appointment (docs/booking-fee.md): it must cover what is still due. */
-  async take(ctx: RequestContext, patientId: string, input: z.infer<typeof takeAdvanceSchema>, key: string | undefined, forAppointment?: string) {
+  /**
+   * `forPlanned` makes the advance the deposit of a planned admission (docs/planned-admission.md); `inside` runs in the same transaction after the money is recorded, so the request
+   * moves on only if the deposit is really taken.
+   */
+  async take(ctx: RequestContext, patientId: string, input: z.infer<typeof takeAdvanceSchema>, key: string | undefined, forAppointment?: string, forPlanned?: { id: string; inside: (tx: Db) => Promise<void> }) {
     if (!key) throw new DomainError("VALIDATION_FAILED", "An Idempotency-Key header is required for advance payments", 400);
-    return this.idempotency.run(ctx.tenantId, forAppointment ? `BOOKING_FEE:${forAppointment}` : `ADVANCE:${patientId}`, key, input, async (tx) => {
+    return this.idempotency.run(ctx.tenantId, forAppointment ? `BOOKING_FEE:${forAppointment}` : forPlanned ? `PLANNED_DEPOSIT:${forPlanned.id}` : `ADVANCE:${patientId}`, key, input, async (tx) => {
       const patient = await tx.patient.findFirst({ where: { id: patientId, tenantId: ctx.tenantId }, select: { id: true, status: true, mergedIntoId: true } });
       if (!patient) throw new DomainError("PATIENT_NOT_FOUND", "Patient not found", 404);
       if (patient.mergedIntoId) throw new DomainError("PATIENT_MERGED", "This patient record was merged into another. Take the advance on the real patient.", 409, { mergedIntoId: patient.mergedIntoId });
@@ -65,13 +69,14 @@ export class AdvancesService {
       const shiftId = input.tenders.some((t) => t.method === "CASH") ? await this.ledger.shiftForCash(tx, ctx, "taking") : await this.ledger.openShift(tx, ctx);
       const receiptNumber = await this.numbering.next(tx, ctx.tenantId, ctx.facilityId, "RECEIPT");
       const dep = await tx.advanceDeposit.create({
-        data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId, receiptNumber, amount: total.toFixed(2), note: input.note ?? null, appointmentId: forAppointment ?? null, receivedById: ctx.userId, shiftId },
+        data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId, receiptNumber, amount: total.toFixed(2), note: input.note ?? null, appointmentId: forAppointment ?? null, plannedAdmissionId: forPlanned?.id ?? null, receivedById: ctx.userId, shiftId },
       });
       await tx.advanceTender.createMany({ data: input.tenders.map((t) => ({ tenantId: ctx.tenantId, depositId: dep.id, method: t.method, amount: t.amount.toFixed(2), reference: t.reference ?? null })) });
       if (forAppointment) await this.paymentLinks.close(tx, ctx.tenantId, forAppointment, "PAID"); // the fee is covered: the deadline no longer applies
+      if (forPlanned) await forPlanned.inside(tx);
       await this.audit.record(tx, actorOf(ctx), {
         action: "ADVANCE_RECEIVED", entityType: "AdvanceDeposit", entityId: dep.id,
-        metadata: { patientId, receiptNumber, total: fmt(total), methods: input.tenders.map((t) => t.method), ...(forAppointment ? { bookingFeeFor: forAppointment } : {}) },
+        metadata: { patientId, receiptNumber, total: fmt(total), methods: input.tenders.map((t) => t.method), ...(forAppointment ? { bookingFeeFor: forAppointment } : {}), ...(forPlanned ? { plannedAdmissionId: forPlanned.id } : {}) },
       });
       return this.view(tx, ctx, dep.id);
     });

@@ -1,0 +1,177 @@
+// ───────────────────────── Planned admission (docs/planned-admission.md) ─────────────────────────
+// A patient who is to be admitted on a chosen day, not today. The request is made in one of three ways (the OPD doctor advises it, a patient arranged it with a consultant of the hospital,
+// or a patient comes with an outside doctor's papers), the consultant decides, and then the admission desk, billing, insurance, bed management and nursing each do their part before the
+// patient is admitted into the ordinary IPD flow. Nothing here is an admission until the desk admits the patient (`Admission.id` is then kept in `admissionId`).
+
+enum PlannedSource {
+  /// The hospital's own OPD doctor ticked "needs admission" during the consultation.
+  OPD_ADVISED
+  /// The patient already arranged the admission with a consultant of this hospital.
+  OUTSIDE_ARRANGED
+  /// The patient came with an outside doctor's prescription and reports and no arrangement.
+  OUTSIDE_DIRECT
+}
+
+enum PlannedStatus {
+  /// OPD route: the doctor advised admission; reception asks the patient.
+  ADVISED
+  /// Outside routes: the consultant reviews the request.
+  DOCTOR_REVIEW
+  /// The consultant asked the patient to come to the chamber, send reports or get tests done.
+  AWAITING_PATIENT
+  /// The admission queue: the desk verifies the details.
+  DESK_REVIEW
+  /// Billing makes the estimate; the insurance team checks the payer.
+  TARIFF_PAYER
+  /// The insurer's pre-authorisation is awaited.
+  PREAUTH
+  /// The deposit, or the approval or waiver in its place.
+  DEPOSIT
+  /// Bed management allocates the bed.
+  BED_ALLOCATION
+  /// Everything is cleared and the bed is held; the patient comes on the planned day.
+  READY
+  /// The patient was admitted (an Admission exists).
+  ADMITTED
+  /// Ended without an admission (see closeReason).
+  CLOSED
+}
+
+enum PlannedCloseReason {
+  PATIENT_DECLINED
+  DOCTOR_DECLINED
+  OTHER_TREATMENT
+  CANCELLED
+  NO_SHOW
+}
+
+enum PlannedAsk {
+  CHAMBER
+  REPORTS
+  INVESTIGATIONS
+}
+
+enum PlannedPayer {
+  SELF_PAY
+  INSURED
+}
+
+enum PlannedFinancialBasis {
+  DEPOSIT_PAID
+  INSURANCE_APPROVED
+  WAIVED
+  NOT_REQUIRED
+}
+
+model PlannedAdmission {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String        @db.Uuid
+  facilityId      String        @db.Uuid
+  patientId       String        @db.Uuid
+  requestNumber   String
+  source          PlannedSource
+  status          PlannedStatus
+  /// The consultant who is to admit the patient (the OPD doctor, the doctor the patient arranged with, or the one assigned to assess the patient).
+  consultantId    String        @db.Uuid
+  /// The OPD visit in which the doctor advised admission (OPD route only).
+  sourceEncounterId String?     @db.Uuid
+  /// What the patient says (outside routes), or why the doctor advised admission (OPD route).
+  details         String
+  // consultant's request to the patient
+  askMode         PlannedAsk?
+  askNote         String?
+  // what the admission is for; filled by the doctor and verified by the desk
+  diagnosis       String?
+  plannedProcedure String?
+  proposedDate    DateTime?     @db.Date
+  expectedStayDays Int?
+  /// The room category wanted: the ward the patient should stay in.
+  wardId          String?       @db.Uuid
+  roomNote        String?
+  deskVerifiedAt  DateTime?     @db.Timestamptz(3)
+  deskVerifiedById String?      @db.Uuid
+  // the patient's consent (OPD route)
+  consentAt       DateTime?     @db.Timestamptz(3)
+  consentById     String?       @db.Uuid
+  consentNote     String?
+  // tariff and payer
+  estimateTotal   Decimal       @default(0) @db.Decimal(14, 2)
+  payer           PlannedPayer?
+  policyId        String?       @db.Uuid
+  claimId         String?       @db.Uuid
+  eligibilityNote String?
+  preauthRequired Boolean       @default(false)
+  // deposit or approval
+  requiredDeposit Decimal?      @db.Decimal(14, 2)
+  financialBasis  PlannedFinancialBasis?
+  financialNote   String?
+  financialClearedAt DateTime?  @db.Timestamptz(3)
+  financialClearedById String?  @db.Uuid
+  // the bed held for the patient
+  bedId           String?       @db.Uuid
+  bedAllocatedAt  DateTime?     @db.Timestamptz(3)
+  bedAllocatedById String?      @db.Uuid
+  // outcome
+  admissionId     String?       @unique @db.Uuid
+  admittedAt      DateTime?     @db.Timestamptz(3)
+  closeReason     PlannedCloseReason?
+  closeNote       String?
+  closedAt        DateTime?     @db.Timestamptz(3)
+  closedById      String?       @db.Uuid
+  version         Int           @default(1)
+  createdById     String        @db.Uuid
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  facility    Facility       @relation(fields: [tenantId, facilityId], references: [tenantId, id], onDelete: Restrict)
+  patient     Patient        @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  consultant  Practitioner   @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  sourceEncounter Encounter? @relation(fields: [sourceEncounterId], references: [id], onDelete: Restrict)
+  ward        Ward?          @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  bed         Bed?           @relation(fields: [bedId], references: [id], onDelete: Restrict)
+  admission   Admission?     @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+  claim       Claim?         @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  events      PlannedAdmissionEvent[]
+  estimateLines PlannedEstimateLine[]
+  deposits    AdvanceDeposit[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, facilityId, requestNumber])
+  @@index([tenantId, facilityId, status, createdAt(sort: Desc)])
+  @@index([tenantId, patientId, createdAt(sort: Desc)])
+  @@index([tenantId, consultantId, status])
+}
+
+/// What happened, step by step. Append-only.
+model PlannedAdmissionEvent {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String        @db.Uuid
+  plannedId   String        @db.Uuid
+  fromStatus  PlannedStatus?
+  toStatus    PlannedStatus
+  action      String
+  note        String?
+  actorId     String        @db.Uuid
+  /// The moment the row was written (not the start of the transaction), so steps taken in one transaction keep their order.
+  createdAt   DateTime      @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+
+  planned PlannedAdmission @relation(fields: [plannedId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, plannedId, createdAt])
+}
+
+/// A line of billing's estimate of the charges. The lines are replaced as a set while the request is open; the total is kept on the request.
+model PlannedEstimateLine {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  plannedId   String   @db.Uuid
+  lineNo      Int
+  description String
+  quantity    Decimal  @db.Decimal(12, 3)
+  unitPrice   Decimal  @db.Decimal(12, 2)
+
+  planned PlannedAdmission @relation(fields: [plannedId], references: [id], onDelete: Restrict)
+
+  @@unique([plannedId, lineNo])
+  @@index([tenantId, plannedId])
+}

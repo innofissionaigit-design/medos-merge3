@@ -64,6 +64,11 @@ export class ClaimsService {
     private readonly ledger: LedgerService, private readonly idempotency: IdempotencyService,
   ) {}
 
+  /** Runs the work in the caller's transaction when there is one (the planned admission, docs/planned-admission.md, does its claim steps and its own record together), otherwise in its own. */
+  private inTx<T>(outer: Db | undefined, fn: (tx: Db) => Promise<T>): Promise<T> {
+    return outer ? fn(outer) : this.prisma.$transaction(fn);
+  }
+
   // ───── insurers and policies ─────
 
   async insurers(ctx: RequestContext) {
@@ -162,8 +167,8 @@ export class ClaimsService {
 
   // ───── claims ─────
 
-  async create(ctx: RequestContext, input: z.infer<typeof createClaimSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+  async create(ctx: RequestContext, input: z.infer<typeof createClaimSchema>, outer?: Db) {
+    return this.inTx(outer, async (tx) => {
       const policy = await tx.patientPolicy.findFirst({ where: { id: input.policyId, tenantId: ctx.tenantId, patientId: input.patientId } });
       if (!policy) throw new DomainError("NOT_FOUND", "Resource not found", 404);
       if (policy.status !== "ACTIVE" || policy.validFrom > today() || policy.validTo < today()) throw new DomainError("INVALID_STATE", "This policy is not valid today", 409);
@@ -243,16 +248,16 @@ export class ClaimsService {
     return { id: c.id, status: to };
   }
 
-  async requestPreauth(ctx: RequestContext, id: string, input: z.infer<typeof preauthSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+  async requestPreauth(ctx: RequestContext, id: string, input: z.infer<typeof preauthSchema>, outer?: Db) {
+    return this.inTx(outer, async (tx) => {
       const c = await this.lock(tx, ctx, id);
       const to = this.step(c, "REQUEST_PREAUTH");
       return this.move(tx, ctx, c, to, { preauthRequested: input.requestedAmount.toFixed(2) }, { amount: input.requestedAmount, note: input.note }, "CLAIM_PREAUTH_REQUESTED");
     });
   }
 
-  async decidePreauth(ctx: RequestContext, id: string, input: z.infer<typeof preauthDecisionSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+  async decidePreauth(ctx: RequestContext, id: string, input: z.infer<typeof preauthDecisionSchema>, outer?: Db) {
+    return this.inTx(outer, async (tx) => {
       const c = await this.lock(tx, ctx, id);
       if (input.decision === "APPROVE") {
         if (!input.amount) throw new DomainError("VALIDATION_FAILED", "Enter the amount the insurer approved", 400, [{ path: "amount", message: "Required" }]);
@@ -404,8 +409,8 @@ export class ClaimsService {
   }
 
   /** Closing ends the claim: withdrawn, or written off short of what was approved. The reason is kept. */
-  async close(ctx: RequestContext, id: string, input: z.infer<typeof closeSchema>) {
-    return this.prisma.$transaction(async (tx) => {
+  async close(ctx: RequestContext, id: string, input: z.infer<typeof closeSchema>, outer?: Db) {
+    return this.inTx(outer, async (tx) => {
       const c = await this.lock(tx, ctx, id);
       const to = this.step(c, "CLOSE");
       return this.move(tx, ctx, c, to, { closeReason: input.reason }, { note: input.reason }, "CLAIM_CLOSED");

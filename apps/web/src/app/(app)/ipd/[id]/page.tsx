@@ -19,6 +19,7 @@ import { useMe } from "@/lib/me";
 interface Admission {
   id: string; admissionNumber: string; status: string; patientId: string; encounterId: string; patientName: string; mrn: string | null; consultantName: string; reason: string | null; admittedAt: string; dischargedAt: string | null; lengthOfStayDays: number;
   bed: { bedId: string; code: string; ward: string; room: string } | null;
+  planned?: { id: string; requestNumber: string; estimate: string; depositHeld: string } | null;
   bedHistory: { id: string; bedCode: string; ward: string; room: string; assignedAt: string; releasedAt: string | null; reason: string | null; dailyRate: string }[];
 }
 interface Charge { id: string; type: string; description: string; quantity: string; unitPrice: string; taxPercent: string; status: string; chargedAt: string }
@@ -277,7 +278,7 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
 
 export default function AdmissionPage() {
   const { id } = useParams<{ id: string }>();
-  const { dateTime, can } = useMe();
+  const { dateTime, can, money } = useMe();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"overview" | "orders" | "nursing" | "tests" | "discharge">("overview");
   const adm = useQuery({ queryKey: ["admission", id], queryFn: () => api.get<Admission>(`/admissions/${id}`) });
@@ -295,6 +296,7 @@ export default function AdmissionPage() {
           {a.status !== "CANCELLED" && <><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=bn`} target="_blank" rel="noreferrer">বাংলা</a><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=hi`} target="_blank" rel="noreferrer">हिन्दी</a></>}</>}
       />
       {a.reason && <div className="mb-3"><KV label="Reason for admission">{a.reason}</KV></div>}
+      {a.planned && <div className="mb-3"><Notice tone="info"><span>{`Planned admission ${a.planned.requestNumber}: estimate ${money(a.planned.estimate)}, deposit held ${money(a.planned.depositHeld)}. `}<Link className="text-brand-700 hover:underline" href={`/planned/${a.planned.id}`}>Open the request</Link>{". The deposit is set against the final bill from the cashier (advance payments)."}</span></Notice></div>}
       <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "nursing", label: "Nursing and medication" }, ...(can("LIMS_READ") ? [{ id: "tests" as const, label: "Lab and imaging" }] : []), { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
       {tab === "overview" && <Overview adm={a} refresh={refresh} />}
       {tab === "orders" && <MedicationOrders encounterId={a.encounterId} open={a.status === "ADMITTED"} cacheKey={a.id} />}

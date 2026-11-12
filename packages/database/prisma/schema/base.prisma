@@ -66,6 +66,7 @@ model Facility {
   labDefinitions  LabTestDefinition[]
   limsDepartments LimsDepartment[]
   emergencyCases  EmergencyCase[]
+  plannedAdmissions PlannedAdmission[]
   stockTransfers  StockTransfer[]
   prescriptionTemplates PrescriptionTemplate[]
   prescriptionScans PrescriptionScan[]

@@ -65,6 +65,7 @@ model Encounter {
   limsRequests LimsRequest[]
   emergencyCase EmergencyCase?
   orderRequests OrderRequest[]
+  plannedAdmissions PlannedAdmission[]
   claims     Claim[]
   aiDrafts   AiDraft[]
 

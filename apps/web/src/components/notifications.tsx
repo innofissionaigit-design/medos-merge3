@@ -35,10 +35,14 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   ICU_VITALS_SCHEDULE: { text: "The doctor set how often an ICU patient's vitals are taken", href: "/icu" },
   ORDER_REQUESTED: { text: "A nurse has asked you for a test or a medicine", href: "/emergency" },
   ORDER_REQUEST_DECIDED: { text: "The doctor has answered your request", href: "/emergency" },
+  PLANNED_ADMISSION_ADVISED: { text: "A doctor advised admission: ask the patient", href: "/planned" },
+  PLANNED_ADMISSION_REQUEST: { text: "A planned admission request is waiting for your review", href: "/planned" },
+  PLANNED_ADMISSION_DECIDED: { text: "A planned admission request has an answer", href: "/planned" },
+  PLANNED_ADMISSION_STEP: { text: "A planned admission is waiting for your step", href: "/planned" },
 };
 const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 /** An emergency notice leads straight to the case it is about. */
-const hrefOf = (r: Row): string => r.href ?? (r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
+const hrefOf = (r: Row): string => r.href ?? (r.entityType === "PlannedAdmission" && r.entityId ? `/planned/${r.entityId}` : r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
 
 /**
  * The bell in the top bar. The browser listens to a live stream that says "something changed" and then fetches; if the stream is not open

@@ -11,6 +11,7 @@ import { VitalsCard } from "@/components/ipd-extras";
 import { VisitLabResults } from "@/components/lab";
 import { LimsVisitCard } from "@/components/lims-order";
 import { AiAssist } from "@/components/ai";
+import { AdmissionAdviceCard } from "@/components/planned";
 import { VisitRadiology } from "@/components/radiology";
 import { HandwrittenCard, InvestigationsPicker, RxPreview, ShareCard, StopMedicinesCard, TemplatesBar } from "@/components/prescription-extras";
 import type { FillResult } from "@/components/scan-prescription";
@@ -196,6 +197,8 @@ export default function VisitPage() {
               </form>
             )}
           </Card>
+
+          <AdmissionAdviceCard encounterId={id} open={h.visitStatus !== "CANCELLED"} />
 
           <Card title="Prescription" actions={rxOrder?.orderNumber ? <Badge tone="gray">{rxOrder.orderNumber}</Badge> : undefined}>
             {rxWarnings.length > 0 && !signed && <div className="mb-3"><Notice tone="warn">Allergy alert: {rxWarnings.map((w) => `${w.matchedItem} matches ${w.allergen}`).join("; ")}</Notice></div>}

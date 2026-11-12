@@ -58,7 +58,7 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 
 ## 6. Candidate items surfaced while building (unscheduled; see docs/certification.md §5)
 
-- UI gaps: consultation amendment, patient demographics edit, draft-invoice edit, appointment reschedule, stock purchases/returns/adjustments, supplier management, role/permission editor, password reset/change, practitioner schedule editor, nursing tasks, IPD vitals, discharge waiver, report export (CSV/Excel).
+- UI gaps: consultation amendment, patient demographics edit, draft-invoice edit, appointment reschedule, stock purchases/returns/adjustments, supplier management, role/permission editor, password reset/change, practitioner schedule editor, report export (CSV/Excel). (Nursing tasks, IPD vitals and the discharge waiver now have screens.)
 - Patient photo and scanned documents (needs S3-compatible storage, CLAUDE.md §42); stock `TRANSFER` movements.
 - Shared cache (Redis/Valkey) for the web server's refresh single-flight when running more than one web instance. (The API rate limiter is already shared through PostgreSQL.)
 - Row-level security follow-ups (the feature itself is done in development: ADR-010, `docs/rls.md`): switch staging and production and keep the `rls-evidence` output; confirm the new CI step on a real CI run; an automated check that SQL is never built from strings and that `app.tenant_id` is only written in `prisma.service.ts`; a load test with many hospitals and several API instances; a database-administrator review of the three `SECURITY DEFINER` functions; password rotation for `medos_app`; consider facility-level policies (today the policies isolate hospitals, facility isolation stays in the application).
@@ -136,3 +136,12 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 - Emergency bed charges (today the emergency fee covers the bed), a bed waiting list for a full ward, and the general admissions bed pickers hiding the emergency ward's beds.
 - Nurse requests for other things (a procedure, a consult from another doctor, oxygen or fluids), a request template per ward, and the doctor answering from the notification.
 - Manager overview: trends over time, targets, and alerts to the manager's phone; a daily summary by email.
+
+## Planned admission follow-ups (docs/planned-admission.md)
+
+- Date-aware bed reservation: hold a bed for the planned day only (today a held bed is reserved at once), a bed waiting list, and an automatic reminder when the day arrives or has passed without the patient.
+- A request that goes to any doctor of a department, the doctor passing a request to a colleague, and the doctor answering from the notification.
+- Package pricing by procedure and insurer tariffs feeding the estimate; posting the estimate as a hospital bill stage; room-rent caps against the insurer policy.
+- Electronic pre-authorisation with insurers and TPAs (needs each payer gateway), and attaching the patient's reports and the outside doctor's papers to the request (patient documents are not linked to it yet).
+- Closing an open planned request automatically when the same patient is admitted by the ordinary Admit button, and linking the deposit to the admission so the final bill offers it.
+- Planned admission reports: requests by source, time from request to admission, cancelled and no-show rates, deposit waivers.

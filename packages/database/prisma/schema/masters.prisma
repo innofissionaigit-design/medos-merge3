@@ -56,6 +56,7 @@ model Practitioner {
   queueEntries QueueEntry[]
   admissions   Admission[]
   emergencyCases EmergencyCase[]
+  plannedAdmissions PlannedAdmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, userId])

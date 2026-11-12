@@ -29,6 +29,8 @@ export const NAV: NavItem[] = [
   // The earlier two-branch laboratory page stays for people who work in it but are not part of the portal.
   { href: "/lis", label: "LIS", anyOf: ["LAB_COLLECT", "LAB_RESULT", "LAB_VERIFY", "LAB_MASTERS", "RAD_PERFORM", "RAD_REPORT"], hideWith: LIMS_NAV },
   // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
+  // Planned admission (docs/planned-admission.md): the request queue for reception, the doctor, the admission desk, billing, insurance and bed management.
+  { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED" },
   { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED" },
   { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED" },
   { href: "/reports", label: "Reports", anyOf: REPORT_PERMISSIONS },
@@ -38,8 +40,10 @@ export const NAV: NavItem[] = [
 
 /** CLAUDE.md §24: what each role sees first. */
 const ROLE_ORDER: Record<string, string[]> = {
-  RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/lims", "/ipd", "/billing"],
-  DOCTOR: ["/queue", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
+  RECEPTIONIST: ["/dashboard", "/patients", "/appointments", "/queue", "/planned", "/lims", "/ipd", "/billing"],
+  ADMISSION_DESK: ["/planned", "/ipd", "/patients", "/appointments", "/dashboard"],
+  BED_MANAGER: ["/planned", "/ipd", "/dashboard"],
+  DOCTOR: ["/queue", "/planned", "/emergency", "/patients", "/appointments", "/ipd", "/dashboard"],
   EMERGENCY_RECEPTIONIST: ["/emergency", "/patients", "/billing", "/dashboard"],
   EMERGENCY_DOCTOR: ["/emergency", "/patients", "/dashboard"],
   ICU_DOCTOR: ["/icu", "/patients", "/dashboard"],
@@ -48,7 +52,7 @@ const ROLE_ORDER: Record<string, string[]> = {
   NURSE: ["/nursing", "/lims", "/ipd", "/patients", "/dashboard"],
   PHARMACIST: ["/pharmacy", "/billing", "/patients", "/dashboard"],
   PAYROLL_OFFICER: ["/payroll", "/patients", "/dashboard"],
-  CLAIMS_OFFICER: ["/claims", "/billing", "/patients", "/dashboard"],
+  CLAIMS_OFFICER: ["/claims", "/planned", "/billing", "/patients", "/dashboard"],
   LAB_TECHNICIAN: ["/lis", "/patients", "/dashboard"],
   PATHOLOGIST: ["/lims", "/lis", "/patients", "/dashboard"],
   RADIOGRAPHER: ["/lis", "/patients", "/dashboard"],
@@ -56,7 +60,7 @@ const ROLE_ORDER: Record<string, string[]> = {
   LIMS_MANAGER: ["/lims", "/patients", "/dashboard"],
   P_LAB_TECH: ["/lims", "/patients", "/dashboard"],
   R_LAB_TECH: ["/lims", "/patients", "/dashboard"],
-  CASHIER: ["/billing", "/dashboard", "/patients"],
+  CASHIER: ["/billing", "/planned", "/dashboard", "/patients"],
   ADMINISTRATOR: ["/dashboard", "/overview", "/reports", "/admin", "/audit"],
   MANAGER: ["/overview", "/dashboard", "/reports", "/billing", "/audit"],
 };

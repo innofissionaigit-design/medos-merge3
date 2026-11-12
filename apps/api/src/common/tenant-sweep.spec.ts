@@ -80,6 +80,19 @@ const SEED: Record<string, Json> = {
   "POST /emergency/cases/:id/bed": { bedId: "00000000-0000-4000-8000-000000000002" },
   "POST /order-requests": { kind: "TEST", encounterId: "00000000-0000-4000-8000-000000000003", tests: [{ name: "CBC", category: "LABORATORY" }] },
   "POST /order-requests/:id/decision": { action: "DECLINE", note: "Sweep decision" },
+  "POST /encounters/:id/planned-admission": { details: "Sweep advice for admission" },
+  "POST /planned-admissions/:id/consent": { consented: true },
+  "POST /planned-admissions/:id/doctor": { action: "DECLINE", reason: "Sweep decision" },
+  "POST /planned-admissions/:id/verify": { diagnosis: "Sweep diagnosis", proposedDate: "2035-01-01", expectedStayDays: 2, wardId: "00000000-0000-4000-8000-000000000001" },
+  "POST /planned-admissions/:id/reschedule": { proposedDate: "2035-01-01", reason: "Sweep reason" },
+  "PUT /planned-admissions/:id/estimate": { lines: [{ description: "Sweep line", quantity: 1, unitPrice: 1 }] },
+  "POST /planned-admissions/:id/payer": { payer: "SELF_PAY" },
+  "POST /planned-admissions/:id/preauth": { action: "SELF_PAY", reason: "Sweep reason" },
+  "PUT /planned-admissions/:id/deposit-required": { amount: 1 },
+  "POST /planned-admissions/:id/deposit": { tenders: [{ method: "UPI", amount: 1, reference: "UPI-SWEEP1" }] },
+  "POST /planned-admissions/:id/waive": { reason: "Sweep waiver reason" },
+  "POST /planned-admissions/:id/bed": { bedId: "00000000-0000-4000-8000-000000000002" },
+  "POST /planned-admissions/:id/cancel": { reason: "Sweep cancel reason" },
 };
 /** Fields to try, one by one, when a change route answers "no changes supplied" (a field the route does not know is removed again from the next answer). */
 const CHANGE_FIELDS = ["name", "displayName", "title", "description", "notes", "label", "phone", "address", "fullName", "email", "specialty", "remarks", "code", "city", "contactPhone"];

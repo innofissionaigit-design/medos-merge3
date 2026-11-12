@@ -113,6 +113,7 @@ model Claim {
   events      ClaimEvent[]
   settlements ClaimSettlement[]
   documents   ClaimDocument[]
+  plannedAdmissions PlannedAdmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, claimNumber])
