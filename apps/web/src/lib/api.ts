@@ -32,7 +32,16 @@ async function request<T>(method: string, path: string, o: Opts = {}): Promise<T
 }
 
 /** A new key per user action: a double-click or retry of the same action replays instead of repeating. */
-export const newKey = (): string => crypto.randomUUID();
+export const newKey = (): string => {
+  const c = globalThis.crypto;
+  if (typeof c.randomUUID === "function") return c.randomUUID();
+  // Browsers offer randomUUID only on secure pages (https or localhost); a hospital reaching MedOS over its plain-http network still needs a key.
+  const b = c.getRandomValues(new Uint8Array(16));
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
 
 export const api = {
   get: async <T>(path: string, query?: Query): Promise<T> => (await request<{ data: T }>("GET", path, { query }))?.data as T,

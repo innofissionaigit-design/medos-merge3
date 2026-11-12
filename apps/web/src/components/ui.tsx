@@ -25,7 +25,7 @@ export function Button({ variant = "primary", loading, className, children, ...p
 /** Two-step button for high-risk actions (refund, cancel, discharge…): the first click asks, the second confirms. */
 export function ConfirmButton({ label, confirmLabel = "Confirm", onConfirm, variant = "danger", loading, disabled }: { label: string; confirmLabel?: string; onConfirm: () => void; variant?: Variant; loading?: boolean; disabled?: boolean }) {
   const [asking, setAsking] = useState(false);
-  useEffect(() => { if (!asking) return; const t = setTimeout(() => setAsking(false), 6000); return () => clearTimeout(t); }, [asking]);
+  useEffect(() => { if (!asking) return; const t = setTimeout(() => setAsking(false), 15000); return () => clearTimeout(t); }, [asking]);
   if (!asking) return <Button variant={variant === "danger" ? "secondary" : variant} disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>;
   return (
     <span className="inline-flex gap-2">

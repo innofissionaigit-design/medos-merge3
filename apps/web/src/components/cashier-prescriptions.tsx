@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Service } from "@/components/test-billing";
 import { Badge, Button, Card, ErrorNote, Input, Modal, Notice, Select, Spinner } from "@/components/ui";
-import { api, printUrl } from "@/lib/api";
+import { api, newKey, printUrl } from "@/lib/api";
 import { canEditTests } from "@/lib/cashier-edit";
 import { doctorText } from "@/lib/format";
 import { useMe } from "@/lib/me";
@@ -156,7 +156,7 @@ function CollectTotal({ patient, onClose }: { patient: PatientCard; onClose: () 
   const total = due.filter((b) => picked.has(b.invoiceId)).reduce((n, b) => n + cents(b.balanceDue), 0) + testVisits.filter((v) => pickedTests.has(v.encounterId)).reduce((n, v) => n + cents(v.billing.total), 0);
   const [rows, setRows] = useState([{ method: "CASH", amount: (total / 100).toFixed(2), reference: "" }]);
   const [edited, setEdited] = useState(false);
-  const [key] = useState(() => crypto.randomUUID());
+  const [key] = useState(() => newKey());
   const entered = rows.reduce((n, r) => n + (validAmount(r.amount) ? cents(r.amount) : 0), 0);
   const rowsOk = rows.every((r) => !r.amount.trim() || (validAmount(r.amount) && (r.method === "CASH" || r.reference.trim().length >= 4)));
   const canPay = (picked.size > 0 || pickedTests.size > 0) && entered > 0 && entered <= total && rowsOk;
