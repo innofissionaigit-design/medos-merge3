@@ -3,6 +3,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { LabStaffDashboard } from "@/components/lab-staff-dashboard";
+import { LabWorkTiles } from "@/components/lab-work-tiles";
+import { ReceptionDashboard } from "@/components/reception-dashboard";
 import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { localeFor, useI18n, useT } from "@/lib/i18n";
@@ -27,12 +30,22 @@ interface RegReport {
 }
 
 export default function Dashboard() {
-  const { me, can, features, money } = useMe();
-  const { lang, t } = useI18n();
+  const { me, features } = useMe();
   const router = useRouter();
   // Laboratory staff (LIMS manager, technicians, pathologist, radiologist) start on the Laboratory page: their role puts it first in their menu.
   const home = homeFor(visibleNav(new Set(me.permissions), features, me.roles));
   useEffect(() => { if (home === "/lims") router.replace("/lims"); }, [home, router]);
+  // The front desk and the laboratory floor (nurse taking samples, technician, pathologist, radiologist) each get their own layout;
+  // what each panel shows is still decided by permissions. The LIMS manager keeps the control room as home.
+  const { can } = useMe();
+  const labFloor = can("LIMS_COLLECT", "LIMS_ISSUE", "LAB_VERIFY", "RAD_REPORT") && !can("LIMS_MANAGE");
+  if (me.roles.includes("RECEPTIONIST")) return <ReceptionDashboard />;
+  return labFloor ? <LabStaffDashboard /> : <GeneralDashboard />;
+}
+
+function GeneralDashboard() {
+  const { me, can, features, money } = useMe();
+  const { lang, t } = useI18n();
   const opd = useQuery({ queryKey: ["dash-opd"], queryFn: () => api.get<{ total: number }>("/reports/opd/daily"), enabled: can("REPORT_READ", "REPORT_OPD") });
   const col = useQuery({ queryKey: ["dash-col"], queryFn: () => api.get<{ totals: { net: string } }>("/reports/collections"), enabled: can("REPORT_READ", "REPORT_FINANCE") });
   const queue = useQuery({ queryKey: ["dash-queue"], queryFn: () => api.get<{ status: string }[]>("/queue"), enabled: can("QUEUE_READ"), refetchInterval: 20_000 });
@@ -49,6 +62,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title={`${t("Welcome,")} ${me.fullName}`} subtitle={`${me.facility?.name ?? ""} · ${new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "full", timeZone: me.facility?.timezone ?? me.tenant.timezone }).format(new Date())}`} />
+      <LabWorkTiles />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {can("ICU_READ") && <Stat label="In the ICU now" value={icu.data?.meta.total} href="/icu" />}
         {can("ER_READ") && <Stat label="In the emergency ward now" value={er.data?.meta.total} href="/emergency" />}

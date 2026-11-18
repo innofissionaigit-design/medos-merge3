@@ -108,6 +108,8 @@ export default function PatientPage() {
         actions={<>
           {!pt.mergedInto && can("APPOINTMENT_CREATE") && <Button disabled={mustPayFirst} title={mustPayFirst ? "Pay the OPD consultation bill first" : undefined} onClick={() => setVisit(true)}>Start OPD visit</Button>}
           {!pt.mergedInto && can("INVOICE_CREATE") && <Link href={`/billing?patient=${pt.id}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"><T>New bill</T></Link>}
+          {/* Opens the lab desk's "Book a test" in a new browser tab with this patient chosen. */}
+          {!pt.mergedInto && pt.status === "ACTIVE" && can("LIMS_REQUEST") && <a href={`/lims?tab=book&patient=${pt.id}`} target="_blank" rel="noopener" className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"><T>Book lab test</T></a>}
           {!pt.mergedInto && can("ADMISSION_CREATE") && features.IPD_ENABLED && <Link href={`/ipd?admit=${pt.id}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"><T>Admit</T></Link>}
           {!pt.mergedInto && can("PATIENT_UPDATE") && <Button variant="secondary" onClick={() => setEditing(true)}>Edit details</Button>}
           {!pt.mergedInto && can("PATIENT_MERGE") && <Button variant="secondary" onClick={() => setMerging(true)}>Merge duplicate…</Button>}

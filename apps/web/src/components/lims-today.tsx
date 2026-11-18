@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { api, newKey } from "@/lib/api";
+import { api, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { DetailModal, PriorityBadge, useRefreshLims, useRequests, type Req } from "./lims-common";
 import { Badge, Button, Card, ErrorNote, Input, Modal, Notice, Select, Spinner } from "./ui";
@@ -13,7 +13,7 @@ interface Billing {
   batchId: string; arrived: boolean; owed: string; advanceAvailable: string; advanceToUse: string; toCollect: string; unpriced: number; paid: boolean;
   tests: { requestNumber: string; test: string; department: string; billed: boolean; amount: string | null }[];
 }
-interface Arrived { owed: string; advanceUsed: string; collected: string; receipts: { invoiceNumber: string | null; receiptNumber: string; amount: string }[] }
+interface Arrived { invoiceIds: string[]; owed: string; advanceUsed: string; collected: string; receipts: { invoiceNumber: string | null; receiptNumber: string; amount: string }[] }
 
 /**
  * The patient is at reception. One step bills the tests, uses what the patient paid in advance, takes the rest (one way or split) and tells the nurse the patient is here.
@@ -28,10 +28,25 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
   const due = Number(q.data?.toCollect ?? 0);
   const lines = rows ?? (due > 0 ? [{ method: "CASH", amount: q.data?.toCollect ?? "", reference: "" }] : []);
   const sum = lines.reduce((n, r) => n + Math.round(Number(r.amount || 0) * 100), 0);
+  // The printable bill opens in a new tab. The tab is opened on the click itself (a tab opened after the wait is blocked by the browser) and shown the bill once the payment is saved.
+  const billTab = useRef<Window | null>(null);
+  const billPdf = (invoiceId: string) => `${printUrl(`invoices/${invoiceId}`)}?format=pdf`;
   const arrive = useMutation({
     mutationFn: () => api.post<Arrived>(`/lims/batches/${batchId}/arrive`, { payments: lines.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount).toFixed(2), ...(r.reference.trim() ? { reference: r.reference.trim() } : {}) })) }, key.current),
-    onSuccess: () => refresh(),
+    onSuccess: (r) => {
+      refresh();
+      if (billTab.current && !billTab.current.closed && r.invoiceIds[0]) billTab.current.location.href = billPdf(r.invoiceIds[0]);
+      else billTab.current?.close();
+      billTab.current = null;
+    },
+    onError: () => { billTab.current?.close(); billTab.current = null; },
   });
+  const startArrive = () => {
+    const w = window.open("", "_blank");
+    if (w) { w.opener = null; w.document.title = "Bill"; w.document.body.textContent = "Preparing the bill…"; }
+    billTab.current = w;
+    arrive.mutate();
+  };
   const set = (i: number, patch: Partial<{ method: string; amount: string; reference: string }>) => setRows(lines.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const b = q.data;
   return (
@@ -40,6 +55,7 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
         <div className="space-y-3">
           <Notice tone="success">The patient is now with the nurse's list. Total {money(arrive.data.owed)}: advance used {money(arrive.data.advanceUsed)}, collected {money(arrive.data.collected)}.</Notice>
           {arrive.data.receipts.length > 0 && <p className="text-sm text-slate-600">Receipt{arrive.data.receipts.length > 1 ? "s" : ""}: {arrive.data.receipts.map((r) => r.receiptNumber).join(", ")}</p>}
+          {arrive.data.invoiceIds.length > 0 && <p className="text-sm">{arrive.data.invoiceIds.map((id, i) => <a key={id} href={billPdf(id)} target="_blank" rel="noreferrer" className="mr-3 text-brand-700 hover:underline">Print bill{arrive.data.invoiceIds.length > 1 ? ` ${i + 1}` : ""} (PDF)</a>)}</p>}
           <div className="flex justify-end"><Button onClick={onClose}>Done</Button></div>
         </div>
       ) : (
@@ -67,7 +83,7 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
             </div>
           )}
           <ErrorNote error={arrive.error} />
-          <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={b.unpriced > 0 || sum !== Math.round(due * 100)} loading={arrive.isPending} onClick={() => arrive.mutate()}>{due > 0 ? "Collect and send to the nurse" : "Send to the nurse"}</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={b.unpriced > 0 || sum !== Math.round(due * 100)} loading={arrive.isPending} onClick={startArrive}>{due > 0 ? "Collect and send to the nurse" : "Send to the nurse"}</Button></div>
         </div>
       )}
     </Modal>
@@ -103,9 +119,9 @@ export function TodayBoard({ mode }: { mode: "reception" | "nurse" | "manager" }
       {list.isLoading ? <Spinner /> : arrivedFirst.length === 0 ? <p className="text-sm text-slate-500">Nobody is expected for a laboratory or imaging test today.</p> : (
         <ul className="divide-y divide-slate-100">
           {arrivedFirst.map((g) => (
-            <li key={g.batchId} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <li key={g.batchId} data-priority={g.priority} className={g.priority === "EMERGENCY" ? "-mx-2 flex flex-wrap items-center justify-between gap-2 rounded-md border-l-4 border-l-red-600 bg-red-50 px-2 py-2" : "flex flex-wrap items-center justify-between gap-2 py-2"}>
               <div className="min-w-0">
-                <p className="text-sm"><span className="font-medium">{g.patient.name}</span> <span className="text-slate-500">· {g.patient.mrn}</span> <PriorityBadge p={g.priority} /></p>
+                <p className="text-sm"><span className={g.priority === "EMERGENCY" ? "font-semibold text-red-700" : "font-medium"}>{g.patient.name}</span> <span className="text-slate-500">· {g.patient.mrn}</span> <PriorityBadge p={g.priority} /></p>
                 <p className="text-xs text-slate-500">{g.rows.map((r) => r.test).join(", ")} · {g.at ? `asked to come at ${dateTime(g.at)}` : "come now"}{g.nurses.length ? ` · nurse: ${g.nurses.join(", ")}` : mode !== "reception" ? " · no nurse assigned yet" : ""}</p>
                 {mode !== "reception" && <p className="mt-0.5 flex flex-wrap gap-1">{g.rows.map((r) => <button key={r.id} className="text-xs text-brand-700 underline" onClick={() => setOpen(r)}>{r.requestNumber}</button>)}</p>}
               </div>

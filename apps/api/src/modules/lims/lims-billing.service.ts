@@ -153,7 +153,8 @@ export class LimsBillingService {
         const nurses = await this.core.collectors(tx, ctx, { assignedNurseId: r.assignedNurseId });
         await this.core.notify(tx, ctx, [...nurses, ...(r.assignedNurseId ? [] : managers)], "LIMS_PATIENT_ARRIVED", r, "arrived");
       }
-      return { batchId, arrivedAt: now, billed, owed: fmt(owed), advanceUsed: fmt(advanceUsed), collected: fmt(tendered), receipts };
+      // `invoiceIds` lets the screen open the printable bill of everything paid at this arrival.
+      return { batchId, arrivedAt: now, billed, invoiceIds: bills.map((b) => b.inv.id), owed: fmt(owed), advanceUsed: fmt(advanceUsed), collected: fmt(tendered), receipts };
     });
   }
 

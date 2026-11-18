@@ -1,7 +1,9 @@
 "use client";
+import clsx from "clsx";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, newKey, type Query } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { Badge, Button, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, Select, Spinner, Table, Td, Textarea } from "./ui";
 
@@ -18,6 +20,39 @@ export interface Detail extends Req {
   exceptions: { id: string; kind: string; reason: string; status: string; raisedAt: string; raisedBy: string | null; decidedBy: string | null; decisionNote: string | null }[];
 }
 export interface Staff { nurses: { id: string; fullName: string }[]; technicians: { id: string; fullName: string; department: string }[] }
+
+/** Is a typed number outside its printed range ("12.0 - 15.5", "< 5", "> 2")? Text results and ranges that cannot be read give null (nothing to flag). */
+export function flagOf(value: string, rangeText: string): "LOW" | "HIGH" | null {
+  const n = Number(value.trim());
+  if (value.trim() === "" || !Number.isFinite(n)) return null;
+  const nums = rangeText.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  if (/^\s*[<≤]/.test(rangeText) && nums.length === 1) return n > nums[0]! ? "HIGH" : null;
+  if (/^\s*[>≥]/.test(rangeText) && nums.length === 1) return n < nums[0]! ? "LOW" : null;
+  if (nums.length !== 2) return null;
+  return n < nums[0]! ? "LOW" : n > nums[1]! ? "HIGH" : null;
+}
+
+/** A small "low" / "high" mark beside a result that is outside its normal range. */
+export function RangeMark({ value, rangeText }: { value: string; rangeText: string }) {
+  const f = flagOf(value, rangeText);
+  return f ? <Badge tone="amber">{f === "LOW" ? "low ↓" : "high ↑"}</Badge> : null;
+}
+
+/**
+ * The order in which a nurse takes samples:
+ * 1. emergencies (those who can be sampled now before an emergency who has not reached reception),
+ * 2. outpatients who have reported at reception and been billed, the one who arrived first on top (urgent before routine),
+ * 3. admitted patients' tests, 4. outpatients who have not arrived yet.
+ */
+export function collectionRank(r: Pick<Req, "origin" | "arrivedAt" | "priority">): number {
+  const notHere = r.origin === "OPD" && !r.arrivedAt;
+  if (r.priority === "EMERGENCY") return notHere ? 1 : 0;
+  const urgent = r.priority === "URGENT" ? 0 : 0.5;
+  if (notHere) return 4 + urgent;
+  return (r.origin === "OPD" ? 2 : 3) + urgent;
+}
+/** Sorts requests into collection order; within a group the earliest arrival (or, for the admitted, the earliest due) comes first. */
+export const byCollection = (a: Req, b: Req): number => collectionRank(a) - collectionRank(b) || (a.arrivedAt ?? a.dueAt).localeCompare(b.arrivedAt ?? b.dueAt);
 
 /** The names staff see for each step. Imaging has no sample: the nurse gets the patient ready. */
 export function stageLabel(r: Pick<Req, "status" | "department" | "needsRecollection">): string {
@@ -36,7 +71,17 @@ export function stageLabel(r: Pick<Req, "status" | "department" | "needsRecollec
 }
 const STATUS_TONE: Record<string, "gray" | "blue" | "amber" | "green" | "red" | "purple"> = { PENDING_COLLECTION: "gray", COLLECTED: "blue", IN_PROCESS: "blue", PENDING_REVIEW: "purple", PASSED: "amber", ISSUED: "green", HANDED_OVER: "green", CANCELLED: "red" };
 export const StageBadge = ({ r }: { r: Req }) => <Badge tone={r.needsRecollection ? "amber" : STATUS_TONE[r.status] ?? "gray"}>{stageLabel(r)}</Badge>;
-export const PriorityBadge = ({ p }: { p: Req["priority"] }) => (p === "ROUTINE" ? null : <Badge tone={p === "EMERGENCY" ? "red" : "amber"}>{p === "EMERGENCY" ? "EMERGENCY" : "Urgent"}</Badge>);
+/** An emergency is solid red wherever it shows (every lab desk, the details, the day boards); urgent is amber. */
+export const PriorityBadge = ({ p }: { p: Req["priority"] }) => {
+  const t = useT();
+  if (p === "ROUTINE") return null;
+  if (p === "EMERGENCY") return <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden="true" />{t("Emergency")}</span>;
+  return <Badge tone="amber">Urgent</Badge>;
+};
+
+/** The row colour that says how urgent a request is, the same on every lab desk: red for an emergency, an amber edge for urgent. */
+export const priorityRow = (p: Req["priority"]): string | undefined => (p === "EMERGENCY" ? "bg-red-50 hover:bg-red-100/70" : undefined);
+export const priorityEdge = (p: Req["priority"]): string => (p === "EMERGENCY" ? "border-l-4 border-l-red-600 font-semibold text-red-700" : p === "URGENT" ? "border-l-4 border-l-amber-400 text-slate-400" : "border-l-4 border-l-transparent text-slate-400");
 
 export const EVENT_LABEL: Record<string, string> = {
   CREATED: "Entered the queue", PRIORITY_CHANGED: "Priority changed", NURSE_ASSIGNED: "Nurse assigned", TECH_ASSIGNED: "Technician assigned", COLLECTED: "Sample taken / patient ready", SAMPLE_REJECTED: "Sample rejected", SENT_BACK: "Patient sent back",
@@ -69,7 +114,7 @@ export function RequestTable({ rows, empty, actions, onOpen, columns = ["patient
     <Table head={head} {...(rows.length === 0 ? { empty } : {})}>
       {rows.map((r, i) => {
         const cell: Record<string, ReactNode> = {
-          patient: <Td key="patient"><button className="text-left" onClick={() => onOpen?.(r)}><span className="font-medium">{r.patient.name}</span> <span className="text-slate-500">· {r.patient.mrn}{r.bed ? ` · Bed ${r.bed.code} (${r.bed.ward})` : ""}</span></button></Td>,
+          patient: <Td key="patient"><button className="text-left" onClick={() => onOpen?.(r)}><span className={r.priority === "EMERGENCY" ? "font-semibold text-red-700" : "font-medium"}>{r.patient.name}</span> <span className="text-slate-500">· {r.patient.mrn}{r.bed ? ` · Bed ${r.bed.code} (${r.bed.ward})` : ""}</span></button></Td>,
           test: <Td key="test">{r.test} <span className="text-xs text-slate-500">({r.requestNumber})</span> <PriorityBadge p={r.priority} />{r.critical && <> <Badge tone="red">critical</Badge></>}{r.scheduledFor && r.status === "PENDING_COLLECTION" && <div className="text-xs text-slate-500">Come at {dateTime(r.scheduledFor)}</div>}</Td>,
           origin: <Td key="origin">{r.origin === "IPD" ? "Admitted" : r.origin === "EMERGENCY" ? "Emergency" : "Outpatient"}</Td>,
           status: <Td key="status"><StageBadge r={r} />{r.origin === "OPD" && r.status === "PENDING_COLLECTION" && <> <Badge tone={r.arrivedAt ? "green" : "amber"}>{r.arrivedAt ? "reported at reception" : "not here yet"}</Badge></>}{r.returnedCount > 0 && <> <Badge tone="amber">returned</Badge></>}{r.compromisedSampleApproved && <> <Badge tone="amber">by exception</Badge></>}</Td>,
@@ -77,8 +122,8 @@ export function RequestTable({ rows, empty, actions, onOpen, columns = ["patient
           who: <Td key="who" className="text-slate-600">{[r.assignedNurse && `Nurse: ${r.assignedNurse.name ?? "—"}`, r.assignedTech && `Tech: ${r.assignedTech.name ?? "—"}`].filter(Boolean).join(" · ") || "—"}</Td>,
         };
         return (
-          <tr key={r.id} className={r.priority === "EMERGENCY" ? "bg-red-50/60" : undefined}>
-            <Td className="w-8 text-slate-400">{i + 1}</Td>
+          <tr key={r.id} className={priorityRow(r.priority)} data-priority={r.priority}>
+            <Td className={clsx("w-8", priorityEdge(r.priority))}>{i + 1}</Td>
             {columns.map((c) => cell[c])}
             <Td><div className="flex flex-wrap justify-end gap-1.5">{actions?.(r)}{onOpen && <Button variant="ghost" onClick={() => onOpen(r)}>Details</Button>}</div></Td>
           </tr>

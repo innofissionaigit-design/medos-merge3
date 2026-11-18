@@ -110,6 +110,8 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
     mgr = await t.makeUser(a, ["LIMS_MANAGER"]); hospMgr = await t.makeUser(a, ["MANAGER"]);
     doc = await makeDoctor(t, a); doc2 = await makeDoctor(t, a);
     bMgr = await t.makeUser(b, ["LIMS_MANAGER"]); bNurse = await t.makeUser(b, ["NURSE"]); bRec = await t.makeUser(b, ["RECEPTIONIST"]); bDoc = await makeDoctor(t, b);
+    // "Tests advised" is switched off by default (see "the tests-advised switch"); the tests below still cover it, so both hospitals turn it on.
+    for (const x of [a, b]) assert.equal((await t.api("put", "/settings/LIMS_TESTS_ADVISED_ENABLED", x.admin.token).send({ value: true })).status, 200);
     cbc = (await t.api("post", "/services", a.admin.token).send({ code: code("T"), name: "Complete blood count", category: "INVESTIGATION", price: "250", taxPercent: 0 })).body.data;
     const def = await t.api("put", `/lab/tests/${cbc.id}`, path.token).send({
       specimen: "Blood (EDTA)", turnaroundHours: 4, instructions: "No fasting is needed.",
@@ -878,6 +880,65 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await only(urgent.body.data.encounterId, lipid.name)).priority, "EMERGENCY");
       const dupe = await Promise.all([1, 2].map(() => t.api("post", "/lims/opd/book", rec.token).send({ patientId: own.id, consent: true, tests: [{ serviceId: xray.id }] })));
       assert.deepEqual(dupe.map((r) => r.status), [201, 201], "two separate bookings are two visits");
+    });
+  });
+
+  // ───────────────────────── "Tests advised" switched off; the lab queue is for lab registrations ─────────────────────────
+  describe("the tests-advised switch and the lab registrations queue", () => {
+    it("'Tests advised' is off by default: its routes are refused until the administrator turns it on, and then work unchanged", async () => {
+      const d = await t.makeTenant("lims-d");
+      const dRec = await t.makeUser(d, ["RECEPTIONIST"]);
+      assert.equal((await t.api("get", "/settings/features", dRec.token)).body.data.LIMS_TESTS_ADVISED_ENABLED, false);
+      const pending = await t.api("get", "/lims/opd/pending", dRec.token);
+      assert.equal(pending.status, 403);
+      assert.equal(pending.body.error.code, "FEATURE_DISABLED");
+      assert.equal((await t.api("post", "/lims/opd/launch", dRec.token).send({ encounterId: randomUUID(), consent: true, testOrderIds: [randomUUID()] })).body.error.code, "FEATURE_DISABLED");
+      assert.equal((await t.api("post", "/lims/opd/decline", dRec.token).send({ encounterId: randomUUID(), testOrderIds: [randomUUID()], reason: "Not wanted here" })).body.error.code, "FEATURE_DISABLED");
+      // Booking at the lab desk is not part of it and keeps working.
+      assert.equal((await t.api("get", "/lims/catalogue", dRec.token)).status, 200);
+      assert.equal((await t.api("put", "/settings/LIMS_TESTS_ADVISED_ENABLED", dRec.token).send({ value: true })).status, 403, "reception cannot switch it on");
+      assert.equal((await t.api("put", "/settings/LIMS_TESTS_ADVISED_ENABLED", d.admin.token).send({ value: true })).status, 200);
+      assert.equal((await t.api("get", "/settings/features", dRec.token)).body.data.LIMS_TESTS_ADVISED_ENABLED, true);
+      assert.equal((await t.api("get", "/lims/opd/pending", dRec.token)).status, 200, "turned back on, it works as before");
+      assert.ok(await t.prisma.auditEvent.findFirst({ where: { tenantId: d.tenantId, action: "SETTING_CHANGED", entityId: "LIMS_TESTS_ADVISED_ENABLED" } }), "the change is audited");
+    });
+
+    it("the lab queue lists lab registrations only: tests booked at the lab desk, not tests a doctor advised", async () => {
+      const opd = await advised({ lab: [cbc.name] });
+      assert.equal((await launch(opd.encounterId, opd.orders.map((o) => o.id))).status, 201);
+      const patient = await registerPatient(t, rec.token);
+      const booked = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: patient.id, consent: true, tests: [{ serviceId: cbc.id }] });
+      assert.equal(booked.status, 201, JSON.stringify(booked.body));
+      const visits = async (labOnly: string, mrn: string) => ((await get(`/lims/requests?origin=OPD&labOnly=${labOnly}&q=${encodeURIComponent(mrn)}&pageSize=100`, rec.token)).items as Req[]).map((r) => r.encounterId);
+      assert.deepEqual(await visits("true", patient.mrn), [booked.body.data.encounterId], "a lab registration is in the lab queue");
+      assert.deepEqual(await visits("true", opd.patient.mrn), [], "a test a doctor advised is not");
+      assert.deepEqual(await visits("false", opd.patient.mrn), [opd.encounterId]);
+      assert.deepEqual(await visits("false", patient.mrn), []);
+      assert.equal((await t.api("get", "/lims/requests?labOnly=yes", rec.token)).status, 400);
+    });
+
+    it("the lab queue can be sorted: most urgent first (default), by due time either way, or newest first", async () => {
+      const patient = await registerPatient(t, rec.token);
+      const routine = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: patient.id, consent: true, tests: [{ serviceId: cbc.id }] });
+      const emergency = await t.api("post", "/lims/opd/book", rec.token).send({ patientId: patient.id, consent: true, priority: "EMERGENCY", tests: [{ serviceId: cbc.id }] });
+      assert.equal(routine.status, 201, JSON.stringify(routine.body));
+      assert.equal(emergency.status, 201, JSON.stringify(emergency.body));
+      const ids = { routine: routine.body.data.requests[0].id as string, emergency: emergency.body.data.requests[0].id as string };
+      const order = async (sort?: string) => ((await get(`/lims/requests?labOnly=true&q=${encodeURIComponent(patient.mrn)}${sort ? `&sort=${sort}` : ""}`, rec.token)).items as (Req & { dueAt: string })[]);
+      assert.deepEqual((await order()).map((r) => r.id), [ids.emergency, ids.routine], "the emergency comes first by default");
+      assert.deepEqual((await order("newest")).map((r) => r.id), [ids.emergency, ids.routine], "booked last, shown first");
+      const byDue = await order("due");
+      assert.deepEqual(byDue.map((r) => r.dueAt), [...byDue.map((r) => r.dueAt)].sort(), "earliest due first");
+      assert.deepEqual((await order("dueDesc")).map((r) => r.id), [...byDue].reverse().map((r) => r.id), "latest due first");
+      assert.equal((await t.api("get", "/lims/requests?sort=random", rec.token)).status, 400);
+      // "Arrived today": a patient who reported at reception today stays on today's list after the sample is taken.
+      await t.prisma.limsRequest.update({ where: { id: ids.routine }, data: { arrivedAt: new Date(), arrivedById: rec.id } });
+      assert.equal((await act(ids.routine, "collect", nurse.token)).status, 200);
+      const arrivedToday = (await get(`/lims/requests?arrivedToday=true&q=${encodeURIComponent(patient.mrn)}`, rec.token)).items as Req[];
+      assert.deepEqual(arrivedToday.map((r) => [r.id, r.status]), [[ids.routine, "COLLECTED"]], "arrived today and collected: still on today's list; the emergency one never arrived");
+      // (The arrival time cannot be back-dated: the database refuses it, so an "earlier day" arrival is not set up here.)
+      // "Urgent / STAT": urgent and emergency requests only.
+      assert.deepEqual((await get(`/lims/requests?labOnly=true&urgent=true&q=${encodeURIComponent(patient.mrn)}`, rec.token)).items.map((r: Req) => r.id), [ids.emergency]);
     });
   });
 

@@ -17,7 +17,9 @@ const split = (s: string): string[] => [...new Set(s.split(/[\n,;]+/).map((x) =>
  * emergency comes first in the queue; an outpatient's wait at reception until the patient agrees), and a way to raise the priority of a test already ordered.
  */
 export function LimsVisitCard({ encounterId, visitType, active }: { encounterId: string; visitType: "OPD" | "IPD" | "EMERGENCY"; active: boolean }) {
-  const { can, dateTime } = useMe();
+  const { can, dateTime, features } = useMe();
+  // With "Tests advised" switched off, an outpatient's tests are not sent through reception: the patient registers for tests at the lab desk instead.
+  const viaReception = visitType === "OPD" && !features.LIMS_TESTS_ADVISED_ENABLED;
   const refresh = useRefreshLims();
   const q = useQuery({ queryKey: ["lims-visit", encounterId], queryFn: () => api.get<VisitLims>(`/encounters/${encounterId}/lims`), enabled: can("LIMS_READ"), refetchInterval: 30_000 });
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -39,13 +41,14 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
   const raise = useMutation({ mutationFn: (v: { id: string; priority: string }) => api.post(`/lims/requests/${v.id}/priority`, { priority: v.priority }, newKey()), onSuccess: done });
   if (!can("LIMS_READ")) return null;
   const rows = q.data?.requests ?? [];
-  const nothing = !q.isLoading && rows.length === 0 && (q.data?.waitingAtReception.length ?? 0) === 0;
+  const waiting = viaReception ? [] : q.data?.waitingAtReception ?? [];
+  const nothing = !q.isLoading && rows.length === 0 && waiting.length === 0;
   const total = picked.size + split(lab).length + split(imaging).length;
   return (
     <Card title="Laboratory and imaging orders">
       <div className="space-y-3">
         {nothing && <p className="text-sm text-slate-500">No laboratory or imaging tests have been ordered through the laboratory system for this visit.</p>}
-        {(rows.length > 0 || (q.data?.waitingAtReception.length ?? 0) > 0) && (
+        {(rows.length > 0 || waiting.length > 0) && (
           <Table head={["Test", "Where it stands", "Due", ""]}>
             {rows.map((r) => (
               <tr key={r.id}>
@@ -55,11 +58,12 @@ export function LimsVisitCard({ encounterId, visitType, active }: { encounterId:
                 <Td>{can("LIMS_PRIORITY") && active && ["PENDING_COLLECTION", "COLLECTED", "IN_PROCESS", "PENDING_REVIEW"].includes(r.status) && r.priority !== "EMERGENCY" && <Button variant="secondary" loading={raise.isPending && raise.variables?.id === r.id} onClick={() => raise.mutate({ id: r.id, priority: "EMERGENCY" })}>Make emergency</Button>}</Td>
               </tr>
             ))}
-            {q.data?.waitingAtReception.map((w) => <tr key={w.testOrderId}><Td>{w.test}</Td><Td><Badge tone="amber">Waiting at reception for the patient's agreement</Badge></Td><Td /><Td /></tr>)}
+            {waiting.map((w) => <tr key={w.testOrderId}><Td>{w.test}</Td><Td><Badge tone="amber">Waiting at reception for the patient's agreement</Badge></Td><Td /><Td /></tr>)}
           </Table>
         )}
         <ErrorNote error={raise.error} />
-        {can("LIMS_ORDER") && active && (
+        {viaReception && can("LIMS_ORDER") && active && <p className="text-xs text-slate-500">For an outpatient, write the tests on the prescription. The patient registers for them at the lab desk.</p>}
+        {can("LIMS_ORDER") && active && !viaReception && (
           <div className="space-y-2 rounded-md border border-slate-200 p-3">
             <p className="text-sm font-medium text-slate-800">Order tests</p>
             {visitType === "OPD" && <p className="text-xs text-slate-500">For an outpatient, reception asks the patient to agree and then sends the tests to the laboratory.</p>}

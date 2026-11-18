@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { z } from "zod";
+import { Feature } from "../../common/feature.guard";
 import { Ctx, id, parse, RequireAnyPermission, RequirePermissions } from "../../common/http";
 import { parseIdempotencyKey } from "../../common/idempotency.service";
 import type { RequestContext } from "../../common/request-context";
@@ -70,11 +71,14 @@ export class LimsController {
   @Post("lims/orders")
   async order(@Ctx() ctx: RequestContext, @Body() body: unknown) { return { data: await this.lims.order(ctx, parse(orderSchema, body)) }; }
 
+  // "Tests advised" (pending, launch, decline): switched off unless the facility turns LIMS_TESTS_ADVISED_ENABLED on. Kept, not deleted.
   @RequirePermissions("LIMS_REQUEST")
+  @Feature("LIMS_TESTS_ADVISED_ENABLED")
   @Get("lims/opd/pending")
   async pending(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.lims.pending(ctx, parse(pendingSchema, query)) }; }
 
   @RequirePermissions("LIMS_REQUEST")
+  @Feature("LIMS_TESTS_ADVISED_ENABLED")
   @Post("lims/opd/launch")
   async launch(@Ctx() ctx: RequestContext, @Body() body: unknown) { return { data: await this.lims.launch(ctx, parse(launchSchema, body)) }; }
 
@@ -119,6 +123,7 @@ export class LimsController {
   async setGrouping(@Ctx() ctx: RequestContext, @Param("serviceId") serviceId: string, @Body() body: unknown) { return { data: await this.lims.setGrouping(ctx, id(serviceId), parse(groupingSchema, body)) }; }
 
   @RequirePermissions("LIMS_REQUEST")
+  @Feature("LIMS_TESTS_ADVISED_ENABLED")
   @Post("lims/opd/decline")
   @HttpCode(200)
   async decline(@Ctx() ctx: RequestContext, @Body() body: unknown) { return { data: await this.lims.decline(ctx, parse(declineSchema, body)) }; }

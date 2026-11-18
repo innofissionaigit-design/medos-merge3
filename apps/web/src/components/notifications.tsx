@@ -7,7 +7,7 @@ import { api, type Page } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 
-interface Row { id: string; type: string; entityType: string; entityId: string | null; createdAt: string; readAt: string | null; detail?: string | null; href?: string | null }
+export interface NotificationRow { id: string; type: string; entityType: string; entityId: string | null; createdAt: string; readAt: string | null; detail?: string | null; href?: string | null }
 
 /** Where each kind of notification leads, and its fixed wording (English is the key for the Bengali and Hindi dictionaries). A notification carries no patient name. */
 const KINDS: Record<string, { text: string; href: string; critical?: boolean }> = {
@@ -43,9 +43,9 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   ROUND_MISSED: { text: "A doctor's round was not started in time", href: "/wards" },
   NURSING_INSTRUCTION: { text: "The doctor gave a nursing instruction for a patient", href: "/nursing" },
 };
-const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
+export const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 /** An emergency notice leads straight to the case it is about. */
-const hrefOf = (r: Row): string => r.href ?? (r.entityType === "WardRound" && r.entityId && r.type === "ROUND_DUE" ? `/rounds/${r.entityId}` : r.type === "NURSING_INSTRUCTION" && r.entityId ? `/ipd/${r.entityId}` : r.entityType === "PlannedAdmission" && r.entityId ? `/planned/${r.entityId}` : r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
+export const hrefOf = (r: NotificationRow): string => r.href ?? (r.entityType === "WardRound" && r.entityId && r.type === "ROUND_DUE" ? `/rounds/${r.entityId}` : r.type === "NURSING_INSTRUCTION" && r.entityId ? `/ipd/${r.entityId}` : r.entityType === "PlannedAdmission" && r.entityId ? `/planned/${r.entityId}` : r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
 
 /**
  * The bell in the top bar. The browser listens to a live stream that says "something changed" and then fetches; if the stream is not open
@@ -58,12 +58,12 @@ export function NotificationBell() {
   const { dateTime } = useMe();
   const [open, setOpen] = useState(false);
   const [live, setLive] = useState(false);
-  const [alertRow, setAlertRow] = useState<Row | null>(null);
+  const [alertRow, setAlertRow] = useState<NotificationRow | null>(null);
   const seen = useRef<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   const unread = useQuery({ queryKey: ["notif-unread"], queryFn: () => api.get<{ unread: number }>("/notifications/unread-count"), refetchInterval: live ? 120_000 : 20_000 });
-  const list = useQuery({ queryKey: ["notif-list"], queryFn: () => api.page<Row>("/notifications", { pageSize: 15 }), enabled: open, refetchInterval: open && !live ? 20_000 : false });
+  const list = useQuery({ queryKey: ["notif-list"], queryFn: () => api.page<NotificationRow>("/notifications", { pageSize: 15 }), enabled: open, refetchInterval: open && !live ? 20_000 : false });
   const count = unread.data?.unread ?? 0;
 
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ["notif-unread"] }); void qc.invalidateQueries({ queryKey: ["notif-list"] }); };
@@ -93,7 +93,7 @@ export function NotificationBell() {
           const first = seen.current === null;
           seen.current = latest;
           // What is new is shown straight away, not only as a number on the bell (not for what was already waiting when the page opened). A critical result takes priority.
-          if (!first) void api.page<Row>("/notifications", { pageSize: 3, unread: "true" }).then((p: Page<Row>) => { const n = p.data.find((r) => kindOf(r.type).critical) ?? p.data[0]; if (n) setAlertRow(n); }).catch(() => undefined);
+          if (!first) void api.page<NotificationRow>("/notifications", { pageSize: 3, unread: "true" }).then((p: Page<NotificationRow>) => { const n = p.data.find((r) => kindOf(r.type).critical) ?? p.data[0]; if (n) setAlertRow(n); }).catch(() => undefined);
         }
       });
     };
@@ -120,7 +120,7 @@ export function NotificationBell() {
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
 
-  const go = (r: Row): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(hrefOf(r)); };
+  const go = (r: NotificationRow): void => { if (!r.readAt) read.mutate(r.id); setOpen(false); router.push(hrefOf(r)); };
 
   return (
     <div ref={box} className="relative">

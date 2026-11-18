@@ -5,14 +5,14 @@ const { createRequire } = require("module");
 const path = require("path");
 const fs = require("fs");
 const [webRoot, outDir, password] = process.argv.slice(2);
-const req = createRequire(path.join(webRoot, "package.json"));
+const req = createRequire(path.join(path.resolve(webRoot), "package.json"));
 const { chromium } = req("@playwright/test");
 const BASE = process.env.BASE || "http://localhost:3200";
-const ROLES = ["reception1", "doctor1", "nurse1", "cashier1", "pharmacist1", "manager1", "admin",
+const ROLES = ["reception1", "doctor1", "doctor4", "rmo1", "nurse1", "cashier1", "pharmacist1", "manager1", "admin",
   "er_reception1", "er_nurse1", "er_doctor1", "icu_doctor1", "icu_nurse1",
   "lims_manager1", "p_lab_tech1", "r_lab_tech1", "pathologist1", "radiologist1",
-  "admission1", "bedmgr1", "coordinator1", "claims1"];
-const PROBE = ["/emergency", "/icu", "/lims", "/lis", "/teleconsult", "/queue", "/appointments", "/billing", "/pharmacy", "/nursing", "/ipd", "/admin", "/reports", "/overview", "/patients"];
+  "admission1", "bedmgr1", "coordinator1", "claims1", "tpa1", "mrd1", "housekeeping1", "transport1", "procurement1", "carecoord1", "relations1", "otcoord1"];
+const PROBE = ["/emergency", "/icu", "/lims", "/lis", "/teleconsult", "/queue", "/appointments", "/billing", "/pharmacy", "/nursing", "/ipd", "/admin", "/reports", "/overview", "/patients", "/planned", "/post-discharge", "/housekeeping", "/rounds", "/wards", "/claims", "/procurement"];
 
 (async () => {
   fs.mkdirSync(outDir, { recursive: true });

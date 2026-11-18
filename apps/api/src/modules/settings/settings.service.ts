@@ -13,6 +13,11 @@ export const SETTINGS = {
   PHARMACY_ENABLED: { schema: z.boolean(), default: true, description: "Pharmacy module" },
   IPD_ENABLED: { schema: z.boolean(), default: true, description: "In-patient (admission, beds, discharge) module" },
   NURSING_ENABLED: { schema: z.boolean(), default: true, description: "Nursing (worklist, MAR, intake/output) module" },
+  /**
+   * "Tests advised": reception sends the tests an OPD doctor advised to the laboratory. Switched off by default and kept for later (a soft removal, not a deletion):
+   * the laboratory takes lab registrations that reception books at the lab desk instead. Turning it on brings back the tab and its three routes unchanged.
+   */
+  LIMS_TESTS_ADVISED_ENABLED: { schema: z.boolean(), default: false, description: "Laboratory: reception sends the tests OPD doctors advise to the lab (\"Tests advised\")" },
   DISCHARGE_REQUIRED_STEPS: {
     schema: z.array(z.enum(["NURSING", "CHARGES_REVIEWED", "PHARMACY", "LAB_RADIOLOGY", "OT_PROCEDURE", "INSURANCE", "BILLING", "FINANCIAL_RELEASE"])).max(8).refine((a) => new Set(a).size === a.length, "Duplicate step"),
     default: ["NURSING", "CHARGES_REVIEWED", "PHARMACY", "LAB_RADIOLOGY", "OT_PROCEDURE", "INSURANCE", "BILLING", "FINANCIAL_RELEASE"] as string[],
@@ -113,6 +118,8 @@ export type SettingKey = keyof typeof SETTINGS;
 export const SETTING_KEYS = Object.keys(SETTINGS) as SettingKey[];
 export const settingKeySchema = z.enum(SETTING_KEYS as [SettingKey, ...SettingKey[]]);
 export const putSettingSchema = z.object({ value: z.unknown() }).strict();
+/** The on/off switches for whole modules or features: checked by the feature guard and sent to the browser for navigation. */
+export type FeatureKey = "PHARMACY_ENABLED" | "IPD_ENABLED" | "NURSING_ENABLED" | "LIMS_TESTS_ADVISED_ENABLED";
 
 @Injectable()
 export class SettingsService {
@@ -123,7 +130,7 @@ export class SettingsService {
     return (row ? row.value : SETTINGS[key].default) as z.infer<(typeof SETTINGS)[K]["schema"]>;
   }
 
-  async isEnabled(tenantId: string, facilityId: string, key: "PHARMACY_ENABLED" | "IPD_ENABLED" | "NURSING_ENABLED"): Promise<boolean> {
+  async isEnabled(tenantId: string, facilityId: string, key: FeatureKey): Promise<boolean> {
     return this.get(this.prisma, tenantId, facilityId, key);
   }
 
@@ -152,9 +159,10 @@ export class SettingsService {
 
   /** Feature flags for navigation: which modules this facility has switched on. */
   async features(ctx: RequestContext) {
-    const [pharmacy, ipd, nursing] = await Promise.all([
+    const [pharmacy, ipd, nursing, testsAdvised] = await Promise.all([
       this.get(this.prisma, ctx.tenantId, ctx.facilityId, "PHARMACY_ENABLED"), this.get(this.prisma, ctx.tenantId, ctx.facilityId, "IPD_ENABLED"), this.get(this.prisma, ctx.tenantId, ctx.facilityId, "NURSING_ENABLED"),
+      this.get(this.prisma, ctx.tenantId, ctx.facilityId, "LIMS_TESTS_ADVISED_ENABLED"),
     ]);
-    return { PHARMACY_ENABLED: pharmacy, IPD_ENABLED: ipd, NURSING_ENABLED: nursing };
+    return { PHARMACY_ENABLED: pharmacy, IPD_ENABLED: ipd, NURSING_ENABLED: nursing, LIMS_TESTS_ADVISED_ENABLED: testsAdvised };
   }
 }

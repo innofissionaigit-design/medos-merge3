@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const [webRoot, outDir, password, ...only] = process.argv.slice(2);
-const { chromium } = createRequire(path.join(webRoot, "package.json"))("@playwright/test");
+const { chromium } = createRequire(path.join(path.resolve(webRoot), "package.json"))("@playwright/test");
 const BASE = process.env.BASE || "http://localhost:3200";
 const SMS = "http://127.0.0.1:4299";
 const results = [];
@@ -223,10 +223,15 @@ async function lims(ctx) {
     await expectStatus(F, "reception1", "book a test with no doctor's order (outside referral)", b, [200, 201]);
   }
   // Admitted patient: ordered by the doctor from the admission, charged to the admission when issued
-  const adms = (await api("admin", "GET", "/admissions?status=ADMITTED&pageSize=20")).d || [];
-  const users = (await api("admin", "GET", "/users?pageSize=100")).d || [];
-  const a = adms.find((x) => x.consultantName === users.find((u) => u.username === "doctor2")?.fullName) || adms[0];
-  const consultantUser = users.find((u) => u.fullName === a.consultantName)?.username ?? "doctor2";
+  // a fresh patient is admitted for this part, so earlier runs' pending tests can never get in the way
+  const wardsR = await api("admission1", "GET", "/wards"); const wardsL = wardsR.d?.items ?? wardsR.d ?? [];
+  const generalIds = new Set(wardsL.filter((x) => !/emergency|intensive|icu|operation|theatre/i.test(x.name)).map((x) => x.id));
+  const bedsR = await api("admission1", "GET", "/beds?status=AVAILABLE"); const freeBed = (bedsR.d?.items ?? bedsR.d ?? []).find((x) => generalIds.has(x.wardId ?? x.ward?.id));
+  const consultantUser = "doctor2"; const cons = await practitionerOf(consultantUser);
+  const ipdPatient = await newPatient(F, "admission1");
+  const admR = freeBed && ipdPatient ? await api("admission1", "POST", "/admissions", { patientId: ipdPatient.id, consultantId: cons.id, bedId: freeBed.id, reason: "Post-op care" }) : { s: 0, j: "no bed or patient" };
+  if (!(await expectStatus(F, "admission1", "a fresh patient is admitted for the inpatient lab tests", admR, 201))) return;
+  const a = { id: admR.d.id, encounterId: admR.d.encounterId, patientName: ipdPatient.name };
   ctx.ipdAdm = a;
   const ord = await api(consultantUser, "POST", "/lims/orders", { encounterId: a.encounterId, priority: "URGENT", clinicalNote: "Post-op check", tests: [{ name: "CBC (complete blood count)", category: "LABORATORY" }, { name: "X-ray chest PA", category: "RADIOLOGY" }] });
   await expectStatus(F, consultantUser, `doctor orders CBC (urgent) + chest X-ray for admitted ${a.patientName}`, ord, 201);

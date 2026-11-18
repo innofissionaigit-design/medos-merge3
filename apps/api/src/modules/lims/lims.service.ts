@@ -14,7 +14,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { NumberingService } from "../numbering/numbering.service";
 import { SettingsService } from "../settings/settings.service";
 import { performSchema, RadiologyService } from "../radiology/radiology.service";
-import { endOfLocalDay, localDateStr } from "../../common/time";
+import { endOfLocalDay, localDateStr, startOfLocalDay } from "../../common/time";
 import { computeLine, fmt } from "../billing/billing.domain";
 import { LimsBillingService } from "./lims-billing.service";
 import { LimsCoreService, type RequestRow } from "./lims-core.service";
@@ -88,11 +88,26 @@ export const listSchema = z.object({
   expected: bool.optional(),
   /** With `expected`: only those who have reported at reception (true) or are still to come (false). */
   arrived: bool.optional(),
+  /** Only lab registrations: tests booked at the lab desk on a laboratory-only visit (true), or only tests that came from a doctor's visit (false). */
+  labOnly: bool.optional(),
+  /** Only urgent and emergency requests (true). */
+  urgent: bool.optional(),
+  /** Outpatients who reported at reception today (facility time), whatever stage their test has reached since: the rest of "Today's patients". */
+  arrivedToday: bool.optional(),
   unassigned: bool.optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** The order of the list: most urgent first (the default), earliest due first, earliest due last, or newest first. */
+  sort: z.enum(["priority", "due", "dueDesc", "newest"]).default("priority"),
   page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
+
+const LIST_ORDER: Record<z.infer<typeof listSchema>["sort"], Prisma.LimsRequestOrderByWithRelationInput[]> = {
+  priority: [{ priority: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  due: [{ dueAt: "asc" }, { priority: "asc" }, { id: "asc" }],
+  dueDesc: [{ dueAt: "desc" }, { priority: "asc" }, { id: "asc" }],
+  newest: [{ createdAt: "desc" }, { id: "asc" }],
+};
 
 export const pendingSchema = z.object({ q: z.string().trim().min(2).max(60).optional() }).strict();
 export const prioritySchema = z.object({ priority, reason: z.string().trim().min(3).max(200).optional() }).strict();
@@ -508,6 +523,13 @@ export class LimsService {
     const and: Prisma.LimsRequestWhereInput[] = [];
     if (q.mine) and.push({ OR: [{ assignedNurseId: ctx.userId }, { assignedTechId: ctx.userId }] });
     if (q.unassigned) and.push({ assignedTechId: null });
+    if (q.labOnly !== undefined) and.push({ encounter: { labOnly: q.labOnly } });
+    if (q.urgent) and.push({ priority: { in: ["EMERGENCY", "URGENT"] } });
+    if (q.arrivedToday) {
+      const tz = (await this.prisma.facility.findFirstOrThrow({ where: { id: ctx.facilityId, tenantId: ctx.tenantId }, select: { timezone: true } })).timezone;
+      const day = localDateStr(new Date(), tz);
+      and.push({ origin: "OPD", arrivedAt: { gte: startOfLocalDay(day, tz), lt: endOfLocalDay(day, tz) } });
+    }
     if (q.recollect) and.push({ OR: [{ needsRecollection: true }, { recollectCount: { gt: 0 } }] });
     if (q.overdue) and.push({ status: { in: [...OPEN_STATUSES] }, dueAt: { lt: new Date() } });
     if (q.expected || q.arrived !== undefined) {
@@ -532,7 +554,7 @@ export class LimsService {
       ...(and.length ? { AND: and } : {}),
     };
     const [rows, total] = await Promise.all([
-      this.prisma.limsRequest.findMany({ where, orderBy: [{ priority: "asc" }, { createdAt: "asc" }, { id: "asc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize, select: LIST_SELECT }),
+      this.prisma.limsRequest.findMany({ where, orderBy: LIST_ORDER[q.sort], skip: (q.page - 1) * q.pageSize, take: q.pageSize, select: LIST_SELECT }),
       this.prisma.limsRequest.count({ where }),
     ]);
     return { total, page: q.page, pageSize: q.pageSize, items: await this.views(this.prisma, ctx, rows) };

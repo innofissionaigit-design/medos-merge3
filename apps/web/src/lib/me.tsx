@@ -13,7 +13,7 @@ export interface Me {
   /** What clinical data this person may see: everything, only their own patients (doctor), or only their departments. */
   dataScope?: { kind: "ALL" | "DOCTOR" | "DEPARTMENT"; departments: { id: string; name: string }[] };
 }
-export type Features = { PHARMACY_ENABLED: boolean; IPD_ENABLED: boolean; NURSING_ENABLED: boolean };
+export type Features = { PHARMACY_ENABLED: boolean; IPD_ENABLED: boolean; NURSING_ENABLED: boolean; LIMS_TESTS_ADVISED_ENABLED: boolean };
 
 interface Ctx {
   me: Me; features: Features; can: (...p: string[]) => boolean;
@@ -40,7 +40,7 @@ export function MeProvider({ children }: { children: ReactNode }) {
     const money = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : new Intl.NumberFormat(localeFor(lang), { style: "currency", currency: me.tenant.currency, minimumFractionDigits: 2 }).format(Number(v)));
     const dateTime = (v: string | Date | null | undefined) => (v ? new Intl.DateTimeFormat(localeFor(lang), { timeZone: tz, dateStyle: "medium", timeStyle: "short" }).format(new Date(v)) : "—");
     const date = (v: string | Date | null | undefined) => (v ? new Intl.DateTimeFormat(localeFor(lang), { timeZone: tz, dateStyle: "medium" }).format(new Date(v)) : "—");
-    return { me, features: featQ.data ?? { PHARMACY_ENABLED: true, IPD_ENABLED: true, NURSING_ENABLED: true }, can: (...p) => p.some((x) => perms.has(x)), money, dateTime, date };
+    return { me, features: featQ.data ?? { PHARMACY_ENABLED: true, IPD_ENABLED: true, NURSING_ENABLED: true, LIMS_TESTS_ADVISED_ENABLED: false }, can: (...p) => p.some((x) => perms.has(x)), money, dateTime, date };
   }, [meQ.data, featQ.data, lang]);
   if (meQ.isError) return <div className="p-8 text-red-700">Could not load your session. <a className="underline" href="/login">Sign in again</a></div>;
   if (!value) return <div className="p-8 text-slate-500">Loading…</div>;
