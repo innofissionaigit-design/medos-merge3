@@ -86,6 +86,36 @@ test("billing: edit a draft bill, issue it, and download it as a PDF", async ({ 
   expect((await res.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
 });
 
+test("reception OPD desk: the bill offers only the OPD visit, and a cash payment has no reference box", async ({ page }) => {
+  await loginAs(page, "reception1", "OPD");
+  const p = await registerPatient(page);
+  await page.goto("/billing");
+  await page.getByRole("button", { name: "New bill" }).click();
+  const nb = page.getByRole("dialog", { name: "New bill" });
+  // Only the OPD consultation is offered: no X-ray, lab test, dressing or free-text "other charge".
+  await expect(nb.getByRole("button", { name: /^OPD consultation/ })).toBeVisible();
+  await expect(nb.getByRole("button", { name: /^(Dressing|Injection|ECG)/ })).toHaveCount(0);
+  await expect(nb.getByRole("button", { name: "+ Other charge" })).toHaveCount(0);
+  await nb.getByLabel("Patient").fill(p.first);
+  await nb.getByText(p.mrn).click();
+  await nb.getByRole("button", { name: /^OPD consultation/ }).click();
+  await nb.getByRole("button", { name: "Create bill" }).click();
+  await expect(page).toHaveURL(/\/billing\/[0-9a-f-]{36}/);
+
+  await page.getByRole("button", { name: "Take payment" }).click();
+  const pay = page.getByRole("dialog", { name: /^Take payment/ });
+  // Cash is the default: just the mode and the amount.
+  await expect(pay.getByLabel("Mode")).toHaveValue("CASH");
+  await expect(pay.getByLabel("Amount")).toBeVisible();
+  await expect(pay.getByLabel("Reference")).toHaveCount(0);
+  await pay.getByLabel("Mode").selectOption("UPI");
+  await expect(pay.getByLabel("Reference")).toBeVisible();
+  await pay.getByLabel("Mode").selectOption("CASH");
+  await expect(pay.getByLabel("Reference")).toHaveCount(0);
+  await pay.getByRole("button", { name: "Receive payment" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+});
+
 test("consultation: a signed note is amended with a reason and the history shows both versions", async ({ page }) => {
   const doc = await doctorName(page, "doctor2");
   await loginAs(page, "reception1");

@@ -39,7 +39,7 @@ function PayModal({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void;
     return rs.map((r, j) => (j === last ? { ...r, amount: String(Math.max(0, due - others) / 100) } : r));
   };
   const pay = useMutation({
-    mutationFn: () => api.post(`/invoices/${inv.id}/payments`, { payments: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: r.amount, ...(r.reference ? { reference: r.reference } : {}) })) }, key),
+    mutationFn: () => api.post(`/invoices/${inv.id}/payments`, { payments: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: r.amount, ...(r.method !== "CASH" && r.reference ? { reference: r.reference } : {}) })) }, key),
     onSuccess: onDone,
   });
   return (
@@ -49,7 +49,7 @@ function PayModal({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void;
           <div key={i} className="grid grid-cols-12 gap-2">
             <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>{METHODS.map((m) => <option key={m} value={m} disabled={m !== r.method && rows.some((x) => x.method === m)}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
             <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => setRows(balance(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)), i))} />
-            <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
+            {r.method !== "CASH" && <Input aria-label="Reference" className="col-span-4" placeholder="Reference" value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />}
             {rows.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(balance(rows.filter((_, j) => j !== i), -1))}>✕</button>}
           </div>
         ))}

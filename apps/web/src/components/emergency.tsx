@@ -301,7 +301,7 @@ function PayModal({ invoice, onClose, onPaid }: { invoice: BillInvoice; onClose:
   const [rows, setRows] = useState([{ method: "CASH", amount: invoice.balanceDue, reference: "" }]);
   const sum = rows.reduce((n, r) => n + Math.round(Number(r.amount || 0) * 100), 0);
   const pay = useMutation({
-    mutationFn: () => api.post<{ receipt: { receiptNumber: string } }>(`/invoices/${invoice.id}/payments`, { payments: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount).toFixed(2), ...(r.reference.trim() ? { reference: r.reference.trim() } : {}) })) }, key.current),
+    mutationFn: () => api.post<{ receipt: { receiptNumber: string } }>(`/invoices/${invoice.id}/payments`, { payments: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount).toFixed(2), ...(r.method !== "CASH" && r.reference.trim() ? { reference: r.reference.trim() } : {}) })) }, key.current),
     onSuccess: onPaid,
   });
   const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows(rows.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -313,7 +313,7 @@ function PayModal({ invoice, onClose, onPaid }: { invoice: BillInvoice; onClose:
           <div key={i} className="grid grid-cols-12 gap-2">
             <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => set(i, { method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
             <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => set(i, { amount: e.target.value })} />
-            <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />
+            {r.method !== "CASH" && <Input aria-label="Reference" className="col-span-4" placeholder="Reference" value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />}
             {rows.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
           </div>
         ))}

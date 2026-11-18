@@ -284,10 +284,10 @@ function DepositCard({ plan }: { plan: Plan }) {
       {active && plan.can.takeDeposit && (
         <div className="mb-3 rounded-md border border-slate-200 p-3">
           <div className="mb-2 text-sm font-medium">Take the deposit</div>
-          <div className="grid gap-3 sm:grid-cols-[140px_140px_1fr_auto] sm:items-end">
+          <div className={`grid gap-3 sm:items-end ${t.method === "CASH" ? "sm:grid-cols-[140px_140px_auto]" : "sm:grid-cols-[140px_140px_1fr_auto]"}`}>
             <Field label="Method"><Select value={t.method} onChange={(e) => setT({ ...t, method: e.target.value as typeof t.method })}>{METHODS.map((m) => <option key={m} value={m}>{m.replace("_", " ").toLowerCase()}</option>)}</Select></Field>
             <Field label="Amount"><Input inputMode="decimal" value={t.amount} onChange={(e) => setT({ ...t, amount: e.target.value })} /></Field>
-            <Field label={t.method === "CASH" ? "Reference (not needed for cash)" : "Reference (transaction id)"}><Input disabled={t.method === "CASH"} value={t.reference} onChange={(e) => setT({ ...t, reference: e.target.value })} /></Field>
+            {t.method !== "CASH" && <Field label="Reference (transaction id)"><Input value={t.reference} onChange={(e) => setT({ ...t, reference: e.target.value })} /></Field>}
             <Button loading={take.isPending} disabled={!(Number(t.amount) > 0) || (t.method !== "CASH" && t.reference.trim().length < 4)} onClick={() => take.mutate()}>Take deposit</Button>
           </div>
           <ErrorNote error={take.error} />

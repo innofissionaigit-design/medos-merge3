@@ -90,6 +90,9 @@ The project's Windows PostgreSQL script is not available on this machine, and po
 * **Contrast**: plain `text-slate-400` and `text-slate-300` text (about 2.5:1 and 1.4:1 on white) is now `text-slate-500`; the reception banner is a solid colour (a gradient cannot be measured); the "wrong desk" notice is a heading.
 * **Doctor desk** (B) gets shortcuts to Emergency and My rounds (A's screens).
 * **Tests that no longer matched the screens they test** (the screens are B's): the desk switch is a dropdown, not a button; the language test must pick a desk first; OPD bills are issued as soon as they are created, so the draft-bill test works at the IPD desk; diagnoses show as chips; "Save prescription" became one "Save draft"; vitals sit in a fold; the discharge checklist is found by its test id; the doctor picker's lists load after the dialog opens. Three web tests described the page the lab and nursing staff used to land on; they now say they start on their dashboard.
+* **OPD desk New bill** offers only the OPD visit (consultation) for reception; the price list with X-ray, lab and the like is no longer shown there (`billing/page.tsx`).
+* **Cash payments**: the Reference box is hidden (not just greyed out) when the mode is cash, in every place money is taken from a patient (bill payment, registration fee, booking fee, advance and its refund, emergency, lab arrival, planned-admission deposit); a stale reference is never sent with cash.
+* **Reports**: the code-merge Reports page and reception report tiles were compared with ours; the page is identical and the OPD reports already carry the lab-only exclusion, so nothing needed porting.
 
 ### Ports and local setup
 

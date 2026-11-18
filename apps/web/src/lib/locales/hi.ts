@@ -9,6 +9,8 @@ export const HI: Record<string, string> = {
   "Actor": "किसने किया",
   "Add": "जोड़ें",
   "Add a service": "सेवा जोड़ें",
+  "Add the OPD visit": "ओपीडी विज़िट जोड़ें",
+  "Search OPD visit…": "ओपीडी विज़िट खोजें…",
   "Add a staff member": "कर्मचारी जोड़ें",
   "Add a supplier": "आपूर्तिकर्ता जोड़ें",
   "Add bed": "बिस्तर जोड़ें",

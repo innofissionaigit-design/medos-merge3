@@ -32,7 +32,7 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
   const billTab = useRef<Window | null>(null);
   const billPdf = (invoiceId: string) => `${printUrl(`invoices/${invoiceId}`)}?format=pdf`;
   const arrive = useMutation({
-    mutationFn: () => api.post<Arrived>(`/lims/batches/${batchId}/arrive`, { payments: lines.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount).toFixed(2), ...(r.reference.trim() ? { reference: r.reference.trim() } : {}) })) }, key.current),
+    mutationFn: () => api.post<Arrived>(`/lims/batches/${batchId}/arrive`, { payments: lines.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount).toFixed(2), ...(r.method !== "CASH" && r.reference.trim() ? { reference: r.reference.trim() } : {}) })) }, key.current),
     onSuccess: (r) => {
       refresh();
       if (billTab.current && !billTab.current.closed && r.invoiceIds[0]) billTab.current.location.href = billPdf(r.invoiceIds[0]);
@@ -75,7 +75,7 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
                 <div key={i} className="grid grid-cols-12 gap-2">
                   <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => set(i, { method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{methodLabel(m)}</option>)}</Select>
                   <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => set(i, { amount: e.target.value })} />
-                  <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />
+                  {r.method !== "CASH" && <Input aria-label="Reference" className="col-span-4" placeholder="Reference" value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />}
                   {lines.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(lines.filter((_, j) => j !== i))}>✕</button>}
                 </div>
               ))}

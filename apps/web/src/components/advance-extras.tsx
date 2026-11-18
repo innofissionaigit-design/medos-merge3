@@ -56,7 +56,7 @@ function TakeModal({ patientId, onClose, onDone }: { patientId: string; onClose:
   const [key] = useState(newKey);
   const sum = rows.reduce((n, r) => n + Math.round(Number(r.amount || 0) * 100), 0);
   const take = useMutation({
-    mutationFn: () => api.post(`/patients/${patientId}/advances`, { tenders: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: r.amount, ...(r.reference ? { reference: r.reference } : {}) })), ...(note.trim() ? { note: note.trim() } : {}) }, key),
+    mutationFn: () => api.post(`/patients/${patientId}/advances`, { tenders: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: r.amount, ...(r.method !== "CASH" && r.reference ? { reference: r.reference } : {}) })), ...(note.trim() ? { note: note.trim() } : {}) }, key),
     onSuccess: onDone,
   });
   return (
@@ -66,7 +66,7 @@ function TakeModal({ patientId, onClose, onDone }: { patientId: string; onClose:
           <div key={i} className="grid grid-cols-12 gap-2">
             <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>{METHODS.map((m) => <option key={m} value={m}>{label(m)}</option>)}</Select>
             <Input aria-label="Amount" className="col-span-3" inputMode="decimal" placeholder="Amount" value={r.amount} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
-            <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
+            {r.method !== "CASH" && <Input aria-label="Reference" className="col-span-4" placeholder="Reference" value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />}
             {rows.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
           </div>
         ))}
@@ -88,7 +88,7 @@ export function GiveBackModal({ advance, onClose, onDone }: { advance: Advance; 
   const [f, setF] = useState({ method: advance.tenders[0]?.method ?? "CASH", amount: advance.balance, reason: "", reference: "" });
   const [key] = useState(newKey);
   const give = useMutation({
-    mutationFn: () => api.post(`/advances/${advance.id}/refunds`, { method: f.method, amount: f.amount, reason: f.reason.trim(), ...(f.reference ? { reference: f.reference } : {}) }, key),
+    mutationFn: () => api.post(`/advances/${advance.id}/refunds`, { method: f.method, amount: f.amount, reason: f.reason.trim(), ...(f.method !== "CASH" && f.reference ? { reference: f.reference } : {}) }, key),
     onSuccess: onDone,
   });
   return (
@@ -97,7 +97,7 @@ export function GiveBackModal({ advance, onClose, onDone }: { advance: Advance; 
         <div className="grid grid-cols-3 gap-2">
           <Select aria-label="Mode" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{label(m)}</option>)}</Select>
           <Input aria-label="Amount" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
-          <Input aria-label="Reference" placeholder={f.method === "CASH" ? "—" : "Reference"} disabled={f.method === "CASH"} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+          {f.method !== "CASH" && <Input aria-label="Reference" placeholder="Reference" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />}
         </div>
         <Field label="Reason"><Input value={f.reason} maxLength={240} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="At least 5 characters" /></Field>
         <ErrorNote error={give.error} />

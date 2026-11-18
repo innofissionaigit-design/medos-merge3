@@ -26,10 +26,12 @@ function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: Pic
   const { desk: chosenDesk } = useDesk();
   // OPD and IPD bills are kept apart: the price list offered is the one for the kind of bill (the IPD desk makes IPD bills, everyone else OPD bills).
   const kind: "OPD" | "IPD" = needsDesk(me.roles, features) && chosenDesk === "IPD" ? "IPD" : "OPD";
+  // Reception's OPD desk bills the OPD visit (the consultation) and nothing else: X-ray, lab tests and the like are ordered by the doctor and billed at their own desks.
+  const visitOnly = kind === "OPD" && needsDesk(me.roles, features);
   const [patient, setPatient] = useState<PickedPatient | null>(initialPatient);
   const [lines, setLines] = useState<Line[]>([]);
   const [q, setQ] = useState("");
-  const services = useQuery({ queryKey: ["services", kind], queryFn: () => api.page<Service>("/services", { pageSize: 100, scope: kind }) });
+  const services = useQuery({ queryKey: ["services", kind, visitOnly], queryFn: () => api.page<Service>("/services", { pageSize: 100, scope: kind, ...(visitOnly ? { category: "CONSULTATION" } : {}) }) });
   // A bill for a patient who is being seen today is added to that visit: the booking and earnings reports and the doctor's share only count money on a visit's bills.
   const tz = me.facility?.timezone ?? me.tenant.timezone;
   const visits = useQuery({ queryKey: ["bill-visits", patient?.id], queryFn: () => api.page<BillableVisit>(`/patients/${patient!.id}/encounters`, { type: "OPD", pageSize: 10 }), enabled: !!patient });
@@ -51,10 +53,10 @@ function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: Pic
       <div className="space-y-3">
         <Field as="div" label="Patient"><PatientPicker value={patient} onPick={setPatient} autoFocus={!initialPatient} /></Field>
         {visit && <Notice tone="info"><T>This bill will be added to today's visit</T> {visit.encounterNumber}{visit.practitionerName ? ` · ${visit.practitionerName}` : ""}.</Notice>}
-        <Field label="Add a service"><Input placeholder="Search price list…" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+        <Field label={visitOnly ? "Add the OPD visit" : "Add a service"}><Input placeholder={visitOnly ? "Search OPD visit…" : "Search price list…"} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
         <div className="flex flex-wrap gap-1.5">
           {matches.map((s) => <button key={s.id} className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-brand-50" onClick={() => setLines([...lines, { serviceId: s.id, description: s.name, unitPrice: s.price, taxPercent: s.taxPercent, quantity: "1" }])}>{s.name} · {money(s.price)}</button>)}
-          <button className="rounded border border-dashed border-slate-300 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" onClick={() => setLines([...lines, { description: "", unitPrice: "", taxPercent: "0", quantity: "1" }])}>+ Other charge</button>
+          {!visitOnly && <button className="rounded border border-dashed border-slate-300 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50" onClick={() => setLines([...lines, { description: "", unitPrice: "", taxPercent: "0", quantity: "1" }])}>+ Other charge</button>}
         </div>
         {lines.length > 0 && (
           <Table head={["Item", "Qty", "Rate", "Tax %", ""]}>

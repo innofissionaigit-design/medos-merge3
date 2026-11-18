@@ -9,6 +9,8 @@ export const BN: Record<string, string> = {
   "Actor": "কে করেছেন",
   "Add": "যোগ করুন",
   "Add a service": "একটি সেবা যোগ করুন",
+  "Add the OPD visit": "ওপিডি ভিজিট যোগ করুন",
+  "Search OPD visit…": "ওপিডি ভিজিট খুঁজুন…",
   "Add a staff member": "একজন কর্মী যোগ করুন",
   "Add a supplier": "একজন সরবরাহকারী যোগ করুন",
   "Add bed": "বেড যোগ করুন",

@@ -14,6 +14,7 @@ Each service has **Used at**: *OPD only*, *IPD only* or *OPD and IPD* (Administr
 
 - `GET /services?scope=OPD` gives the OPD price list (OPD and shared services); `scope=IPD` gives the IPD list. Without `scope`, everything.
 - **New bill** at the OPD desk offers only OPD services (no Appendectomy, no surgery); at the IPD desk only IPD services.
+- **Reception at the OPD desk bills only the OPD visit**: its New bill offers just the OPD consultation (no X-ray, lab test, dressing or free-text "other charge"; those are ordered by the doctor and billed at their own desks). Other roles, such as the cashier, keep the whole OPD price list.
 - The server enforces it: an OPD bill (new, or a draft being edited) refuses an IPD-only service with 400, and an IPD bill refuses an OPD-only one. Pharmacy, registration and "other" bills are not held to a desk.
 
 ## Permissions
