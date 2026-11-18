@@ -178,7 +178,7 @@ function Form({ draft, loadError, options, optionsError, retryOptions, onClose, 
                     <Select aria-label="Frequency" className="w-24" value={m.frequency} disabled={!m.on} onChange={(e) => setMed(i, { frequency: e.target.value })}>{FREQS.map((f) => <option key={f}>{f}</option>)}</Select>
                     <Input aria-label="Days" placeholder="Days" inputMode="numeric" className="w-16" value={m.days} disabled={!m.on} onChange={(e) => setMed(i, { days: e.target.value })} />
                     <Input aria-label="Quantity" placeholder="Qty" inputMode="numeric" className="w-16" value={m.qty} disabled={!m.on} onChange={(e) => setMed(i, { qty: e.target.value })} />
-                    <button type="button" aria-label="Remove this medicine" className="text-slate-400 hover:text-red-700" onClick={() => setMeds(meds.filter((_, j) => j !== i))}>✕</button>
+                    <button type="button" aria-label="Remove this medicine" className="text-slate-500 hover:text-red-700" onClick={() => setMeds(meds.filter((_, j) => j !== i))}>✕</button>
                   </div>
                   {m.read && <div className="mt-1 text-xs text-slate-500">Read from the picture as: “{m.read}”{m.medicineId ? "" : " — not matched to a listed medicine: choose one, or keep the typed drug"}{m.qtyAuto && m.qty ? " · quantity worked out from the dose, how often and the days" : ""}</div>}
                   {err && <div className="mt-1 text-xs text-red-700">{err}</div>}
@@ -198,7 +198,7 @@ function Form({ draft, loadError, options, optionsError, retryOptions, onClose, 
                 <Input aria-label="Lab test" list="rx-lab-tests" placeholder="Test (choose or type)" className="min-w-48 flex-1" value={t.text} disabled={!t.on} onChange={(e) => setTests(tests.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
                 <Select aria-label="Kind of test" className="w-32" value={t.category} disabled={!t.on} onChange={(e) => setTests(tests.map((x, j) => (j === i ? { ...x, category: e.target.value as Kind } : x)))}>{(Object.keys(KIND_NAME) as Kind[]).map((k) => <option key={k} value={k}>{KIND_NAME[k]}</option>)}</Select>
                 {draft?.tests[i] && <Badge tone={draft.tests[i]!.matched ? "green" : "gray"}>{draft.tests[i]!.matched ? "in the test list" : "not in the test list"}</Badge>}
-                <button type="button" aria-label="Remove this test" className="text-slate-400 hover:text-red-700" onClick={() => setTests(tests.filter((_, j) => j !== i))}>✕</button>
+                <button type="button" aria-label="Remove this test" className="text-slate-500 hover:text-red-700" onClick={() => setTests(tests.filter((_, j) => j !== i))}>✕</button>
               </li>
             ))}
           </ul>

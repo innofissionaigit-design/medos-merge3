@@ -70,7 +70,7 @@ export function Stepper({ plan }: { plan: Plan }) {
         const idx = Math.min(...s.at.map((x) => order.indexOf(x)));
         const state = plan.status === "CLOSED" ? "closed" : s.at.includes(plan.status) ? "now" : idx < here ? "done" : "later";
         return (
-          <li key={s.id} aria-current={state === "now" ? "step" : undefined} className={clsx("rounded-full px-3 py-1 ring-1", state === "done" && "bg-green-50 text-green-800 ring-green-200", state === "now" && "bg-brand-600 font-medium text-white ring-brand-600", state === "later" && "bg-white text-slate-500 ring-slate-200", state === "closed" && "bg-slate-100 text-slate-400 ring-slate-200")}>
+          <li key={s.id} aria-current={state === "now" ? "step" : undefined} className={clsx("rounded-full px-3 py-1 ring-1", state === "done" && "bg-green-50 text-green-800 ring-green-200", state === "now" && "bg-brand-600 font-medium text-white ring-brand-600", state === "later" && "bg-white text-slate-500 ring-slate-200", state === "closed" && "bg-slate-100 text-slate-500 ring-slate-200")}>
             {state === "done" ? "✓ " : ""}{s.label}
           </li>
         );

@@ -102,7 +102,7 @@ function IpdInner() {
             <div className="flex flex-wrap gap-1" role="group" aria-label={t("Bed status")}>
               {STATUS_FILTERS.map(([v, label]) => (
                 <button key={v} type="button" aria-pressed={stateFilter === v} onClick={() => setStateFilter(v)} className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${stateFilter === v ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
-                  {v && <span className={`h-2 w-2 rounded-full ${BED_STYLE[v]?.dot}`} />}{t(label)}{v ? <span className="tabular-nums text-slate-400">{sum[v] ?? sum[v.toLowerCase()] ?? 0}</span> : null}
+                  {v && <span className={`h-2 w-2 rounded-full ${BED_STYLE[v]?.dot}`} />}{t(label)}{v ? <span className="tabular-nums text-slate-500">{sum[v] ?? sum[v.toLowerCase()] ?? 0}</span> : null}
                 </button>
               ))}
             </div>
@@ -148,13 +148,13 @@ function IpdInner() {
               return rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{t(needle ? "No patients match." : "No patients are currently admitted.")}</p> : (
                 <div className="overflow-x-auto px-4 pb-1">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 pr-3 font-medium">{t("Patient")}</th><th className="py-2 pr-3 font-medium">{t("Admission")}</th><th className="py-2 pr-3 font-medium">{t("Bed")}</th><th className="py-2 pr-3 font-medium">{t("Consultant")}</th><th className="py-2 pr-3 text-right font-medium">{t("Stay")}</th><th className="py-2 font-medium">{t("Reason")}</th></tr></thead>
+                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">{t("Patient")}</th><th className="py-2 pr-3 font-medium">{t("Admission")}</th><th className="py-2 pr-3 font-medium">{t("Bed")}</th><th className="py-2 pr-3 font-medium">{t("Consultant")}</th><th className="py-2 pr-3 text-right font-medium">{t("Stay")}</th><th className="py-2 font-medium">{t("Reason")}</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {rows.map((a) => (
                         <tr key={a.id} className="align-top hover:bg-slate-50/70">
-                          <td className="py-2.5 pr-3"><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${a.id}`}>{a.patientName}</Link><div className="text-xs text-slate-400">{a.mrn}</div></td>
-                          <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums">{a.admissionNumber}<div className="text-xs text-slate-400">{dateTime(a.admittedAt)}</div></td>
-                          <td className="whitespace-nowrap py-2.5 pr-3">{a.bed ? <><span className="font-medium">{a.bed.code}</span><div className="text-xs text-slate-400">{a.bed.ward}</div></> : "—"}</td>
+                          <td className="py-2.5 pr-3"><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${a.id}`}>{a.patientName}</Link><div className="text-xs text-slate-500">{a.mrn}</div></td>
+                          <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums">{a.admissionNumber}<div className="text-xs text-slate-500">{dateTime(a.admittedAt)}</div></td>
+                          <td className="whitespace-nowrap py-2.5 pr-3">{a.bed ? <><span className="font-medium">{a.bed.code}</span><div className="text-xs text-slate-500">{a.bed.ward}</div></> : "—"}</td>
                           <td className="py-2.5 pr-3 text-slate-700">{a.consultantName}</td>
                           <td className="whitespace-nowrap py-2.5 pr-3 text-right tabular-nums">{a.lengthOfStayDays} d</td>
                           <td className="py-2.5 text-slate-600">{a.reason ?? "—"}</td>

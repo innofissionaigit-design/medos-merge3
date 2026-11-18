@@ -58,7 +58,7 @@ export function DoctorSchedules({ departmentId = "", doctorId = "", title = "Doc
                   {sub ? <div className="truncate text-xs text-slate-500">{sub}</div> : null}
                   {slots.length === 1 ? <span className="mt-0.5 inline-block rounded-full bg-teal-50 px-2 py-px text-[11px] font-medium text-teal-700">{slots[0]} {t("min slots")}</span> : null}
                 </div>
-                {schedules[i]?.isLoading ? <div className="text-xs text-slate-400">…</div>
+                {schedules[i]?.isLoading ? <div className="text-xs text-slate-500">…</div>
                   : !wins || wins.length === 0 ? <div className="text-xs text-slate-500">{t(d.scheduleSet ? "Not available on any day" : "No weekly schedule: bookable at any time")}</div>
                     : (
                       <div className="grid grid-cols-4 gap-1 sm:grid-cols-7">
@@ -67,10 +67,10 @@ export function DoctorSchedules({ departmentId = "", doctorId = "", title = "Doc
                           const isToday = day === today;
                           return (
                             <div key={day} className={`rounded-md border px-1.5 py-1 text-center ${w.length === 0 ? "border-slate-100 bg-slate-50/60" : isToday ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"}`}>
-                              <div className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? "text-teal-700" : "text-slate-400"}`}>{t(DAYS[day]!).slice(0, 3)}</div>
+                              <div className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? "text-teal-700" : "text-slate-500"}`}>{t(DAYS[day]!).slice(0, 3)}</div>
                               {w.length ? w.map((x) => (
-                                <div key={`${x.start}-${x.end}`} className="whitespace-nowrap text-[11px] leading-tight tabular-nums text-slate-700">{x.start}–{x.end}{slots.length > 1 ? <span className="block text-[10px] text-slate-400">{x.slotMinutes} {t("min")}</span> : null}</div>
-                              )) : <div className="text-[11px] leading-tight text-slate-300">–</div>}
+                                <div key={`${x.start}-${x.end}`} className="whitespace-nowrap text-[11px] leading-tight tabular-nums text-slate-700">{x.start}–{x.end}{slots.length > 1 ? <span className="block text-[10px] text-slate-500">{x.slotMinutes} {t("min")}</span> : null}</div>
+                              )) : <div className="text-[11px] leading-tight text-slate-500">–</div>}
                             </div>
                           );
                         })}

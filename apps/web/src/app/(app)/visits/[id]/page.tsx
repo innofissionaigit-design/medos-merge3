@@ -137,11 +137,12 @@ export default function VisitPage() {
   const saving = saveNote.isPending || saveRx.isPending;
   // Saves the note and then the prescription, in that order, so neither overwrites the other's version.
   const saveAll = async (): Promise<void> => { await saveNote.mutateAsync(); if (items.some((i) => i.genericName.trim())) await saveRx.mutateAsync(); };
+  // Signing while a draft save is still running would send the version from before that save, so the sign buttons and Ctrl/Cmd+Enter wait for the save.
   // Ctrl/Cmd+S saves the draft; Ctrl/Cmd+Enter starts signing (and confirms it when the question is already showing). Same for every doctor.
   keys.current = (e) => {
     if (!(e.metaKey || e.ctrlKey) || !canWrite) return;
     if (e.key.toLowerCase() === "s") { e.preventDefault(); if (!saving) void saveAll().catch(() => undefined); }
-    else if (e.key === "Enter" && canSign && !signBlocker && !ack) { e.preventDefault(); if (confirmSign) { setConfirmSign(false); sign.mutate(false); } else setConfirmSign(true); }
+    else if (e.key === "Enter" && canSign && !signBlocker && !ack && !saving) { e.preventDefault(); if (confirmSign) { setConfirmSign(false); sign.mutate(false); } else setConfirmSign(true); }
   };
 
   const fold = (title: string, body: ReactNode, open = false) => (
@@ -187,7 +188,7 @@ export default function VisitPage() {
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {c?.diagnoses.map((d) => (
                   <span key={d.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-sm"><span className="font-medium">{d.text}</span><span className="text-xs text-slate-500">{d.code ? `${d.code} · ` : ""}{d.type.toLowerCase()}</span>
-                    {canWrite && <button aria-label={`Remove ${d.text}`} className="text-slate-400 hover:text-red-700" onClick={() => rmDx.mutate(d.id)}>✕</button>}</span>
+                    {canWrite && <button aria-label={`Remove ${d.text}`} className="text-slate-500 hover:text-red-700" onClick={() => rmDx.mutate(d.id)}>✕</button>}</span>
                 ))}
                 {c?.diagnoses.length === 0 && <span className="text-sm text-slate-500">No diagnosis recorded yet.</span>}
               </div>
@@ -294,15 +295,15 @@ export default function VisitPage() {
               <a download className={btn} href={`${printUrl(`prescriptions/${id}`)}?format=pdf&download=1`}>PDF</a>
             </>
           ) : (
-            <button type="button" disabled title="Sign the consultation to print the prescription." className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400">Print prescription</button>
+            <button type="button" disabled title="Sign the consultation to print the prescription." className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-500">Print prescription</button>
           )}
           {canWrite && <Button variant="secondary" loading={saving} onClick={() => void saveAll().catch(() => undefined)}>Save draft</Button>}
           {canSign && (ack ? (
             <><Button disabled={!ackChecked} loading={sign.isPending} onClick={() => sign.mutate(true)}>Sign with acknowledged warning</Button><Button variant="ghost" onClick={() => setAck(null)}>Go back and change</Button></>
           ) : confirmSign && !signBlocker ? (
-            <><Button loading={sign.isPending} onClick={() => { setConfirmSign(false); sign.mutate(false); }}>{hasMedicines ? "Yes, sign and send to pharmacy" : "Yes, sign"}</Button><Button variant="ghost" onClick={() => setConfirmSign(false)}>Cancel</Button></>
+            <><Button loading={sign.isPending} disabled={saving} onClick={() => { setConfirmSign(false); sign.mutate(false); }}>{hasMedicines ? "Yes, sign and send to pharmacy" : "Yes, sign"}</Button><Button variant="ghost" onClick={() => setConfirmSign(false)}>Cancel</Button></>
           ) : (
-            <Button loading={sign.isPending} disabled={signBlocker !== null} onClick={() => setConfirmSign(true)}>Sign consultation</Button>
+            <Button loading={sign.isPending} disabled={signBlocker !== null || saving} onClick={() => setConfirmSign(true)}>Sign consultation</Button>
           ))}
         </div>
       </div>

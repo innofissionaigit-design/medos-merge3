@@ -76,7 +76,7 @@ export function ArriveModal({ batchId, name, onClose }: { batchId: string; name:
                   <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => set(i, { method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{methodLabel(m)}</option>)}</Select>
                   <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => set(i, { amount: e.target.value })} />
                   <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />
-                  {lines.length > 1 && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove" onClick={() => setRows(lines.filter((_, j) => j !== i))}>✕</button>}
+                  {lines.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(lines.filter((_, j) => j !== i))}>✕</button>}
                 </div>
               ))}
               <div className="flex items-center justify-between text-sm"><Button variant="ghost" onClick={() => setRows([...lines, { method: "UPI", amount: "", reference: "" }])}>+ Split payment</Button><span className={sum === Math.round(due * 100) ? "text-green-700" : "text-slate-600"}>Entered {money(sum / 100)} of {money(b.toCollect)}</span></div>

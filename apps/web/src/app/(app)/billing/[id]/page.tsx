@@ -50,7 +50,7 @@ function PayModal({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void;
             <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>{METHODS.map((m) => <option key={m} value={m} disabled={m !== r.method && rows.some((x) => x.method === m)}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
             <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => setRows(balance(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)), i))} />
             <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
-            {rows.length > 1 && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove" onClick={() => setRows(balance(rows.filter((_, j) => j !== i), -1))}>✕</button>}
+            {rows.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(balance(rows.filter((_, j) => j !== i), -1))}>✕</button>}
           </div>
         ))}
         <div className="flex items-center justify-between">
@@ -151,7 +151,7 @@ function EditDraft({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void
               <Td><Input aria-label="Quantity" className="w-20" inputMode="decimal" value={l.quantity} onChange={(e) => patch(i, { quantity: e.target.value })} /></Td>
               <Td>{l.serviceId ? money(l.unitPrice) : <Input aria-label="Rate" className="w-24" inputMode="decimal" value={l.unitPrice} onChange={(e) => patch(i, { unitPrice: e.target.value })} />}</Td>
               <Td>{l.serviceId ? l.taxPercent : <Input aria-label="Tax percent" className="w-16" inputMode="decimal" value={l.taxPercent} onChange={(e) => patch(i, { taxPercent: e.target.value })} />}</Td>
-              <Td><button aria-label="Remove line" className="text-slate-400 hover:text-red-700" onClick={() => setLines(lines.filter((_, j) => j !== i))}>✕</button></Td>
+              <Td><button aria-label="Remove line" className="text-slate-500 hover:text-red-700" onClick={() => setLines(lines.filter((_, j) => j !== i))}>✕</button></Td>
             </tr>
           ))}
         </Table>

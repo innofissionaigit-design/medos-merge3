@@ -45,7 +45,7 @@ function MyPatientsToday() {
               <ul className="divide-y divide-slate-100 rounded-lg border border-slate-100">
                 {g.rows.map((e) => (
                   <li key={e.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                    <span className="flex min-w-0 items-center gap-2.5"><span className={`inline-flex h-8 min-w-[2rem] items-center justify-center rounded-full px-2 text-sm font-semibold tabular-nums ${g.tone}`}>{e.tokenNumber}</span><span className="min-w-0 truncate"><span className="font-semibold text-slate-900">{e.patientName}</span> <span className="text-slate-400">· {e.mrn}</span>{g.label === "Waiting" && e.waitingMinutes !== null ? <span className="ml-2 text-xs text-slate-500">{e.waitingMinutes} {t("min")}</span> : null}</span></span>
+                    <span className="flex min-w-0 items-center gap-2.5"><span className={`inline-flex h-8 min-w-[2rem] items-center justify-center rounded-full px-2 text-sm font-semibold tabular-nums ${g.tone}`}>{e.tokenNumber}</span><span className="min-w-0 truncate"><span className="font-semibold text-slate-900">{e.patientName}</span> <span className="text-slate-500">· {e.mrn}</span>{g.label === "Waiting" && e.waitingMinutes !== null ? <span className="ml-2 text-xs text-slate-500">{e.waitingMinutes} {t("min")}</span> : null}</span></span>
                     <span className="flex shrink-0 gap-1.5">
                       {g.visit && e.encounterId && <Link href={`/visits/${e.encounterId}`} className="rounded-md bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-700">{t("Open visit")}</Link>}
                       {e.patientId && <Link href={`/patients/${e.patientId}`} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">{t("Open chart")}</Link>}
@@ -80,9 +80,9 @@ export default function PatientsPage() {
       <div className="-mx-4 -mb-4 min-h-[calc(100vh-8rem)] bg-white p-4 md:-mx-6 md:-mb-6 md:px-6 md:py-4">
         <PageHeader title="Patients" subtitle="Search by MRN, mobile number or name" actions={can("PATIENT_CREATE") ? <Button className="gap-2 rounded-lg px-4 py-2 shadow-sm" onClick={() => setAdding(true)}><Icon name="plus" />Register patient<kbd className="rounded bg-white/20 px-1.5 text-[11px]">N</kbd></Button> : undefined} />
         <div className="relative mb-3">
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="search" className="h-[18px] w-[18px]" /></span>
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><Icon name="search" className="h-[18px] w-[18px]" /></span>
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Type at least 2 characters…")} aria-label="Search patients" className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-10 text-base shadow-[0_1px_3px_rgba(15,23,42,0.06)] placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
-          {q && <button type="button" aria-label={t("Clear search")} onClick={() => setQ("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">✕</button>}
+          {q && <button type="button" aria-label={t("Clear search")} onClick={() => setQ("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700">✕</button>}
         </div>
         {term.length < 2 && doctorView ? <MyPatientsToday /> : (
         <section className={PANEL}>
@@ -91,7 +91,7 @@ export default function PatientsPage() {
               <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-teal-50 text-teal-600"><Icon name="patients" className="h-5 w-5" /></span>
               <p className="text-sm font-medium text-slate-800">{t("Start typing to find a patient.")}</p>
               <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs text-slate-500">
-                {["Patient ID, e.g. DEMO-000203", "Mobile number", "First name"].map((x) => <span key={x} className="rounded-full bg-slate-100 px-3 py-1">{t(x)}</span>)}
+                {["Patient ID, e.g. DEMO-000203", "Mobile number", "First name"].map((x) => <span key={x} className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{t(x)}</span>)}
               </div>
             </div>
           ) : res.isLoading ? <div className="p-4"><Spinner /></div> : (
@@ -101,7 +101,7 @@ export default function PatientsPage() {
               {rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{t("No patients match. Check the spelling or register a new patient.")}</p> : (
                 <div className="overflow-x-auto px-4 pb-1">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 pr-3 font-medium">{t("Name")}</th><th className="py-2 pr-3 font-medium">{t("MRN")}</th><th className="py-2 pr-3 font-medium">{t("Gender / age")}</th><th className="py-2 pr-3 font-medium">{t("Mobile")}</th><th className="hidden py-2 pr-3 font-medium md:table-cell">{t("Registered")}</th><th className="w-44" /></tr></thead>
+                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">{t("Name")}</th><th className="py-2 pr-3 font-medium">{t("MRN")}</th><th className="py-2 pr-3 font-medium">{t("Gender / age")}</th><th className="py-2 pr-3 font-medium">{t("Mobile")}</th><th className="hidden py-2 pr-3 font-medium md:table-cell">{t("Registered")}</th><th className="w-44" /></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {rows.map((pt) => {
                         const name = patientName(pt);

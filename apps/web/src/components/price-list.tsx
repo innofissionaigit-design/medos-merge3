@@ -123,7 +123,7 @@ export function PriceList() {
                 </Td>
               </tr>
             ) : (
-              <tr key={s.id} className={s.status === "INACTIVE" ? "text-slate-400" : ""}>
+              <tr key={s.id} className={s.status === "INACTIVE" ? "text-slate-500" : ""}>
                 <Td>{s.code}</Td><Td>{s.name}</Td><Td>{categoryLabel(s.category)}</Td><Td>{scopeLabel(s.availableFor)}</Td><Td>{s.sacCode ?? "—"}</Td><Td>{money(s.price)}</Td><Td>{s.taxPercent}</Td>
                 <Td>{s.status === "INACTIVE" && <Badge tone="red">Switched off</Badge>}</Td>
                 <Td>

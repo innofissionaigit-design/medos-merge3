@@ -144,7 +144,7 @@ export function PictureCard({ p, services, compact = false }: { p: Picture; serv
               <Select aria-label="Kind of test" className="w-36" value={c.category} onChange={(e) => setChosen(chosen.map((x, j) => (j === i ? { ...x, category: e.target.value as Category } : x)))}>
                 <option value="LABORATORY">Laboratory</option><option value="RADIOLOGY">Imaging</option><option value="CARDIOLOGY">Cardiology</option><option value="PROCEDURE">Procedure</option>
               </Select>
-              <button aria-label="Remove test" className="text-slate-400 hover:text-red-700" onClick={() => setChosen(chosen.filter((_, j) => j !== i))}>✕</button>
+              <button aria-label="Remove test" className="text-slate-500 hover:text-red-700" onClick={() => setChosen(chosen.filter((_, j) => j !== i))}>✕</button>
             </li>
           ))}
         </ul>

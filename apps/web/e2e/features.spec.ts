@@ -37,6 +37,8 @@ test("language: the whole shell switches to Bengali and Hindi, and back", async 
   await page.getByLabel("পাসওয়ার্ড").fill(PASSWORD);
   await page.getByRole("button", { name: "সাইন ইন" }).click();
   await expect(page).toHaveURL(/\/dashboard/);
+  // Reception is first asked which desk it works at (the question itself is not translated).
+  await page.getByRole("button", { name: /^OPD/ }).click();
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("link", { name: "রোগী" })).toBeVisible();
   await page.goto("/account");
@@ -47,30 +49,35 @@ test("language: the whole shell switches to Bengali and Hindi, and back", async 
 });
 
 test("billing: edit a draft bill, issue it, and download it as a PDF", async ({ page }) => {
-  await loginAs(page, "reception1");
+  // An OPD bill is issued as soon as it is created; an inpatient (IPD) bill stays a draft until it is reviewed, so the draft is made at the IPD desk.
+  await loginAs(page, "reception1", "IPD");
   const p = await registerPatient(page);
-  await loginAs(page, "cashier1");
   await page.goto("/billing");
   await page.getByRole("button", { name: "New bill" }).click();
   const nb = page.getByRole("dialog", { name: "New bill" });
   await nb.getByLabel("Patient").fill(p.first);
   await nb.getByText(p.mrn).click();
-  await nb.getByRole("button", { name: /^OPD consultation/ }).click();
+  // The price list shows only its first few services until it is searched (the IPD desk's list starts with the surgeries).
+  await nb.getByPlaceholder("Search price list…").fill("Dressing");
+  await nb.getByRole("button", { name: /^Dressing/ }).click();
   await nb.getByRole("button", { name: "Create bill" }).click();
   await expect(page).toHaveURL(/\/billing\/[0-9a-f-]{36}/);
   await expect(page.getByText("Draft bill")).toBeVisible();
 
   await page.getByRole("button", { name: "Edit items" }).click();
   const ed = page.getByRole("dialog", { name: "Edit draft bill" });
+  await ed.getByPlaceholder(/Search/).fill("ECG");
   await ed.getByRole("button", { name: /^ECG/ }).click();
   await ed.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("cell", { name: "ECG" })).toBeVisible();
-  await expect(page.getByText("₹800.00").first()).toBeVisible();
+  await expect(page.getByText("₹450.00").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Issue bill" }).click();
-  await expect(page.getByText("INV-")).toBeVisible();
+  // The bill number is the page heading (the page also says the bill is ready to print).
+  await expect(page.getByRole("heading", { name: /^INV-/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit items" })).toHaveCount(0);
-  const pdf = page.getByRole("link", { name: "PDF" });
+  // The header and the "ready to print" notice both offer the PDF.
+  const pdf = page.getByRole("link", { name: "PDF" }).first();
   const href = (await pdf.getAttribute("href")) ?? "";
   expect(href).toContain("format=pdf");
   const res = await page.request.get(href);
@@ -95,7 +102,8 @@ test("consultation: a signed note is amended with a reason and the history shows
   await page.getByLabel("Complaint").fill("Cough for two days");
   await page.getByLabel("Diagnosis", { exact: true }).fill("Upper respiratory infection");
   await page.locator("form", { has: page.getByLabel("Diagnosis", { exact: true }) }).getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("listitem").getByText("Upper respiratory infection")).toBeVisible();
+  // A recorded diagnosis shows as a chip beside the diagnosis field.
+  await expect(page.getByText("Upper respiratory infection", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Sign consultation" }).click();
   await page.getByRole("button", { name: /^Yes, sign/ }).click();
   await expect(page.getByText(/This consultation is signed/)).toBeVisible();

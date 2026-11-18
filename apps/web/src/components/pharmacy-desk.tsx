@@ -160,7 +160,7 @@ export function PharmacyDashboard() {
                   {lowRows.length === 0 ? <p className="text-sm text-slate-500">{t("Nothing is running low.")}</p> : (
                     <ul className="space-y-1.5 text-sm">
                       {lowRows.slice(0, 4).map((r) => (
-                        <li key={r.medicineId} className="flex items-center justify-between gap-2"><span className="truncate text-slate-800">{r.medicine}</span><span className="shrink-0 tabular-nums text-amber-700">{r.quantity} <span className="text-slate-400">/ {r.reorderLevel}</span></span></li>
+                        <li key={r.medicineId} className="flex items-center justify-between gap-2"><span className="truncate text-slate-800">{r.medicine}</span><span className="shrink-0 tabular-nums text-amber-700">{r.quantity} <span className="text-slate-500">/ {r.reorderLevel}</span></span></li>
                       ))}
                     </ul>
                   )}
@@ -172,7 +172,7 @@ export function PharmacyDashboard() {
                   {expRows.length === 0 ? <p className="text-sm text-slate-500">{t("No stock is close to expiry.")}</p> : (
                     <ul className="space-y-1.5 text-sm">
                       {[...expired, ...soon].slice(0, 4).map((r) => (
-                        <li key={r.batchId} className="flex items-center justify-between gap-2"><span className="truncate text-slate-800">{r.medicine} <span className="text-slate-400">· {r.batchNo}</span></span><span className={`shrink-0 tabular-nums ${r.expired ? "font-medium text-red-700" : "text-slate-600"}`}>{r.expired ? t("expired") : date(r.expiryDate)}</span></li>
+                        <li key={r.batchId} className="flex items-center justify-between gap-2"><span className="truncate text-slate-800">{r.medicine} <span className="text-slate-500">· {r.batchNo}</span></span><span className={`shrink-0 tabular-nums ${r.expired ? "font-medium text-red-700" : "text-slate-600"}`}>{r.expired ? t("expired") : date(r.expiryDate)}</span></li>
                       ))}
                     </ul>
                   )}

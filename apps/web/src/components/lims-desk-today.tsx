@@ -119,10 +119,10 @@ export function LimsDeskToday({ onOpen }: { onOpen: (r: Req) => void }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-[16rem] flex-1">
-            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Find the patient at the desk: name, MRN, registration no. or test")} aria-label={t("Search today's patients")}
               className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-9 pr-8 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-            {search && <button type="button" aria-label={t("Clear search")} onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-slate-400 hover:text-slate-700">✕</button>}
+            {search && <button type="button" aria-label={t("Clear search")} onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-slate-500 hover:text-slate-700">✕</button>}
           </label>
           <div className="flex rounded-md border border-slate-300 p-0.5 text-sm" role="tablist" aria-label={t("Show")}>
             {([["all", "All"], ["waiting", "Yet to arrive"], ["arrived", "Arrived"]] as const).map(([id, label]) => (

@@ -21,7 +21,7 @@ function Stat({ label, value, href }: { label: string; value: string | number | 
   const body = (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-brand-500">
       <div className="text-xs uppercase tracking-wide text-slate-500">{t(label)}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900">{value ?? <span className="text-slate-300">…</span>}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-900">{value ?? <span className="text-slate-500">…</span>}</div>
     </div>
   );
   return href ? <Link href={href}>{body}</Link> : body;

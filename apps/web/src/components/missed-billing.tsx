@@ -95,7 +95,7 @@ export function MissedBilling() {
           <div className="mt-4 flex flex-wrap gap-2" aria-label="By kind">
             {d.summary.filter((s) => s.open + s.reviewed > 0).map((s) => (
               <button key={s.type} type="button" onClick={() => setType(type === s.type ? "" : s.type)} className={`rounded-full border px-3 py-1 text-sm ${type === s.type ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-700"}`}>
-                {s.label}: <b>{s.open}</b>{s.reviewed > 0 ? <span className="text-slate-400"> · {s.reviewed} decided</span> : null}
+                {s.label}: <b>{s.open}</b>{s.reviewed > 0 ? <span className="text-slate-500"> · {s.reviewed} decided</span> : null}
               </button>
             ))}
           </div>
@@ -112,7 +112,7 @@ export function MissedBilling() {
                       <div className="text-xs text-slate-600">{i.detail}</div>
                       {i.review && <div className="mt-1 text-xs"><Badge tone={DECISION_TONE[i.review.decision]}>{DECISION_TEXT[i.review.decision]}</Badge> <span className="text-slate-600">{i.review.reason}</span></div>}
                     </Td>
-                    <Td>{i.amount === null ? <span className="text-slate-400">not known</span> : money(i.amount)}</Td>
+                    <Td>{i.amount === null ? <span className="text-slate-500">not known</span> : money(i.amount)}</Td>
                     <Td>
                       <div className="flex justify-end gap-2">
                         <Link className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50" href={lookHref(i.link)}>Look</Link>

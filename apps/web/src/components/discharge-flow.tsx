@@ -183,7 +183,7 @@ export function WaitingBoard() {
         <Table head={["Patient", "Bed", "Planned date", "Waiting", "What is holding them up", ""]}>
           {rows.map((r) => (
             <tr key={r.admissionId} data-testid="board-row" className={`align-top ${r.clock.state === "OVERDUE" ? "bg-red-50/50" : r.clock.state === "REMINDER_DUE" ? "bg-amber-50/40" : ""}`}>
-              <Td><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${r.admissionId}`}>{r.patientName}</Link><div className="text-xs text-slate-400">{r.admissionNumber}</div></Td>
+              <Td><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${r.admissionId}`}>{r.patientName}</Link><div className="text-xs text-slate-500">{r.admissionNumber}</div></Td>
               <Td className="whitespace-nowrap font-medium">{r.bed ?? "—"}</Td>
               <Td>{r.plan?.expectedDate ?? "—"}</Td>
               <Td><ClockBadge state={r.clock.state} minutes={r.clock.elapsedMinutes} target={r.clock.targetMinutes} /></Td>

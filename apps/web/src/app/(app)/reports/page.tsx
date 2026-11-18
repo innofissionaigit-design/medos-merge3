@@ -82,7 +82,7 @@ function Render({ data }: { data: Record<string, unknown> }) {
             <header className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h2 className="text-sm font-semibold text-slate-800">{humanize(name)}</h2><span className="text-xs text-slate-500">{rows.length} {rows.length === 1 ? "row" : "rows"}</span></header>
             <div className="overflow-x-auto px-4 pb-1">
               <table className="w-full text-sm">
-                <thead><tr className="text-[11px] uppercase tracking-wider text-slate-400">{cols.map((c) => <th key={c} className={`py-2 pr-3 font-medium ${right.has(c) ? "text-right" : "text-left"}`}>{humanize(c)}</th>)}</tr></thead>
+                <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500">{cols.map((c) => <th key={c} className={`py-2 pr-3 font-medium ${right.has(c) ? "text-right" : "text-left"}`}>{humanize(c)}</th>)}</tr></thead>
                 <tbody className="divide-y divide-slate-100">{rows.map((r, i) => <tr key={i} className="hover:bg-slate-50/70">{cols.map((c) => <td key={c} className={`py-2 pr-3 ${right.has(c) ? "whitespace-nowrap text-right tabular-nums text-slate-800" : "text-slate-800"}`}>{cell(r[c])}</td>)}</tr>)}</tbody>
               </table>
             </div>
@@ -180,7 +180,7 @@ export default function ReportsPage() {
                         {PRESETS.map(([label, f, t]) => <button key={label} type="button" onClick={() => { setFrom(f); setTo(t); }} className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${from === f && to === t ? "bg-white text-brand-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{label}</button>)}
                       </div>
                       <div className="w-36"><Input type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-                      <span className="pb-2 text-slate-400">–</span>
+                      <span className="pb-2 text-slate-500">–</span>
                       <div className="w-36"><Input type="date" aria-label="To" value={to} onChange={(e) => setTo(e.target.value)} /></div>
                     </>
                   )}

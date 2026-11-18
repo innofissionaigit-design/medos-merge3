@@ -34,9 +34,9 @@ export function TestPicker({ picked, onChange }: { picked: ReadonlySet<string>; 
             <fieldset key={d} className="rounded-md border border-slate-200 p-2">
               <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{DEPARTMENT_TITLE[d]}</legend>
               <ul className="max-h-48 space-y-0.5 overflow-y-auto text-sm">
-                {list.length === 0 && <li className="text-slate-400">{term ? "Nothing matches." : "No tests in this group yet."}</li>}
+                {list.length === 0 && <li className="text-slate-500">{term ? "Nothing matches." : "No tests in this group yet."}</li>}
                 {list.map((i) => (
-                  <li key={i.serviceId}><label className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-slate-50"><input type="checkbox" checked={picked.has(i.serviceId)} onChange={(e) => toggle(i.serviceId, e.target.checked)} /> <span>{i.name}</span>{i.specimen && <span className="text-xs text-slate-400">· {i.specimen}</span>}</label></li>
+                  <li key={i.serviceId}><label className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-slate-50"><input type="checkbox" checked={picked.has(i.serviceId)} onChange={(e) => toggle(i.serviceId, e.target.checked)} /> <span>{i.name}</span>{i.specimen && <span className="text-xs text-slate-500">· {i.specimen}</span>}</label></li>
                 ))}
               </ul>
             </fieldset>

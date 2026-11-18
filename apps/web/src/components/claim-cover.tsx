@@ -131,7 +131,7 @@ export function ClaimCover({ claimId, insurerId, invoiceId, tariff, type, status
           {nonPayables.map((n) => (
             <div key={n.id} className="flex flex-wrap items-center gap-2">
               <Badge tone={n.status === "ACTIVE" ? "amber" : "gray"}>{n.status === "ACTIVE" ? money(n.amount) : "removed"}</Badge>
-              <span className={n.status === "REMOVED" ? "text-slate-400 line-through" : ""}>{n.description}</span>
+              <span className={n.status === "REMOVED" ? "text-slate-500 line-through" : ""}>{n.description}</span>
               <span className="text-slate-500">· {n.reason}{n.removeReason ? ` · removed: ${n.removeReason}` : ""}</span>
               {n.status === "ACTIVE" && canManage && editableItems && <Button variant="secondary" loading={dropNp.isPending} onClick={() => { const why = window.prompt("Why is this item being removed? (at least 5 characters)"); if (why && why.trim().length >= 5) dropNp.mutate({ id: n.id, reason: why.trim() }); }}>Remove</Button>}
             </div>

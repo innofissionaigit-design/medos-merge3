@@ -21,6 +21,8 @@ const ACCENTS: Record<string, { chip: string; hover: string }> = {
   "/ipd": { chip: "bg-amber-50 text-amber-600", hover: "hover:border-amber-300" },
   "/teleconsult": { chip: "bg-rose-50 text-rose-600", hover: "hover:border-rose-300" },
   "/reports": { chip: "bg-emerald-50 text-emerald-600", hover: "hover:border-emerald-300" },
+  "/emergency": { chip: "bg-red-50 text-red-600", hover: "hover:border-red-300" },
+  "/rounds": { chip: "bg-cyan-50 text-cyan-600", hover: "hover:border-cyan-300" },
 };
 
 const SHORTCUTS: { href: string; label: string; key: string; icon: IconName }[] = [
@@ -29,6 +31,8 @@ const SHORTCUTS: { href: string; label: string; key: string; icon: IconName }[] 
   { icon: "calendar", href: "/appointments", label: "Appointments", key: "A" },
   { icon: "bed", href: "/ipd", label: "Admissions", key: "I" },
   { icon: "video", href: "/teleconsult", label: "Video calls", key: "V" },
+  { icon: "alert", href: "/emergency", label: "Emergency", key: "E" },
+  { icon: "clock", href: "/rounds", label: "My rounds", key: "O" },
   { icon: "chart", href: "/reports", label: "Reports", key: "R" },
 ];
 

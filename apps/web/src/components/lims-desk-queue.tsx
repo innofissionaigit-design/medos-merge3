@@ -62,7 +62,7 @@ const pill = "inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-xs font
 function ReportArrived({ r }: { r: Req }) {
   const { dateTime } = useMe();
   const { t } = useI18n();
-  if (r.status === "CANCELLED") return <span className="text-slate-400">—</span>;
+  if (r.status === "CANCELLED") return <span className="text-slate-500">—</span>;
   if (r.stamps.issuedAt) return <span className={clsx(pill, TONE.emerald.pill)} title={dateTime(r.stamps.issuedAt)}>{t("Arrived")} · {dateTime(r.stamps.issuedAt)}</span>;
   if (r.status === "PASSED") return <span className={clsx(pill, TONE.sky.pill)}>{t("Passed, being issued")}</span>;
   return <span className={clsx(pill, "bg-slate-100 text-slate-500")}>{t("Not yet")}</span>;
@@ -158,7 +158,7 @@ export function LimsDeskQueue({ onOpen, onTab }: { onOpen: (r: Req) => void; onT
         {/* Search, filters, sort and view */}
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-[16rem] flex-1">
-            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search by patient name, MRN, registration no. or test…")} aria-label={t("Search the lab queue")}
               className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
           </label>
@@ -212,7 +212,7 @@ export function LimsDeskQueue({ onOpen, onTab }: { onOpen: (r: Req) => void; onT
                     <td className="px-2 py-2.5 text-slate-700">{r.test}</td>
                     <td className="px-2 py-2.5"><span className={clsx(pill, PRIORITY[r.priority].cls)}>{t(PRIORITY[r.priority].label)}</span></td>
                     <td className="px-2 py-2.5"><span className={clsx(pill, r.arrivedAt ? TONE.emerald.pill : "bg-slate-100 text-slate-600")}>{r.arrivedAt ? t("Arrived") : t("Not arrived")}</span></td>
-                    <td className="px-2 py-2.5">{s ? <span className={clsx(pill, s.cls)}>{t(s.label)}</span> : <span className="text-slate-400">—</span>}</td>
+                    <td className="px-2 py-2.5">{s ? <span className={clsx(pill, s.cls)}>{t(s.label)}</span> : <span className="text-slate-500">—</span>}</td>
                     <td className="px-2 py-2.5"><ReportArrived r={r} /></td>
                     <td className="px-2 py-2.5">{due(r)}</td>
                     <td className="px-4 py-2.5"><div className="flex items-center justify-end gap-1.5"><button type="button" onClick={() => onOpen(r)} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50">{t("View")}</button><RowMenu r={r} onTab={onTab} /></div></td>
@@ -253,7 +253,7 @@ export function LimsDeskQueue({ onOpen, onTab }: { onOpen: (r: Req) => void; onT
           <nav className="flex items-center gap-1" aria-label={t("Pages")}>
             <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:text-slate-300"><Icon name="chevronLeft" className="h-4 w-4" />{t("Prev")}</button>
             {pageList(page, pages).map((p, i) => p === "gap"
-              ? <span key={`gap${i}`} className="px-1.5 text-slate-400">…</span>
+              ? <span key={`gap${i}`} className="px-1.5 text-slate-500">…</span>
               : <button key={p} type="button" aria-current={p === page ? "page" : undefined} onClick={() => setPage(p)} className={clsx("min-w-[2rem] rounded-md px-2 py-1 font-medium", p === page ? "bg-brand-600 text-white" : "border border-slate-200 text-slate-700 hover:bg-slate-50")}>{p}</button>)}
             <button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)} className="flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-slate-700 hover:bg-slate-50 disabled:text-slate-300">{t("Next")}<Icon name="chevronRight" className="h-4 w-4" /></button>
           </nav>

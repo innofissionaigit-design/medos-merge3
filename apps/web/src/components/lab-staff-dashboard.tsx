@@ -146,7 +146,7 @@ export function LabStaffDashboard() {
           <p className="flex items-center gap-2 text-sm text-slate-600">
             <Icon name="calendar" className="h-4 w-4 text-slate-500" />
             <span>{new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(now)}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-slate-500">|</span>
             <span>{new Intl.DateTimeFormat(locale, { timeZone: tz, timeStyle: "short" }).format(now)}</span>
           </p>
         </div>
@@ -211,7 +211,7 @@ export function LabStaffDashboard() {
                       <Link href={hrefOf(n)} className="flex items-start gap-2.5 text-sm hover:text-brand-600">
                         <span className={clsx("mt-1.5 h-2 w-2 shrink-0 rounded-full", k.critical ? "bg-rose-500" : n.readAt ? "bg-slate-300" : "bg-brand-500")} />
                         <span className="min-w-0 flex-1 text-slate-700">{t(k.text)}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{ago(n.createdAt)}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{ago(n.createdAt)}</span>
                       </Link>
                     </li>
                   );

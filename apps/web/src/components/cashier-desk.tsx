@@ -111,12 +111,12 @@ export function CashierDashboard() {
               <div className="px-4 py-0.5">
                 {(owed.data?.data.length ?? 0) === 0 ? <p className="py-5 text-center text-sm text-slate-500">{t("No bills are waiting for payment.")}</p> : (
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 font-medium">{t("Bill")}</th><th className="py-2 font-medium">{t("Patient")}</th><th className="py-2 text-right font-medium">{t("Due")}</th><th className="w-32" /></tr></thead>
+                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 font-medium">{t("Bill")}</th><th className="py-2 font-medium">{t("Patient")}</th><th className="py-2 text-right font-medium">{t("Due")}</th><th className="w-32" /></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {owed.data!.data.map((b) => (
                         <tr key={b.id}>
-                          <td className="py-2 pr-3 tabular-nums"><Link className="font-medium text-brand-600 hover:underline" href={`/billing/${b.id}`}>{b.invoiceNumber ?? t("Draft")}</Link> <span className="ml-1 text-xs text-slate-400">{b.kind.toLowerCase()}</span></td>
-                          <td className="max-w-[12rem] truncate py-2 pr-3 text-slate-800">{b.patientName}<span className="ml-1.5 text-xs text-slate-400">{b.mrn}</span></td>
+                          <td className="py-2 pr-3 tabular-nums"><Link className="font-medium text-brand-600 hover:underline" href={`/billing/${b.id}`}>{b.invoiceNumber ?? t("Draft")}</Link> <span className="ml-1 text-xs text-slate-500">{b.kind.toLowerCase()}</span></td>
+                          <td className="max-w-[12rem] truncate py-2 pr-3 text-slate-800">{b.patientName}<span className="ml-1.5 text-xs text-slate-500">{b.mrn}</span></td>
                           <td className="py-2 text-right font-semibold tabular-nums text-amber-700">{money(b.balanceDue)}</td>
                           <td className="py-2 pl-3 text-right">{canPay && ["ISSUED", "PARTIALLY_PAID"].includes(b.status) ? <Link href={`/billing/${b.id}?pay=1`} className="inline-block whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700">{t("Take payment")}</Link> : <Link href={`/billing/${b.id}`} className="inline-block whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50">{t("Open")}</Link>}</td>
                         </tr>
@@ -158,7 +158,7 @@ export function CashierDashboard() {
                           <td className="max-w-[12rem] truncate py-2 pr-3 text-slate-700">{b.patientName}</td>
                           <td className="py-2 pr-3 text-right tabular-nums text-slate-800">{money(b.total)}</td>
                           <td className="py-2 pr-3"><Badge tone={STATUS_TONE[b.status] ?? "gray"}>{b.status.replace("_", " ").toLowerCase()}</Badge></td>
-                          <td className="hidden py-2 text-right text-xs text-slate-400 md:table-cell">{dateTime(b.createdAt)}</td>
+                          <td className="hidden py-2 text-right text-xs text-slate-500 md:table-cell">{dateTime(b.createdAt)}</td>
                         </tr>
                       ))}
                     </tbody>

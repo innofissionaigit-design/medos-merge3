@@ -6,7 +6,8 @@ import { loginAs, registerPatient } from "./helpers";
  * (docs/discharge-stages.md): the doctor's decision, nursing, charges, summary, pharmacy, final bill and payment, discharge, physical exit
  * (which frees the bed), bed turnover by housekeeping, and the Medical Records sign-off with ICD-10 coding.
  */
-const stage = (page: Page, name: string) => page.getByRole("row").filter({ hasText: name }).first();
+// The discharge checklist table (the "still to do" list above it names the same stages).
+const stage = (page: Page, name: string) => page.getByTestId("discharge-stages").getByRole("row").filter({ hasText: name }).first();
 
 async function openDischarge(page: Page, url: string) {
   await page.goto(url);

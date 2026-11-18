@@ -141,7 +141,7 @@ export function Shell({ children }: { children: ReactNode }) {
           )}
           {otherDesk && activeDesk ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
-              <p className="font-medium">{otherDesk.label} {t("belongs to the")} {activeDesk === "OPD" ? "IPD" : "OPD"} {t("desk")}.</p>
+              <h1 className="font-medium">{otherDesk.label} {t("belongs to the")} {activeDesk === "OPD" ? "IPD" : "OPD"} {t("desk")}.</h1>
               <p className="mt-1 text-slate-700">{t("You are at the")} {activeDesk} {t("desk. Switch desk to open it.")}</p>
               <button type="button" className="mt-3 rounded border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50" onClick={() => { choose(null); router.push("/dashboard"); }}>{t("Switch desk")}</button>
             </div>

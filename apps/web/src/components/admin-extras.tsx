@@ -120,14 +120,14 @@ export function ScheduleEditor({ doctors }: { doctors: { id: string; displayName
               <div key={name} className="grid grid-cols-12 items-start gap-2 border-b border-slate-100 pb-2">
                 <div className="col-span-12 pt-1.5 text-sm font-medium sm:col-span-2"><T>{name}</T></div>
                 <div className="col-span-12 space-y-1 sm:col-span-10">
-                  {weekdays(d).length === 0 && <span className="text-sm text-slate-400">No session</span>}
+                  {weekdays(d).length === 0 && <span className="text-sm text-slate-500">No session</span>}
                   {weekdays(d).map(({ w, i }) => (
                     <div key={i} className="flex flex-wrap items-center gap-2">
                       <Input aria-label={`${name} start`} type="time" className="w-28" value={w.start} onChange={(e) => patch(i, { start: e.target.value })} />
-                      <span className="text-slate-400">to</span>
+                      <span className="text-slate-500">to</span>
                       <Input aria-label={`${name} end`} type="time" className="w-28" value={w.end} onChange={(e) => patch(i, { end: e.target.value })} />
                       <Select aria-label={`${name} slot length`} className="w-32" value={String(w.slotMinutes)} onChange={(e) => patch(i, { slotMinutes: Number(e.target.value) })}>{[5, 10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} min slots</option>)}</Select>
-                      <button className="text-slate-400 hover:text-red-700" aria-label={`Remove ${name} session`} onClick={() => setWins(wins.filter((_, j) => j !== i))}>✕</button>
+                      <button className="text-slate-500 hover:text-red-700" aria-label={`Remove ${name} session`} onClick={() => setWins(wins.filter((_, j) => j !== i))}>✕</button>
                     </div>
                   ))}
                   <button className="text-xs text-brand-700 hover:underline" onClick={() => setWins([...wins, { dayOfWeek: d, start: "09:00", end: "13:00", slotMinutes: 15 }])}>+ add session</button>

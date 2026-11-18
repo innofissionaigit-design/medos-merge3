@@ -105,11 +105,11 @@ export function WardStructure() {
                         </span>
                       </li>
                     ))}
-                    {beds.data?.filter((b) => b.roomId === r.id).length === 0 && <li className="text-xs text-slate-400">No beds yet.</li>}
+                    {beds.data?.filter((b) => b.roomId === r.id).length === 0 && <li className="text-xs text-slate-500">No beds yet.</li>}
                   </ul>
                 </div>
               ))}
-              {rooms.data?.filter((r) => r.wardId === w.id).length === 0 && <p className="text-xs text-slate-400">No rooms yet.</p>}
+              {rooms.data?.filter((r) => r.wardId === w.id).length === 0 && <p className="text-xs text-slate-500">No rooms yet.</p>}
             </div>
           </div>
         ))}

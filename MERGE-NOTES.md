@@ -34,3 +34,64 @@ No file was changed by both sides in conflicting ways, so no line had to be chos
 ## After copying this folder to a database that already runs
 
 Apply the migrations: `pnpm --filter @medos/database migrate` (adds the two telemedicine migrations and the cashier permission).
+
+---
+
+# Merge: `medos-testing-medos_code_merge` into `medos-rajarshee` (2026-11-18)
+
+Three-way merge. Common base: the `chakrabardhan-aftercare` commit (94658a5). **A** = rajarshee (LIMS portal, emergency ward, ICU, planned admission, ward rounds, manager overview, lab and reception dashboards). **B** = code-merge (discharge flow, supplementary bill, insurance money, claim documents checklist, missed billing, service scope OPD/IPD/both, reception desks, doctor/pharmacy/cashier desks, redesigned screens). Neither source folder was changed.
+
+## Database
+
+* **Schema** (`packages/database/prisma/schema`): both sides' new tables sit in their own files and came across unchanged. The shared models were merged by hand: `Patient` has the relations of both (LIMS, emergency, planned, rounds, procedures **and** claim estimates, missed-billing reviews); `Invoice` keeps A's layout plus B's `supplementaryFor`; `Claim` is B's file (it keeps its documentation comments) plus A's `plannedAdmissions`; the notification enum holds every value from both; the service catalogue has both `limsDepartment` (A) and `availableFor` (B).
+* **Migrations**: 109 in total, ordered by timestamp, no name clashes (A's 20261109 to 20261112 sit before B's 20261117 to 20261124). All apply to an **empty** database. A database that already ran A's migrations just applies B's eight new ones with `pnpm --filter @medos/database migrate`.
+* **Drift check** (`prisma migrate diff` from the migrated database to the schema): the only difference is two foreign keys (`ClaimDocumentWaiver` to `Claim`, `InsurerRequiredDocument` to `Insurer`) that B declares in SQL only. Not caused by the merge; the database is stricter than the schema, so nothing is lost.
+
+## Permissions and roles (`packages/shared/src/permissions.ts`)
+
+Merged as sets and checked by script: every one of the 33 roles equals the union of A and B (160 permissions, no duplicates, no role permission missing from the list). New from B: the `BILLING` role and `MISSED_BILLING_*`, `LEDGER_READ`, `CLAIM_WRITEOFF_APPROVE`, `CLAIM_DOCUMENT_WAIVE`, `DISCHARGE_ESCALATE_*`, `VITALS_QUEUE_ALERT`. Nobody lost a permission.
+
+Seed logins: A's naming wins where both used a name. `coordinator1` is the **ward coordinator**; the care coordinator is `carecoord1`. B's new `billing1` is added.
+
+## Where both sides changed the same thing
+
+| Area | Decision |
+|---|---|
+| Reception dashboard | A's richer dashboard is now desk-aware: OPD desk (outpatient panels, "Start new visit") or IPD desk (admitted-now list, bed status, "Going home"). B's two simpler desk dashboards were dropped; the desk chooser stays. |
+| Navigation | One `NavItem` with both `hideWith` (A) and `desk` (B). "Going home" is hidden from the ICU roles, like the admissions list. |
+| Service catalogue | Both `limsDepartment` and `availableFor`; the seed marks surgeries, the emergency package, ICU equipment and the central line as inpatient-only. |
+| Pharmacy dispensing | B's moved component with A's "add to the admission's bill" option and visit-type wording. |
+| Registration form | B's stricter fields (`lib/patient-form.ts`) inside A's extracted `register-patient.tsx`. |
+| Visit page, billing, admissions, nursing, patients pages | B's redesigned layout with A's additions re-applied (lab order and admission advice cards, Emergency bill type, planned-admissions link, new-medicine-order badge, "Book lab test", reports). |
+| Doctor/cashier/pharmacy desks (B) and lab dashboards (A) | Both kept; each person gets the one their permissions point to. |
+| End-to-end helper | `chooseDoctor` skips the emergency, ICU and RMO doctors (they have no OPD hours). |
+
+## Tests changed
+
+Three web tests were out of date with A's own behaviour (the nurse, technicians, pathologist and radiologist start on their dashboard, not the page they work in). They were updated to say so; they already failed on A's side before the merge.
+
+## Local test setup
+
+The project's Windows PostgreSQL script is not available on this machine, and port 54329 is inside a Windows-reserved range (54317 to 54416), so the existing `medos-pg` container cannot publish it. A separate container `medos-pg-codemerge` publishes **55432** (databases `medos_codemerge`, `medos_codemerge_test`).
+
+## Verification (2026-11-18)
+
+* **Typecheck**: shared, database, API and web all clean. **Lint**: clean in all four packages (one unused constant in `permissions.ts`, already unused before the merge, was removed).
+* **API tests**: 1,477 tests, 1,474 pass, 2 skipped. The one failure on the first pass was the tenant-isolation sweep, which needs a database that other tests have already filled (its own message says so).
+* **Tenant-isolation sweep** (every route that takes an id, real records of other hospitals): passes, 444 routes, 363 foreign records, about 160,000 requests. It runs about 17 minutes, longer than the 15-minute access token, so run it with `ACCESS_TOKEN_TTL_SECONDS=14400` or the last third is refused with 401 and reported as problems.
+* **Web unit tests**: 70 of 70.
+* **Role smoke** (Chrome, 22 logins, every menu screen each role is offered): no crashes, no server errors, no "menu offers it but the data call is refused".
+* **Production build** of the web app succeeds with every screen from both sides.
+* **Browser end-to-end tests (Playwright, in the installed Google Chrome)**: 20 of 20 pass, including the mandatory OPD and IPD flows (CLAUDE.md §36 and §37). Each run needs a freshly seeded database (a failed run leaves a doctor "in consultation", which makes the next run fail for that reason alone).
+
+### Fixes made after the merge
+
+* **ICU roles saw "Going home"** (B's screen, shown to anyone with admission access): hidden for them like the admissions list.
+* **Contrast**: plain `text-slate-400` and `text-slate-300` text (about 2.5:1 and 1.4:1 on white) is now `text-slate-500`; the reception banner is a solid colour (a gradient cannot be measured); the "wrong desk" notice is a heading.
+* **Doctor desk** (B) gets shortcuts to Emergency and My rounds (A's screens).
+* **Tests that no longer matched the screens they test** (the screens are B's): the desk switch is a dropdown, not a button; the language test must pick a desk first; OPD bills are issued as soon as they are created, so the draft-bill test works at the IPD desk; diagnoses show as chips; "Save prescription" became one "Save draft"; vitals sit in a fold; the discharge checklist is found by its test id; the doctor picker's lists load after the dialog opens. Three web tests described the page the lab and nursing staff used to land on; they now say they start on their dashboard.
+
+### Ports and local setup
+
+API **4102**, web **3102** (as before, `.claude/launch.json`: `api` and `web`). `.local/alt-api.env` and `.local/alt-web.env` now point at the merged database `medos_codemerge` (the old copies are kept as `*.before-codemerge`). Demo logins: tenant `demo-hospital`; the generated password is in `.local/codemerge-seed-password.txt`.
+

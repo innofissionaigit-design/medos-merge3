@@ -124,7 +124,7 @@ export function StatTile({ icon, tone, value, label, note, noteTone = "gray", hr
       <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-xl", TONE[tone].chip)}><Icon name={icon} className="h-5 w-5" /></span>
       <span className="min-w-0">
         <span className="flex items-baseline gap-2">
-          <span className="text-xl font-semibold leading-tight text-slate-900">{value ?? <span className="text-slate-300">…</span>}</span>
+          <span className="text-xl font-semibold leading-tight text-slate-900">{value ?? <span className="text-slate-500">…</span>}</span>
           {note !== undefined && note !== null && <span className={clsx("truncate rounded-md px-1.5 py-0.5 text-[11px] font-medium", NOTE_TONES[noteTone])}>{note}</span>}
         </span>
         <span className="block text-sm leading-tight text-slate-600">{label}</span>

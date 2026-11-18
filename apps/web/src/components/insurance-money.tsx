@@ -127,8 +127,8 @@ export function OwedTab() {
               <Td className="text-right tabular-nums">{money(r.received)}{Number(r.tds) > 0 ? <div className="text-xs text-slate-500">incl. TDS {money(r.tds)}</div> : null}</Td>
               <Td className="text-right tabular-nums">{money(r.cut)}{Number(r.cutUnexplained) > 0 ? <div className="text-xs text-amber-700">{money(r.cutUnexplained)} unexplained</div> : null}</Td>
               <Td className="text-right tabular-nums">{money(r.writtenOff)}</Td>
-              <Td className={`text-right tabular-nums ${Number(r.owed) > 0 ? "font-semibold text-blue-700" : "text-slate-400"}`}>{money(r.owed)}{Number(r.awaitingDecision) > 0 ? <div className="text-xs font-normal text-slate-500">{money(r.awaitingDecision)} awaiting decision</div> : null}</Td>
-              <Td className="text-right">{Number(r.refundDue) > 0 ? <Badge tone="amber">{money(r.refundDue)}</Badge> : <span className="text-slate-300">—</span>}</Td>
+              <Td className={`text-right tabular-nums ${Number(r.owed) > 0 ? "font-semibold text-blue-700" : "text-slate-500"}`}>{money(r.owed)}{Number(r.awaitingDecision) > 0 ? <div className="text-xs font-normal text-slate-500">{money(r.awaitingDecision)} awaiting decision</div> : null}</Td>
+              <Td className="text-right">{Number(r.refundDue) > 0 ? <Badge tone="amber">{money(r.refundDue)}</Badge> : <span className="text-slate-500">—</span>}</Td>
             </tr>
           ))}
         </Table>
@@ -383,7 +383,7 @@ export function EstimatePanel() {
                       <div className="min-w-[12rem] flex-1"><Field label={i === 0 ? "Service" : ""}><Select value={l.serviceId} onChange={(e) => setLine(i, { serviceId: e.target.value })}><option value="">{t("Choose a service")}</option>{services.data?.data.map((sv) => <option key={sv.id} value={sv.id}>{sv.name} · {money(sv.price)}</option>)}</Select></Field></div>
                       <Field label={i === 0 ? "Quantity" : ""}><Input className="w-20" inputMode="numeric" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value.replace(/\D/g, "") })} /></Field>
                       <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"><input type="checkbox" checked={l.notCovered} onChange={(e) => setLine(i, { notCovered: e.target.checked })} /> {t("not covered by insurance")}</label>
-                      {lines.length > 1 && <button type="button" aria-label={t("Remove this service")} className="pb-2 text-slate-400 hover:text-red-700" onClick={() => setLines(lines.filter((_, n) => n !== i))}>✕</button>}
+                      {lines.length > 1 && <button type="button" aria-label={t("Remove this service")} className="pb-2 text-slate-500 hover:text-red-700" onClick={() => setLines(lines.filter((_, n) => n !== i))}>✕</button>}
                     </div>
                   ))}
                 </div>

@@ -107,7 +107,7 @@ export function FilesCard({ patientId }: { patientId: string }) {
       {list.isLoading ? <Spinner /> : (
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            {photo ? <img src={fileUrl(photo.id)} alt="Patient photo" className="h-20 w-20 rounded-md border border-slate-200 object-cover" /> : <div className="flex h-20 w-20 items-center justify-center rounded-md border border-dashed border-slate-300 text-xs text-slate-400"><T>No photo</T></div>}
+            {photo ? <img src={fileUrl(photo.id)} alt="Patient photo" className="h-20 w-20 rounded-md border border-slate-200 object-cover" /> : <div className="flex h-20 w-20 items-center justify-center rounded-md border border-dashed border-slate-300 text-xs text-slate-500"><T>No photo</T></div>}
             {photo && can("PATIENT_UPDATE") && <button className="text-xs text-slate-500 hover:text-red-700" onClick={() => { setRemoving(photo); setReason(""); }}>remove photo</button>}
           </div>
           <ul className="divide-y divide-slate-100">

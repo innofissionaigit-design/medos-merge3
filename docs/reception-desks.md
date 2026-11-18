@@ -5,8 +5,8 @@ Reception does two different jobs: the outpatient desk (OPD) and the inpatient d
 
 ## Workflow
 1. **Choose a desk after signing in.** A receptionist is asked "Which desk are you working at?" at every sign-in: **OPD** or **IPD**. The choice is kept in that browser tab and forgotten at sign-out; the **Switch** button in the top bar asks again. Only the Receptionist role is asked (and only where inpatient care is switched on); everyone else sees the menu for their role as before.
-2. **OPD desk.** Dashboard "OPD reception" with the **Start new visit** button (patient, then department, then doctor), the OPD queue, appointments and video consultations. Billing makes OPD bills. The patient page shows **Start OPD visit** and hides **Admit**.
-3. **IPD desk.** Dashboard "IPD reception" (admitted patients, Admissions, Going home) with **no** Start new visit. The menu has Admissions, Going home and Nursing but not Appointments, the OPD queue or Video consultations. Billing makes IPD bills. The patient page shows **Admit** and hides **Start OPD visit**.
+2. **OPD desk.** The reception dashboard shows the OPD view: the **Start new visit** action (patient, then department, then doctor), today's numbers, the OPD queue and today's appointments (no bed status or admissions). Appointments and video consultations are in the menu. Billing makes OPD bills. The patient page shows **Start OPD visit** and hides **Admit**.
+3. **IPD desk.** The reception dashboard shows the IPD view: who is admitted now, bed status, the **Going home** and planned-admission actions, with **no** Start new visit and no OPD queue or appointments panels. The menu has Admissions, Going home and Nursing but not Appointments, the OPD queue or Video consultations. Billing makes IPD bills. The patient page shows **Admit** and hides **Start OPD visit**.
 4. **The other desk's screens.** Opening one by its address shows a notice ("Appointments belongs to the OPD desk") with a **Switch desk** button.
 
 ## Services are OPD, IPD or both

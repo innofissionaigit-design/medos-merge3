@@ -106,7 +106,7 @@ function HandwrittenDispense({ scan, onClose }: { scan: HwScan; onClose: () => v
             <div key={i} className="grid grid-cols-12 items-start gap-2">
               <div className="col-span-9"><MedPick value={r.med} onPick={(m) => setRows(rows.map((x, j) => (j === i ? { ...x, med: m } : x)))} /></div>
               <Input className="col-span-2" aria-label="Quantity" placeholder="Qty" inputMode="numeric" value={r.qty} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
-              {rows.length > 1 && <button className="col-span-1 pt-2 text-slate-400 hover:text-red-700" aria-label="Remove medicine" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
+              {rows.length > 1 && <button className="col-span-1 pt-2 text-slate-500 hover:text-red-700" aria-label="Remove medicine" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
             </div>
           ))}
           <Button variant="secondary" onClick={() => setRows([...rows, { med: null, qty: "" }])}>Add medicine</Button>

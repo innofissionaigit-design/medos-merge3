@@ -46,7 +46,9 @@ test("the portal title says whose portal it is", () => {
 test("the laboratory staff land on the portal, and the earlier LIS page is kept only for people outside it", () => {
   for (const role of ["LIMS_MANAGER", "P_LAB_TECH", "R_LAB_TECH", "PATHOLOGIST", "RADIOLOGIST"]) {
     const items = visibleNav(new Set<string>(SYSTEM_ROLES[role] ?? []), ON, [role]);
-    assert.equal(homeFor(items), "/lims", role);
+    // The manager lands in the control room; the technicians, pathologist and radiologist land on their own laboratory dashboard, with the portal next in the menu.
+    assert.equal(homeFor(items), role === "LIMS_MANAGER" ? "/lims" : "/dashboard", role);
+    assert.ok(items.some((n) => n.href === "/lims"), `${role} has the portal in the menu`);
     assert.ok(!items.some((n) => n.href === "/lis"), `${role} sees the portal, not the earlier LIS page`);
   }
   // The earlier technician roles do not have the portal and keep the LIS page.

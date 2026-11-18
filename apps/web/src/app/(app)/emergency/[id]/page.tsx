@@ -44,7 +44,7 @@ export default function EmergencyCasePage() {
       </div>
       {strip.length > 0 && (
         <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" data-testid="latest-vitals">
-          {strip.map((s) => <div key={s.k} className="rounded-md border border-slate-200 bg-white p-2"><div className="text-xs text-slate-500">{s.k}</div><div className="text-lg font-semibold">{s.v}</div><div className="text-[11px] text-slate-400">{dateTime(s.t)}</div></div>)}
+          {strip.map((s) => <div key={s.k} className="rounded-md border border-slate-200 bg-white p-2"><div className="text-xs text-slate-500">{s.k}</div><div className="text-lg font-semibold">{s.v}</div><div className="text-[11px] text-slate-500">{dateTime(s.t)}</div></div>)}
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-2">

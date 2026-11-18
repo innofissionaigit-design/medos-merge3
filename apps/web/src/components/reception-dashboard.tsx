@@ -105,7 +105,7 @@ export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
           <p className="flex items-center gap-2 text-sm text-slate-600">
             <Icon name="calendar" className="h-4 w-4 text-slate-500" />
             <span>{new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(now)}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-slate-500">|</span>
             <span>{new Intl.DateTimeFormat(locale, { timeZone: tz, timeStyle: "short" }).format(now)}</span>
           </p>
         </div>
@@ -256,12 +256,12 @@ export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
 
         {/* Right column: the hospital, bed status and notifications */}
         <aside className="grid min-w-0 content-start gap-3 sm:grid-cols-2 xl:flex xl:min-h-0 xl:flex-col">
-          <div className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 px-4 py-3.5 text-white shadow-sm sm:col-span-2">
+          <div className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-xl bg-brand-700 px-4 py-3.5 text-white shadow-sm sm:col-span-2">
             <Icon name="hospital" className="absolute -bottom-3 -right-3 h-20 w-20 text-white/10" />
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/15"><Icon name="hospital" className="h-6 w-6" /></span>
             <span className="min-w-0">
               <span className="block truncate font-semibold leading-tight">{me.facility?.name ?? me.tenant.name}</span>
-              <span className="block truncate text-xs uppercase tracking-wide text-white/75">{me.facility && me.facility.name !== me.tenant.name ? `${me.tenant.name} · ` : ""}MedOS · {t("Front desk")}</span>
+              <span className="block truncate text-xs uppercase tracking-wide text-white/90">{me.facility && me.facility.name !== me.tenant.name ? `${me.tenant.name} · ` : ""}MedOS · {t("Front desk")}</span>
             </span>
           </div>
 
@@ -272,7 +272,7 @@ export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
                   {wards.map((w) => (
                     <div key={w.wardId}>
                       <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="flex min-w-0 items-center gap-2 text-slate-700"><Icon name="bed" className="h-4 w-4 shrink-0 text-slate-400" /><span className="truncate">{w.ward}</span></span>
+                        <span className="flex min-w-0 items-center gap-2 text-slate-700"><Icon name="bed" className="h-4 w-4 shrink-0 text-slate-500" /><span className="truncate">{w.ward}</span></span>
                         <span className="shrink-0 font-medium text-slate-900">{w.occupied} / {w.total}</span>
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={clsx("h-full rounded-full", barTone(w.occupancyPercent))} style={{ width: `${Math.min(100, w.occupancyPercent)}%` }} /></div>
@@ -294,7 +294,7 @@ export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
                       <Link href={hrefOf(n)} className="flex items-start gap-2.5 text-sm hover:text-brand-600">
                         <span className={clsx("mt-1.5 h-2 w-2 shrink-0 rounded-full", k.critical ? "bg-rose-500" : n.readAt ? "bg-slate-300" : "bg-brand-500")} />
                         <span className="min-w-0 flex-1 text-slate-700">{t(k.text)}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{ago(n.createdAt)}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{ago(n.createdAt)}</span>
                       </Link>
                     </li>
                   );

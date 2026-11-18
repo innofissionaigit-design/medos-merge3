@@ -66,16 +66,16 @@ export default function PostDischargePage() {
             {q.isLoading ? <div className="p-4"><Spinner /></div> : rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500"><T>Nothing here.</T></p> : (
               <div className="overflow-x-auto px-4 pb-1">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 pr-3 font-medium">{t("Patient")}</th><th className="py-2 pr-3 font-medium">{t("Discharged")}</th><th className="py-2 pr-3 font-medium">{t("Records")}</th><th className="py-2 pr-3 font-medium">{t("Claim")}</th><th className="py-2 pr-3 text-right font-medium">{t("Patient owes")}</th><th className="py-2 pr-3 text-right font-medium">{t("Insurer owes")}</th><th className="py-2 font-medium">{t("Stage")}</th></tr></thead>
+                  <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">{t("Patient")}</th><th className="py-2 pr-3 font-medium">{t("Discharged")}</th><th className="py-2 pr-3 font-medium">{t("Records")}</th><th className="py-2 pr-3 font-medium">{t("Claim")}</th><th className="py-2 pr-3 text-right font-medium">{t("Patient owes")}</th><th className="py-2 pr-3 text-right font-medium">{t("Insurer owes")}</th><th className="py-2 font-medium">{t("Stage")}</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {rows.map((r) => (
                       <tr key={r.admissionId} data-testid="post-discharge-row" className="align-top hover:bg-slate-50/70">
-                        <td className="py-2.5 pr-3"><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${r.admissionId}`}>{r.patient}</Link><div className="text-xs text-slate-400">{r.mrn} · {r.admissionNumber}</div></td>
-                        <td className="whitespace-nowrap py-2.5 pr-3">{dateTime(r.dischargedAt)}<div className="text-xs text-slate-400">{r.daysSinceDischarge ?? 0} <T>day(s) ago</T></div></td>
-                        <td className="py-2.5 pr-3">{r.recordComplete ? <Badge tone="green">complete</Badge> : r.recordReady ? <Badge tone="amber">ready to sign off</Badge> : <Badge tone="red">incomplete</Badge>}<div className="mt-0.5 text-xs text-slate-400">{r.recordFile ?? t("not received")}</div></td>
-                        <td className="py-2.5 pr-3">{r.claim ? <><span className="font-medium">{r.claim.claimNumber}</span> <Badge tone={r.claim.open ? "blue" : "gray"}>{r.claim.status.toLowerCase().replace(/_/g, " ")}</Badge><div className="text-xs text-slate-500">{r.claim.insurer}</div></> : <span className="text-slate-400"><T>none</T></span>}</td>
-                        <td className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.receivables.patient === "0.00" ? "text-slate-300" : "font-semibold text-amber-700"}`}>{r.receivables.patient === "0.00" ? "—" : money(r.receivables.patient)}</td>
-                        <td className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.receivables.insurer === "0.00" ? "text-slate-300" : "font-semibold text-blue-700"}`}>{r.receivables.insurer === "0.00" ? "—" : money(r.receivables.insurer)}</td>
+                        <td className="py-2.5 pr-3"><Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/ipd/${r.admissionId}`}>{r.patient}</Link><div className="text-xs text-slate-500">{r.mrn} · {r.admissionNumber}</div></td>
+                        <td className="whitespace-nowrap py-2.5 pr-3">{dateTime(r.dischargedAt)}<div className="text-xs text-slate-500">{r.daysSinceDischarge ?? 0} <T>day(s) ago</T></div></td>
+                        <td className="py-2.5 pr-3">{r.recordComplete ? <Badge tone="green">complete</Badge> : r.recordReady ? <Badge tone="amber">ready to sign off</Badge> : <Badge tone="red">incomplete</Badge>}<div className="mt-0.5 text-xs text-slate-500">{r.recordFile ?? t("not received")}</div></td>
+                        <td className="py-2.5 pr-3">{r.claim ? <><span className="font-medium">{r.claim.claimNumber}</span> <Badge tone={r.claim.open ? "blue" : "gray"}>{r.claim.status.toLowerCase().replace(/_/g, " ")}</Badge><div className="text-xs text-slate-500">{r.claim.insurer}</div></> : <span className="text-slate-500"><T>none</T></span>}</td>
+                        <td className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.receivables.patient === "0.00" ? "text-slate-500" : "font-semibold text-amber-700"}`}>{r.receivables.patient === "0.00" ? "—" : money(r.receivables.patient)}</td>
+                        <td className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.receivables.insurer === "0.00" ? "text-slate-500" : "font-semibold text-blue-700"}`}>{r.receivables.insurer === "0.00" ? "—" : money(r.receivables.insurer)}</td>
                         <td className="py-2.5 text-xs text-slate-600"><T>{r.hisStatus}</T></td>
                       </tr>
                     ))}
@@ -90,13 +90,13 @@ export default function PostDischargePage() {
               <header className="border-b border-slate-100 px-4 py-2.5"><h2 className="text-sm font-semibold text-slate-800">{t("Money still owed, by days since discharge")}</h2></header>
               <div className="px-4 pb-1">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 text-left font-medium">{t("Days")}</th><th className="py-2 text-right font-medium">{t("Patients")}</th><th className="py-2 text-right font-medium">{t("Insurers")}</th><th className="py-2 text-right font-medium">{t("Stays")}</th></tr></thead>
+                  <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 text-left font-medium">{t("Days")}</th><th className="py-2 text-right font-medium">{t("Patients")}</th><th className="py-2 text-right font-medium">{t("Insurers")}</th><th className="py-2 text-right font-medium">{t("Stays")}</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {q.data.ageing.map((a) => (
                       <tr key={a.bucket} data-testid="ageing-row">
                         <td className="py-2 font-medium text-slate-800">{a.bucket}</td>
-                        <td className="py-2 text-right tabular-nums">{a.patient === "0.00" ? <span className="text-slate-300">—</span> : money(a.patient)}</td>
-                        <td className="py-2 text-right tabular-nums">{a.insurer === "0.00" ? <span className="text-slate-300">—</span> : money(a.insurer)}</td>
+                        <td className="py-2 text-right tabular-nums">{a.patient === "0.00" ? <span className="text-slate-500">—</span> : money(a.patient)}</td>
+                        <td className="py-2 text-right tabular-nums">{a.insurer === "0.00" ? <span className="text-slate-500">—</span> : money(a.insurer)}</td>
                         <td className="py-2 text-right tabular-nums text-slate-600">{a.stays}</td>
                       </tr>
                     ))}

@@ -80,7 +80,7 @@ function TestLines({ lines, indexes, editing, services, scanId, onChange }: { li
           const bad = editing && !lineOk(l);
           if (!editing) {
             return (
-              <li key={i} className={`flex flex-wrap items-center gap-2 py-1 ${l.removed ? "text-slate-400 line-through" : ""}`}>
+              <li key={i} className={`flex flex-wrap items-center gap-2 py-1 ${l.removed ? "text-slate-500 line-through" : ""}`}>
                 <Badge>{CATEGORY[l.category] ?? l.category.toLowerCase()}</Badge>
                 <span className="flex-1">{l.name}{l.quantity > 1 ? ` × ${l.quantity}` : ""}
                   {l.edited && l.originalName && l.originalName !== l.name ? <span className="text-xs text-slate-500"> (doctor wrote: {l.originalName})</span> : null}
@@ -99,7 +99,7 @@ function TestLines({ lines, indexes, editing, services, scanId, onChange }: { li
               <Input aria-label="Quantity" inputMode="numeric" className="w-14" value={String(l.quantity)} disabled={l.removed} onChange={(e) => set(i, { quantity: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
               <Input aria-label="Price" placeholder="Price" inputMode="decimal" className="w-24" value={l.price ?? ""} disabled={l.removed} onChange={(e) => set(i, { price: e.target.value })} />
               <Input aria-label="Tax percent" placeholder="Tax %" inputMode="decimal" className="w-16" value={l.taxPercent} disabled={l.removed} onChange={(e) => set(i, { taxPercent: e.target.value })} />
-              {l.removed ? <button className="text-xs text-brand-700 hover:underline" onClick={() => set(i, { removed: false })}>Put back</button> : <button aria-label="Take this test off the bill" className="text-slate-400 hover:text-red-700" onClick={() => remove(i)}>✕</button>}
+              {l.removed ? <button className="text-xs text-brand-700 hover:underline" onClick={() => set(i, { removed: false })}>Put back</button> : <button aria-label="Take this test off the bill" className="text-slate-500 hover:text-red-700" onClick={() => remove(i)}>✕</button>}
               {bad && <span className="w-full text-xs text-red-700">Give the test a name (2+ letters), a price above zero and a quantity from 1 to 99.</span>}
               {l.originalName && l.originalName !== l.name && !l.removed && <span className="w-full text-xs text-slate-500">The doctor wrote: {l.originalName}</span>}
             </li>
@@ -224,7 +224,7 @@ function CollectTotal({ patient, onClose }: { patient: PatientCard; onClose: () 
               <Select aria-label="Payment method" className="w-40" value={r.method} onChange={(e) => setRow(i, { method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{METHOD_NAME[m]}</option>)}</Select>
               <Input aria-label="Amount" inputMode="decimal" className="w-32" value={r.amount} onChange={(e) => setRow(i, { amount: e.target.value })} />
               {r.method !== "CASH" && <Input aria-label="Reference" placeholder="Transaction id / last digits" className="w-56" value={r.reference} onChange={(e) => setRow(i, { reference: e.target.value })} />}
-              {rows.length > 1 && <button aria-label="Remove this payment" className="text-slate-400 hover:text-red-700" onClick={() => { setEdited(true); setRows(rows.filter((_, j) => j !== i)); }}>✕</button>}
+              {rows.length > 1 && <button aria-label="Remove this payment" className="text-slate-500 hover:text-red-700" onClick={() => { setEdited(true); setRows(rows.filter((_, j) => j !== i)); }}>✕</button>}
             </div>
           ))}
           {rows.length < 6 && <button className="text-sm text-brand-700 hover:underline" onClick={() => { setEdited(true); setRows([...rows, { method: "UPI", amount: Math.max(0, (total - entered) / 100).toFixed(2), reference: "" }]); }}>Add another way of paying</button>}
@@ -328,7 +328,7 @@ function Visit({ v, services, onDirty }: { v: VisitInfo; services: Service[]; on
             {billedTests.map((x) => (
               <li key={x.id} className="flex flex-wrap items-center gap-2 py-1">
                 <Badge>{CATEGORY[x.category] ?? x.category.toLowerCase()}</Badge><span className="flex-1">{x.name} <span className="text-xs text-slate-500">({x.source === "HANDWRITTEN" ? "from the handwritten prescription" : x.source === "CASHIER" ? "added by the Cashier" : "digital"})</span></span>
-                {x.status === "BILLED" ? <span className="text-xs text-slate-500">billed{x.invoiceNumber ? ` · ${x.invoiceNumber}` : ""}</span> : <span className="text-xs text-slate-400">taken off</span>}
+                {x.status === "BILLED" ? <span className="text-xs text-slate-500">billed{x.invoiceNumber ? ` · ${x.invoiceNumber}` : ""}</span> : <span className="text-xs text-slate-500">taken off</span>}
               </li>
             ))}
           </ul>

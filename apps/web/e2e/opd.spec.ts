@@ -25,6 +25,8 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   await expect(page).toHaveURL(/\/visits\//);
   await expect(page.getByRole("heading", { name: `${p.first} ${p.last}` })).toBeVisible();
 
+  // Vitals are recorded from a fold in the side column of the visit page.
+  await page.getByText("Vitals: record or correct").click();
   await page.getByLabel("Pulse").fill("88");
   await page.getByLabel("Temperature").fill("38.2");
   await page.getByRole("button", { name: "Record vitals" }).click();
@@ -34,12 +36,14 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   await page.getByLabel("Examination").fill("Throat congested, chest clear");
   await page.getByLabel("Diagnosis", { exact: true }).fill("Acute viral fever");
   await page.locator("form", { has: page.getByLabel("Diagnosis", { exact: true }) }).getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("listitem").getByText("Acute viral fever")).toBeVisible();
+  // A recorded diagnosis shows as a chip beside the diagnosis field.
+  await expect(page.getByText("Acute viral fever", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Add medicine" }).click();
   await page.getByLabel("Medicine", { exact: true }).fill("Paracetamol");
   await page.getByLabel("Quantity").fill("6");
-  await page.getByRole("button", { name: "Save prescription" }).click();
+  // One button in the bottom bar saves the note and the prescription together.
+  await page.getByRole("button", { name: "Save draft" }).click();
   await page.getByRole("button", { name: "Sign consultation" }).click();
   await page.getByRole("button", { name: /^Yes, sign/ }).click();
   await expect(page.getByText(/This consultation is signed/)).toBeVisible();
@@ -66,7 +70,8 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   await expect(page.getByRole("row", { name: new RegExp(p.first) })).toHaveCount(0);
   await loginAs(page, "cashier1");
   await page.goto("/billing");
-  await page.getByLabel("Status").selectOption("OUTSTANDING");
+  // The bill list is filtered with tabs (All, Outstanding, Paid, ...).
+  await page.getByRole("tab", { name: "Outstanding" }).click();
   await page.getByRole("row", { name: new RegExp(p.first) }).first().getByRole("link").first().click();
   await page.getByRole("button", { name: "Take payment" }).click();
   const pay = page.getByRole("dialog", { name: /^Take payment/ });
@@ -75,7 +80,7 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   await pay.getByRole("button", { name: "Receive payment" }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
   await page.goto("/billing");
-  await page.getByLabel("Status").selectOption("PAID");
+  await page.getByRole("tab", { name: "Paid" }).click();
   await expect(page.getByRole("row", { name: new RegExp(`${p.first}.*paid|paid.*${p.first}`, "i") }).first()).toBeVisible();
 });
 

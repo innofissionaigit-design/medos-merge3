@@ -164,7 +164,7 @@ export function WardMap() {
           return (
             <div key={b.id} className={`rounded-md p-2 text-sm ${tone}`}>
               <div className="flex items-center justify-between"><span className="font-semibold">{b.code}</span><span className="text-[11px] text-slate-500">{o ? "in use" : b.free ? "free" : b.status.toLowerCase()}</span></div>
-              {o ? <Link href={`/emergency/${o.caseId}`} className="mt-0.5 block truncate text-brand-700 hover:underline">{o.patientName ?? o.caseNumber}</Link> : <div className="mt-0.5 text-xs text-slate-400">&nbsp;</div>}
+              {o ? <Link href={`/emergency/${o.caseId}`} className="mt-0.5 block truncate text-brand-700 hover:underline">{o.patientName ?? o.caseNumber}</Link> : <div className="mt-0.5 text-xs text-slate-500">&nbsp;</div>}
             </div>
           );
         })}
@@ -314,7 +314,7 @@ function PayModal({ invoice, onClose, onPaid }: { invoice: BillInvoice; onClose:
             <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => set(i, { method: e.target.value })}>{METHODS.map((m) => <option key={m} value={m}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
             <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => set(i, { amount: e.target.value })} />
             <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => set(i, { reference: e.target.value })} />
-            {rows.length > 1 && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
+            {rows.length > 1 && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
           </div>
         ))}
         <div className="flex items-center justify-between text-sm"><Button variant="ghost" onClick={() => setRows([...rows, { method: "UPI", amount: "", reference: "" }])}>+ Split payment</Button><span className={sum === Math.round(due * 100) ? "text-green-700" : "text-slate-600"}>Entered {money(sum / 100)} of {money(invoice.balanceDue)}</span></div>

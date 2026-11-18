@@ -30,7 +30,7 @@ export function InvestigationsPicker({ value, onChange, disabled, label = "test"
       <div className="mb-2 flex flex-wrap gap-1.5">
         {value.map((v) => (
           <span key={v} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-sm">{v}
-            {!disabled && <button type="button" aria-label={`Remove ${v}`} className="text-slate-400 hover:text-red-700" onClick={() => onChange(value.filter((x) => x !== v))}>✕</button>}
+            {!disabled && <button type="button" aria-label={`Remove ${v}`} className="text-slate-500 hover:text-red-700" onClick={() => onChange(value.filter((x) => x !== v))}>✕</button>}
           </span>
         ))}
         {value.length === 0 && <span className="text-sm text-slate-500">None advised.</span>}

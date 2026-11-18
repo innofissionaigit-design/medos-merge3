@@ -85,12 +85,12 @@ export function VideoConsults() {
         {list.isLoading ? <div className="p-4"><Spinner /></div> : shown.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{all.length === 0 ? "No video consultations. Open Appointments and press Make video on a booked appointment." : "Nothing matches."}</p> : (
           <div className="overflow-x-auto px-4 pb-1">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 pr-3 font-medium">When</th><th className="py-2 pr-3 font-medium">Patient</th><th className="py-2 pr-3 font-medium">Doctor</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
+              <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">When</th><th className="py-2 pr-3 font-medium">Patient</th><th className="py-2 pr-3 font-medium">Doctor</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {shown.map((r) => (
                   <tr key={r.id} className={`align-top hover:bg-slate-50/70 ${r.patientWaiting && r.status === "SCHEDULED" ? "bg-emerald-50/50" : r.status === "IN_PROGRESS" ? "bg-blue-50/40" : ""}`}>
                     <td className="whitespace-nowrap py-2.5 pr-3 font-semibold tabular-nums text-slate-900">{dateTime(r.scheduledAt)}</td>
-                    <td className="py-2.5 pr-3"><span className="font-semibold text-slate-900">{r.patient}</span><div className="text-xs text-slate-400">{r.mrn}</div></td>
+                    <td className="py-2.5 pr-3"><span className="font-semibold text-slate-900">{r.patient}</span><div className="text-xs text-slate-500">{r.mrn}</div></td>
                     <td className="py-2.5 pr-3 text-slate-700">{r.doctor}</td>
                     <td className="py-2.5 pr-3"><Badge tone={TONE[r.status] ?? "gray"}>{r.status.replace("_", " ").toLowerCase()}</Badge><div className="text-xs text-slate-500">{r.patientJoined ? "patient is in the call" : r.patientWaiting ? <span className="font-semibold text-green-800">patient is waiting</span> : r.consented ? "patient agreed" : r.status === "SCHEDULED" ? `opens ${dateTime(r.windowOpensAt)}` : ""}</div>{r.feeStatus === "PENDING" && r.status === "SCHEDULED" && <div className="text-xs text-amber-800">fee {r.feeDue} to pay</div>}{r.identityChecked && <div className="text-xs text-slate-500">identity checked</div>}</td>
               <td className="whitespace-nowrap py-2.5 text-right">

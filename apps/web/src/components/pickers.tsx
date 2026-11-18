@@ -61,7 +61,7 @@ export function SlotPicker({ practitionerId, date, value, onPick }: { practition
   return (
     <div className="flex flex-wrap gap-1.5">
       {slots.data.map((s) => (
-        <button key={s.startAt} type="button" disabled={!s.available} onClick={() => onPick(s.startAt)} className={`rounded border px-2 py-1 text-sm ${value === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"}`}>
+        <button key={s.startAt} type="button" disabled={!s.available} onClick={() => onPick(s.startAt)} className={`rounded border px-2 py-1 text-sm ${value === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500 line-through"}`}>
           {dateTime(s.startAt).split(", ").pop()}
         </button>
       ))}

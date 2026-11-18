@@ -122,7 +122,7 @@ function NewPurchase({ onClose }: { onClose: () => void }) {
             <Input className="col-span-3 sm:col-span-1" aria-label="Selling price" placeholder="Sell" inputMode="decimal" value={r.sellingPrice} onChange={(e) => patch(i, { sellingPrice: e.target.value })} />
             <Input className="col-span-4 sm:col-span-2" aria-label="Rejected quantity" placeholder="Rejected" inputMode="numeric" value={r.rejected} onChange={(e) => patch(i, { rejected: e.target.value.replace(/[^0-9]/g, "") })} />
             {Number(r.rejected) > 0 && <Input className="col-span-8 sm:col-span-6" aria-label="Why rejected" placeholder="Why was it rejected? (at least 5 characters)" value={r.rejectReason} onChange={(e) => patch(i, { rejectReason: e.target.value })} />}
-            <button className="col-span-12 text-left text-xs text-slate-400 hover:text-red-700" onClick={() => setRows(rows.filter((_, j) => j !== i))}>remove line</button>
+            <button className="col-span-12 text-left text-xs text-slate-500 hover:text-red-700" onClick={() => setRows(rows.filter((_, j) => j !== i))}>remove line</button>
           </div>
         ))}
         <Button variant="ghost" onClick={() => setRows([...rows, blankRow()])}>+ Add line</Button>
@@ -132,7 +132,7 @@ function NewPurchase({ onClose }: { onClose: () => void }) {
             <Input className="col-span-3 sm:col-span-2" aria-label="Rejected in full quantity" placeholder="Units" inputMode="numeric" value={r.quantity} onChange={(e) => patchRej(i, { quantity: e.target.value.replace(/[^0-9]/g, "") })} />
             <Input className="col-span-3 sm:col-span-2" aria-label="Invoice rate" placeholder="Rate" inputMode="decimal" value={r.unitPrice} onChange={(e) => patchRej(i, { unitPrice: e.target.value })} />
             <Input className="col-span-12 sm:col-span-4" aria-label="Why rejected in full" placeholder="Why turned away? (at least 5 characters)" value={r.reason} onChange={(e) => patchRej(i, { reason: e.target.value })} />
-            <button className="col-span-12 text-left text-xs text-slate-400 hover:text-red-700" onClick={() => setRej(rej.filter((_, j) => j !== i))}>remove</button>
+            <button className="col-span-12 text-left text-xs text-slate-500 hover:text-red-700" onClick={() => setRej(rej.filter((_, j) => j !== i))}>remove</button>
           </div>
         ))}
         <Button variant="ghost" onClick={() => setRej([...rej, { med: null, quantity: "", unitPrice: "", reason: "" }])}>+ Goods turned away in full (none of it enters stock; credit is asked from the supplier)</Button>

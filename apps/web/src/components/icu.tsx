@@ -160,7 +160,7 @@ export function DaysCard({ s, onChange }: { s: IcuStay; onChange: () => void }) 
           <div key={d.day} className="rounded border border-slate-200 p-2 text-sm" data-testid="icu-day">
             <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">Day {d.dayNumber} · {date(d.day)}</span>
               <span className="text-xs text-slate-500">{d.vitals.count} vitals set(s) · HR {range(d.vitals.pulse)} · SBP {range(d.vitals.systolic)} · SpO₂ {range(d.vitals.spo2)} · {d.instructionsGiven} instruction(s), {d.instructionsDone} done · {d.testsOrdered} test(s) ordered</span></div>
-            {d.notes.length === 0 ? <p className="text-slate-400">No note for this day.</p> : d.notes.map((n) => (
+            {d.notes.length === 0 ? <p className="text-slate-500">No note for this day.</p> : d.notes.map((n) => (
               <div key={n.id} className="mt-1 border-l-2 border-brand-100 pl-2"><div className="text-xs text-slate-500">{dateTime(n.createdAt)} · {n.author}</div><div className="whitespace-pre-wrap">{n.text}</div>{n.plan && <div className="text-slate-600">Plan: {n.plan}</div>}</div>
             ))}
           </div>

@@ -31,7 +31,7 @@ export default function IcuBoard() {
                   <div>{intervalText(r.schedule.intervalMinutes)}</div>
                   {r.schedule.intervalMinutes !== null && (r.schedule.overdue ? <div className="text-xs font-semibold text-red-700">{r.schedule.minutesLate} min late</div> : <div className="text-xs text-slate-500">next {dateTime(r.schedule.nextDueAt)}</div>)}
                 </Td>
-                <Td className="text-xs">{r.openInstructions > 0 && <div className={r.urgentInstructions > 0 ? "font-semibold text-amber-700" : ""}>{r.openInstructions} instruction(s) open</div>}{r.pendingTests > 0 && <div>{r.pendingTests} test(s) pending</div>}{r.openInstructions === 0 && r.pendingTests === 0 && <span className="text-slate-400">—</span>}</Td>
+                <Td className="text-xs">{r.openInstructions > 0 && <div className={r.urgentInstructions > 0 ? "font-semibold text-amber-700" : ""}>{r.openInstructions} instruction(s) open</div>}{r.pendingTests > 0 && <div>{r.pendingTests} test(s) pending</div>}{r.openInstructions === 0 && r.pendingTests === 0 && <span className="text-slate-500">—</span>}</Td>
                 <Td><Link href={`/icu/${r.id}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-slate-50">Open</Link></Td>
               </tr>
             ))}

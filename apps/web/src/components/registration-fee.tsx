@@ -50,7 +50,7 @@ export function FeeSection({ config, value, onChange }: { config: FeeConfig; val
               <Select aria-label="Payment mode" className="col-span-4" value={l.method} onChange={(e) => set(i, { method: e.target.value })}>{config.methods.map((m) => <option key={m} value={m}>{label(m)}</option>)}</Select>
               <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={l.amount} onChange={(e) => set(i, { amount: e.target.value })} />
               <Input aria-label="Reference" className="col-span-4" placeholder={l.method === "CASH" ? "—" : "Transaction reference"} disabled={l.method === "CASH"} value={l.reference} onChange={(e) => set(i, { reference: e.target.value })} />
-              {value.lines.length > 1 && <button type="button" className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove payment line" onClick={() => onChange({ ...value, lines: value.lines.filter((_, j) => j !== i) })}>✕</button>}
+              {value.lines.length > 1 && <button type="button" className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove payment line" onClick={() => onChange({ ...value, lines: value.lines.filter((_, j) => j !== i) })}>✕</button>}
             </div>
           ))}
           <div className="flex items-center justify-between text-xs text-slate-600">

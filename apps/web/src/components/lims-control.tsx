@@ -215,7 +215,7 @@ export function QcPanel() {
                 <Td>{dateTime(r.recordedAt)}<div className="text-xs text-slate-500">{r.recordedBy}</div></Td><Td>{r.subject}{r.level ? ` · ${r.level}` : ""}</Td><Td>{r.instrument ?? "—"}</Td>
                 <Td>{r.observed !== null ? `${r.observed} ${r.unit ?? ""} (${r.lowLimit}–${r.highLimit})` : "—"}</Td>
                 <Td><Badge tone={r.result === "PASS" ? "green" : "red"}>{r.result === "PASS" ? "passed" : "failed"}</Badge></Td>
-                <Td>{r.reviewedAt ? <span className="text-sm">{r.reviewedBy}: {r.reviewNote}{r.actionRequired && <> <Badge tone="amber">action</Badge></>}</span> : <span className="text-slate-400">—</span>}</Td>
+                <Td>{r.reviewedAt ? <span className="text-sm">{r.reviewedBy}: {r.reviewNote}{r.actionRequired && <> <Badge tone="amber">action</Badge></>}</span> : <span className="text-slate-500">—</span>}</Td>
                 <Td>{!r.reviewedAt && can("LIMS_MANAGE") && <Button variant="secondary" onClick={() => setReview(r)}>Review</Button>}</Td>
               </tr>
             ))}

@@ -40,7 +40,7 @@ export const NAV: NavItem[] = [
   { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED" },
   // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
   { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
-  { href: "/discharge-board", label: "Going home", anyOf: ["ADMISSION_READ"], feature: "IPD_ENABLED", desk: "IPD" },
+  { href: "/discharge-board", label: "Going home", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED", desk: "IPD" },
   { href: "/housekeeping", label: "Housekeeping", anyOf: ["BED_HOUSEKEEPING", "HOUSEKEEPING_REQUEST", "HOUSEKEEPING_MANAGE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/aftercare", label: "After discharge", anyOf: ["AFTERCARE_MANAGE", "COMPLAINT_READ", "COMPLAINT_MANAGE"], desk: "IPD" },

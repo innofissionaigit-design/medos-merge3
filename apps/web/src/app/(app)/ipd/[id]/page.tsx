@@ -83,7 +83,7 @@ function Overview({ adm, refresh }: { adm: Admission; refresh: () => void }) {
       <Card title="Charges" actions={open && can("CHARGE_CREATE") ? <Button variant="secondary" loading={bedDays.isPending} onClick={() => bedDays.mutate()}>Post bed days</Button> : undefined}>
         <Table head={["Charge", "Qty", "Rate", "Status", ""]} {...(charges.data?.items.length === 0 ? { empty: "No charges posted yet." } : {})}>
           {charges.data?.items.map((x) => (
-            <tr key={x.id} className={x.status === "VOIDED" ? "text-slate-400 line-through" : ""}><Td>{x.description}</Td><Td>{x.quantity}</Td><Td>{money(x.unitPrice)}</Td><Td><StatusBadge value={x.status} /></Td>
+            <tr key={x.id} className={x.status === "VOIDED" ? "text-slate-500 line-through" : ""}><Td>{x.description}</Td><Td>{x.quantity}</Td><Td>{money(x.unitPrice)}</Td><Td><StatusBadge value={x.status} /></Td>
               <Td>{x.status === "PENDING" && open && can("CHARGE_CREATE") && <button className="text-xs text-slate-500 hover:text-red-700" onClick={() => voidCharge.mutate(x.id)}>void</button>}</Td></tr>
           ))}
         </Table>
@@ -159,7 +159,7 @@ function Nursing({ adm }: { adm: Admission }) {
               return (
                 <li key={n.id} className="rounded border border-slate-100 p-2 text-sm">
                   <div className="text-xs text-slate-500">{dateTime(n.createdAt)}{n.authorName ? ` · ${n.authorName}` : ""}{wrong ? ` · entered in error: ${n.errorReason ?? ""}` : ""}</div>
-                  <div className={wrong ? "text-slate-400 line-through" : ""}>{n.note}</div>
+                  <div className={wrong ? "text-slate-500 line-through" : ""}>{n.note}</div>
                   {n.addenda?.map((a) => (
                     <div key={a.id} className="mt-1 border-l-2 border-brand-100 pl-2"><div className="text-xs text-slate-500">Addendum · {dateTime(a.createdAt)}{a.authorName ? ` · ${a.authorName}` : ""}</div>{a.note}</div>
                   ))}
@@ -192,7 +192,7 @@ function Nursing({ adm }: { adm: Admission }) {
             {ioRows.data?.slice(0, 30).map((r) => {
               const wrong = r.status === "ENTERED_IN_ERROR";
               return (
-                <tr key={r.id} className={wrong ? "text-slate-400" : ""}>
+                <tr key={r.id} className={wrong ? "text-slate-500" : ""}>
                   <Td>{dateTime(r.recordedAt)}</Td>
                   <Td><span className={wrong ? "line-through" : ""}>{r.direction === "INTAKE" ? "Intake" : "Output"} · {r.category.toLowerCase().replace("_", " ")}</span>{wrong && <div className="text-xs">entered in error: {r.errorReason}</div>}{actForm(r.id, "io-error")}</Td>
                   <Td><span className={wrong ? "line-through" : ""}>{r.amount}</span></Td>
@@ -601,7 +601,7 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
               {d?.steps.flatMap((s) => [
                 ...(s.step === "NURSING" && d.summary ? [(
                   <tr key="SUMMARY" data-testid="summary-stage" className="border-b border-slate-100 align-top">
-                    <td className="py-2 pr-3 font-medium"><T>{d.summary.stage}</T> {!d.summary.required && <span className="text-xs font-normal text-slate-400">(optional)</span>}<div className="mt-0.5 text-xs font-normal text-slate-500"><T>{d.summary.description}</T></div></td>
+                    <td className="py-2 pr-3 font-medium"><T>{d.summary.stage}</T> {!d.summary.required && <span className="text-xs font-normal text-slate-500">(optional)</span>}<div className="mt-0.5 text-xs font-normal text-slate-500"><T>{d.summary.description}</T></div></td>
                     <td className="py-2 pr-3 text-slate-700"><T>{d.summary.responsible}</T></td>
                     <td className="py-2">
                       <div className="flex flex-wrap items-center gap-2"><StatusBadge value={d.summary.status} /><span><T>{d.summary.hisStatus}</T></span></div>
@@ -614,7 +614,7 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
                 )] : []),
                 (
                 <tr key={s.step} className="border-b border-slate-100 align-top last:border-0">
-                  <td className="py-2 pr-3 font-medium"><T>{s.stage ?? s.step.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase())}</T> {!s.required && <span className="text-xs font-normal text-slate-400">(optional)</span>}{s.description && <div className="mt-0.5 text-xs font-normal text-slate-500"><T>{s.description}</T></div>}</td>
+                  <td className="py-2 pr-3 font-medium"><T>{s.stage ?? s.step.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase())}</T> {!s.required && <span className="text-xs font-normal text-slate-500">(optional)</span>}{s.description && <div className="mt-0.5 text-xs font-normal text-slate-500"><T>{s.description}</T></div>}</td>
                   <td className="py-2 pr-3 text-slate-700"><T>{s.responsible ?? "—"}</T></td>
                   <td className="py-2">
                     <div className="flex flex-wrap items-center gap-2">{s.step === "FINANCIAL_RELEASE" && s.status === "WAIVED" ? <Badge tone="amber">exception</Badge> : <StatusBadge value={s.status} />}<span><T>{s.hisStatus ?? ""}</T></span>{open && s.status === "PENDING" && !s.automatic && can(stepPerm[s.step] ?? "ADMISSION_DISCHARGE") && <Button variant="secondary" loading={clear.isPending} onClick={() => clear.mutate(s.step)}>Clear</Button>}{open && s.status === "PENDING" && (s.waivable ?? (!s.automatic && s.step !== "MEDICALLY_FIT")) && can("ADMISSION_DISCHARGE") && <WaiveButton admissionId={adm.id} step={s.step} onDone={reload} />}{open && s.step === "FINANCIAL_RELEASE" && s.status === "PENDING" && can("DISCHARGE_FINANCIAL_EXCEPTION") && <FinancialExceptionButton admissionId={adm.id} onDone={reload} />}</div>

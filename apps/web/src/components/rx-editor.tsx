@@ -74,7 +74,7 @@ export function RxRows({ items, setItems, disabled }: { items: RxItem[]; setItem
           <Select className="col-span-4 sm:col-span-2" aria-label="Frequency" disabled={disabled} value={it.frequency} onChange={(e) => patch(i, { frequency: e.target.value })}>{FREQS.map((r) => <option key={r}>{r}</option>)}</Select>
           <Input className="col-span-3 sm:col-span-1" aria-label="Days" placeholder="Days" inputMode="numeric" disabled={disabled} value={it.durationDays ?? ""} onChange={(e) => patch(i, { durationDays: e.target.value ? Number(e.target.value) : undefined })} />
           <Input className="col-span-3 sm:col-span-1" aria-label="Quantity" placeholder="Qty" inputMode="numeric" disabled={disabled} value={it.quantity ?? ""} onChange={(e) => patch(i, { quantity: e.target.value ? Number(e.target.value) : undefined })} />
-          {!disabled && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove medicine" onClick={() => setItems(items.filter((_, j) => j !== i))}>✕</button>}
+          {!disabled && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove medicine" onClick={() => setItems(items.filter((_, j) => j !== i))}>✕</button>}
           {!disabled && it.genericName.trim() && (it.quantity === undefined
             ? <p className="col-span-12 text-xs text-amber-800" data-testid="qty-missing">No quantity yet: enter how many the pharmacy should give. It cannot be worked out from this dose or frequency, so the pharmacist would have to guess.</p>
             : it.qtyAuto ? <p className="col-span-12 text-xs text-slate-500" data-testid="qty-auto">Quantity {it.quantity} is worked out from the dose, how often and the days. Type a different number to change it.</p> : null)}

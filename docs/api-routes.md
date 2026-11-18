@@ -544,9 +544,9 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | PUT | `/lims/instruments/:id` | LIMS_MANAGE |  |
 | GET | `/lims/opd/availability` | LIMS_REQUEST |  |
 | POST | `/lims/opd/book` | LIMS_REQUEST |  |
-| POST | `/lims/opd/decline` | LIMS_REQUEST |  |
-| POST | `/lims/opd/launch` | LIMS_REQUEST |  |
-| GET | `/lims/opd/pending` | LIMS_REQUEST |  |
+| POST | `/lims/opd/decline` | LIMS_REQUEST | LIMS_TESTS_ADVISED_ENABLED |
+| POST | `/lims/opd/launch` | LIMS_REQUEST | LIMS_TESTS_ADVISED_ENABLED |
+| GET | `/lims/opd/pending` | LIMS_REQUEST | LIMS_TESTS_ADVISED_ENABLED |
 | POST | `/lims/orders` | LIMS_ORDER |  |
 | GET | `/lims/qc` | LIMS_READ |  |
 | POST | `/lims/qc` | LIMS_QC |  |
@@ -589,6 +589,13 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/medicines` | any signed-in user (checked in service) |  |
 | POST | `/medicines` | PHARMACY_MASTERS |  |
 | PATCH | `/medicines/:id` | PHARMACY_MASTERS |  |
+
+## MissedBilling
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/billing/missed-income` | MISSED_BILLING_READ |  |
+| POST | `/billing/missed-income/reviews` | MISSED_BILLING_REVIEW |  |
 
 ## Notifications
 

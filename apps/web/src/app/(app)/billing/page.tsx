@@ -64,7 +64,7 @@ function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: Pic
                 <Td><Input aria-label="Quantity" className="w-20" inputMode="decimal" value={l.quantity} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} /></Td>
                 <Td>{l.serviceId ? money(l.unitPrice) : <Input aria-label="Rate" className="w-24" inputMode="decimal" value={l.unitPrice} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unitPrice: e.target.value } : x)))} />}</Td>
                 <Td>{l.serviceId ? l.taxPercent : <Input aria-label="Tax percent" className="w-16" inputMode="decimal" value={l.taxPercent} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, taxPercent: e.target.value } : x)))} />}</Td>
-                <Td><button aria-label="Remove line" className="text-slate-400 hover:text-red-700" onClick={() => setLines(lines.filter((_, j) => j !== i))}>✕</button></Td>
+                <Td><button aria-label="Remove line" className="text-slate-500 hover:text-red-700" onClick={() => setLines(lines.filter((_, j) => j !== i))}>✕</button></Td>
               </tr>
             ))}
           </Table>
@@ -205,17 +205,17 @@ function BillingInner() {
               {list.isLoading ? <div className="p-4"><Spinner /></div> : rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{t("No bills found.")}</p> : (
                 <div className="overflow-x-auto px-4 pb-1">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 font-medium">{t("Bill")}</th><th className="py-2 font-medium">{t("Patient")}</th><th className="py-2 font-medium">{t("Status")}</th><th className="py-2 text-right font-medium">{t("Total")}</th><th className="py-2 text-right font-medium">{t("Due")}</th><th className="hidden py-2 pl-4 font-medium md:table-cell">{t("Date")}</th><th className="w-28" /></tr></thead>
+                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 font-medium">{t("Bill")}</th><th className="py-2 font-medium">{t("Patient")}</th><th className="py-2 font-medium">{t("Status")}</th><th className="py-2 text-right font-medium">{t("Total")}</th><th className="py-2 text-right font-medium">{t("Due")}</th><th className="hidden py-2 pl-4 font-medium md:table-cell">{t("Date")}</th><th className="w-28" /></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {rows.map((i) => {
                         const owes = Number(i.balanceDue) > 0;
                         return (
                           <tr key={i.id} className="hover:bg-slate-50/70">
                             <td className="whitespace-nowrap py-2.5 pr-3"><Link className="font-semibold tabular-nums text-brand-700 hover:underline" href={`/billing/${i.id}`}>{i.invoiceNumber ?? t("Draft")}</Link> <Badge>{i.kind.toLowerCase()}</Badge></td>
-                            <td className="py-2.5 pr-3"><div className="font-medium text-slate-900">{i.patientName}</div><div className="text-xs text-slate-400">{i.mrn}</div></td>
+                            <td className="py-2.5 pr-3"><div className="font-medium text-slate-900">{i.patientName}</div><div className="text-xs text-slate-500">{i.mrn}</div></td>
                             <td className="py-2.5 pr-3"><StatusBadge value={i.status} /></td>
                             <td className="whitespace-nowrap py-2.5 text-right tabular-nums text-slate-800">{money(i.total)}</td>
-                            <td className={`whitespace-nowrap py-2.5 text-right tabular-nums ${owes ? "font-semibold text-amber-700" : "text-slate-400"}`}>{owes ? money(i.balanceDue) : "—"}</td>
+                            <td className={`whitespace-nowrap py-2.5 text-right tabular-nums ${owes ? "font-semibold text-amber-700" : "text-slate-500"}`}>{owes ? money(i.balanceDue) : "—"}</td>
                             <td className="hidden whitespace-nowrap py-2.5 pl-4 text-xs text-slate-500 md:table-cell">{date(i.createdAt)}</td>
                             <td className="py-2.5 pl-3 text-right">{canPay && ["ISSUED", "PARTIALLY_PAID"].includes(i.status) ? <Link href={`/billing/${i.id}?pay=1`} className="inline-block whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700">{t("Take payment")}</Link> : <Link href={`/billing/${i.id}`} className="inline-block whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">{t("Open")}</Link>}</td>
                           </tr>

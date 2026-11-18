@@ -60,7 +60,7 @@ export function RoundTimesEditor() {
       {slots.isLoading ? <Spinner /> : (
         <ul className="mb-3 space-y-2 text-sm">
           {slots.data?.map((s) => (
-            <li key={s.id} className={clsx("flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2", s.status === "ACTIVE" ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 text-slate-400")}>
+            <li key={s.id} className={clsx("flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2", s.status === "ACTIVE" ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 text-slate-500")}>
               <span>
                 {edit?.id === s.id ? <Input type="time" aria-label="New time" className="inline-block w-32" value={edit.time} onChange={(e) => setEdit({ id: s.id, time: e.target.value })} /> : <b className="text-base">{s.time12}</b>}
                 <span className="ml-2">{s.label}</span>
@@ -158,7 +158,7 @@ export function RoundNotesCard({ admissionId, open, roundId, onDone }: { admissi
       {list.isLoading ? <Spinner /> : (list.data?.length ?? 0) === 0 ? <p className="text-sm text-slate-500">No round notes yet.</p> : (
         <ul className="space-y-3">
           {list.data!.map((n) => (
-            <li key={n.id} className={clsx("rounded-md border p-3 text-sm", n.status === "ENTERED_IN_ERROR" ? "border-slate-100 bg-slate-50 text-slate-400 line-through" : "border-slate-200")}>
+            <li key={n.id} className={clsx("rounded-md border p-3 text-sm", n.status === "ENTERED_IN_ERROR" ? "border-slate-100 bg-slate-50 text-slate-500 line-through" : "border-slate-200")}>
               <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span>{dateTime(n.createdAt)}</span><span>{n.authorName}</span>{n.round && <Badge tone="gray">{n.round}</Badge>}{n.addendumOfId && <Badge tone="gray">addendum</Badge>}
                 {n.condition && <Badge tone={CONDITION_TONE[n.condition as keyof typeof CONDITION_TONE] ?? "gray"}>{n.condition.toLowerCase()}</Badge>}
@@ -205,7 +205,7 @@ export function ProceduresCard({ admissionId, open }: { admissionId: string; ope
       {list.isLoading ? <Spinner /> : (list.data?.length ?? 0) === 0 ? <p className="text-sm text-slate-500">No procedures recorded.</p> : (
         <ul className="space-y-2 text-sm">
           {list.data!.map((p) => (
-            <li key={p.id} className={clsx("rounded-md border p-3", p.status === "ENTERED_IN_ERROR" ? "border-slate-100 bg-slate-50 text-slate-400 line-through" : "border-slate-200")}>
+            <li key={p.id} className={clsx("rounded-md border p-3", p.status === "ENTERED_IN_ERROR" ? "border-slate-100 bg-slate-50 text-slate-500 line-through" : "border-slate-200")}>
               <div className="flex flex-wrap items-center justify-between gap-2"><b>{p.name}</b><span className="text-xs text-slate-500">{`${dateTime(p.performedAt)} · ${p.performedByName ?? ""}`}</span></div>
               <div>{p.outcome}</div>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">

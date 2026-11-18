@@ -88,7 +88,7 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
           {!doc ? <p className="text-sm text-slate-500">Choose a doctor to see free times.</p> : slots.isLoading ? <Spinner /> : slots.data?.length === 0 ? <p className="text-sm text-slate-500">This doctor does not see patients on that day.</p> : (
             <div className="flex flex-wrap gap-1.5">
               {slots.data?.map((s) => (
-                <button key={s.startAt} disabled={!s.available} onClick={() => setSlot(s.startAt)} className={`rounded border px-2 py-1 text-sm ${slot === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"}`}>
+                <button key={s.startAt} disabled={!s.available} onClick={() => setSlot(s.startAt)} className={`rounded border px-2 py-1 text-sm ${slot === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500 line-through"}`}>
                   {dateTime(s.startAt).split(", ").pop()}
                 </button>
               ))}
@@ -125,7 +125,7 @@ function Reschedule({ appt, today, onClose, onMoved }: { appt: Appt; today: stri
           {slots.isLoading ? <Spinner /> : slots.data?.length === 0 ? <p className="text-sm text-slate-500">No sessions on that day.</p> : (
             <div className="flex flex-wrap gap-1.5">
               {slots.data?.map((s) => (
-                <button key={s.startAt} disabled={!s.available} onClick={() => setSlot(s.startAt)} className={`rounded border px-2 py-1 text-sm ${slot === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"}`}>{dateTime(s.startAt).split(", ").pop()}</button>
+                <button key={s.startAt} disabled={!s.available} onClick={() => setSlot(s.startAt)} className={`rounded border px-2 py-1 text-sm ${slot === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500 line-through"}`}>{dateTime(s.startAt).split(", ").pop()}</button>
               ))}
             </div>
           )}
@@ -244,13 +244,13 @@ export default function AppointmentsPage() {
           {list.isLoading ? <div className="p-4"><Spinner /></div> : visible.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{needle ? "No appointment matches your search." : "No appointments on this day."}</p> : (
             <div className="overflow-x-auto px-4 pb-1">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 font-medium">Time</th><th className="py-2 font-medium">Patient</th><th className="py-2 font-medium">Doctor</th><th className="py-2 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
+                <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 font-medium">Time</th><th className="py-2 font-medium">Patient</th><th className="py-2 font-medium">Doctor</th><th className="py-2 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {visible.map((a) => (
                     <tr key={a.id} className={`align-top hover:bg-slate-50/70 ${a.status === "IN_CONSULTATION" ? "bg-blue-50/40" : ""}`}>
                       <td className="whitespace-nowrap py-2.5 pr-4 font-semibold tabular-nums text-slate-900">{dateTime(a.startAt).split(", ").pop()}</td>
                       <td className="py-2.5 pr-4">
-                        <span className="font-medium text-slate-900">{a.patientName}</span> <span className="text-slate-400">· {a.mrn}</span>
+                        <span className="font-medium text-slate-900">{a.patientName}</span> <span className="text-slate-500">· {a.mrn}</span>
                         {a.type === "FOLLOW_UP" && <div className="text-xs text-teal-700">Follow-up{a.followUpOfVisit ? ` of visit ${a.followUpOfVisit.encounterNumber}` : ""}</div>}
                         <FeeLine a={a} />
                       </td>

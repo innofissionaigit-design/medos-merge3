@@ -24,7 +24,7 @@ function MedPicker({ value, onPick }: { value: Med | null; onPick: (m: Med | nul
   const [q, setQ] = useState("");
   const term = useDebounced(q.trim(), 250);
   const res = useQuery({ queryKey: ["med-pick-proc", term], queryFn: () => api.page<Med>("/medicines", { q: term, pageSize: 6 }), enabled: term.length >= 2 && !value });
-  if (value) return <div className="flex items-center gap-2 text-sm"><span className="font-medium">{value.brandName} {value.strength}</span><button className="text-xs text-slate-400 hover:text-red-700" onClick={() => onPick(null)}>change</button></div>;
+  if (value) return <div className="flex items-center gap-2 text-sm"><span className="font-medium">{value.brandName} {value.strength}</span><button className="text-xs text-slate-500 hover:text-red-700" onClick={() => onPick(null)}>change</button></div>;
   return (
     <div className="relative">
       <Input aria-label="Medicine" placeholder="Search a medicine" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -79,7 +79,7 @@ function NewIndent({ start, onClose }: { start: { med: Med; qty: string }[]; onC
           <div key={i} className="grid grid-cols-12 items-center gap-2">
             <div className="col-span-8"><MedPicker value={r.med} onPick={(m) => setRows(rows.map((x, j) => (j === i ? { ...x, med: m } : x)))} /></div>
             <Input className="col-span-3" aria-label="Quantity" placeholder="Qty" inputMode="numeric" value={r.qty} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(/[^0-9]/g, "") } : x)))} />
-            {rows.length > 1 && <button className="col-span-1 text-xs text-slate-400 hover:text-red-700" onClick={() => setRows(rows.filter((_, j) => j !== i))}>remove</button>}
+            {rows.length > 1 && <button className="col-span-1 text-xs text-slate-500 hover:text-red-700" onClick={() => setRows(rows.filter((_, j) => j !== i))}>remove</button>}
           </div>
         ))}
         <Button variant="ghost" onClick={() => setRows([...rows, { med: null, qty: "" }])}>+ Add a medicine</Button>

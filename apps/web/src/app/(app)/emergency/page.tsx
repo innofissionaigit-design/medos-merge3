@@ -42,7 +42,7 @@ export default function EmergencyBoard() {
               <tr key={r.id} className={r.triageLevel && isOpen(r.status) ? LEVELS[r.triageLevel].row : ""}>
                 <Td><TriageBadge level={r.triageLevel} /></Td>
                 <Td><div className="font-medium">{r.patient?.name ?? r.caseNumber}</div><div className="text-xs text-slate-500">{patientLine(r.patient)}</div></Td>
-                <Td>{r.bed ? <span className="font-medium">{r.bed.code}</span> : isOpen(r.status) ? <span className="text-xs text-amber-800">no bed</span> : <span className="text-slate-400">—</span>}</Td>
+                <Td>{r.bed ? <span className="font-medium">{r.bed.code}</span> : isOpen(r.status) ? <span className="text-xs text-amber-800">no bed</span> : <span className="text-slate-500">—</span>}</Td>
                 <Td className="max-w-xs"><div className="truncate" title={r.chiefComplaint}>{r.chiefComplaint}</div><div className="text-xs text-slate-500">{r.arrivalMode.replace("_", " ").toLowerCase()}</div></Td>
                 <Td><div>{dateTime(r.arrivedAt)}</div><div className="text-xs text-slate-500">{isOpen(r.status) ? minutesAgo(r.arrivedAt) : ""}</div></Td>
                 <Td>{r.doctorName}{isOpen(r.status) && !r.doctorAccepted && <div className="text-xs text-red-700">not accepted yet</div>}</Td>
@@ -50,7 +50,7 @@ export default function EmergencyBoard() {
                   <StatusBadge value={r.status} />
                   {r.disposition && <div className="mt-0.5 text-xs text-slate-600">{r.disposition === "OT" ? "to the operation theatre" : r.disposition === "ICU" ? "to the ICU" : "home"}{r.admission?.bed ? ` · ${r.admission.bed}` : ""}</div>}
                 </Td>
-                <Td>{Number(r.bill.due) > 0 ? <span className="font-medium text-red-700">{money(r.bill.due)}</span> : Number(r.bill.open) > 0 ? <span className="text-slate-600">{money(r.bill.open)} open</span> : <span className="text-slate-400">—</span>}</Td>
+                <Td>{Number(r.bill.due) > 0 ? <span className="font-medium text-red-700">{money(r.bill.due)}</span> : Number(r.bill.open) > 0 ? <span className="text-slate-600">{money(r.bill.open)} open</span> : <span className="text-slate-500">—</span>}</Td>
                 <Td><Link href={`/emergency/${r.id}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-slate-50">Open</Link></Td>
               </tr>
             ))}

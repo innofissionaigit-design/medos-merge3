@@ -58,7 +58,7 @@ export function AmendModal({ encounterId, currentVersion, content, diagnoses, rx
               <Input className="col-span-6" aria-label="Diagnosis" value={d.text} onChange={(e) => setDx(dx.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
               <Input className="col-span-3" aria-label="Code" placeholder="ICD code" value={d.code} onChange={(e) => setDx(dx.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))} />
               <select aria-label="Type" className="col-span-2 rounded-md border border-slate-300 px-2 text-sm" value={d.type} onChange={(e) => setDx(dx.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}><option value="PROVISIONAL">Provisional</option><option value="FINAL">Final</option><option value="SECONDARY">Secondary</option></select>
-              <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove diagnosis" onClick={() => setDx(dx.filter((_, j) => j !== i))}>✕</button>
+              <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove diagnosis" onClick={() => setDx(dx.filter((_, j) => j !== i))}>✕</button>
             </div>
           ))}
           <Button variant="ghost" onClick={() => setDx([...dx, { text: "", code: "", type: "FINAL" }])}>+ Add diagnosis</Button>

@@ -44,7 +44,9 @@ test("role decides order, not access (CLAUDE.md §24)", () => {
   const first = (role: string) => homeFor(visibleNav(perms, ALL_ON, [role]));
   assert.equal(first("PHARMACIST"), "/pharmacy");
   assert.equal(first("CASHIER"), "/billing");
-  assert.equal(first("NURSE"), "/nursing");
+  // The nurse starts on the dashboard (the samples to take and the ward tasks), with the ward worklist next in the menu.
+  assert.equal(first("NURSE"), "/dashboard");
+  assert.equal(visibleNav(perms, ALL_ON, ["NURSE"]).map((n) => n.href)[1], "/nursing");
   assert.equal(first("DOCTOR"), "/queue");
   assert.equal(visibleNav(perms, ALL_ON, ["RECEPTIONIST"]).map((n) => n.href).slice(0, 4).join(), "/dashboard,/patients,/appointments,/queue");
 });

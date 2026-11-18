@@ -81,7 +81,7 @@ export const PriorityBadge = ({ p }: { p: Req["priority"] }) => {
 
 /** The row colour that says how urgent a request is, the same on every lab desk: red for an emergency, an amber edge for urgent. */
 export const priorityRow = (p: Req["priority"]): string | undefined => (p === "EMERGENCY" ? "bg-red-50 hover:bg-red-100/70" : undefined);
-export const priorityEdge = (p: Req["priority"]): string => (p === "EMERGENCY" ? "border-l-4 border-l-red-600 font-semibold text-red-700" : p === "URGENT" ? "border-l-4 border-l-amber-400 text-slate-400" : "border-l-4 border-l-transparent text-slate-400");
+export const priorityEdge = (p: Req["priority"]): string => (p === "EMERGENCY" ? "border-l-4 border-l-red-600 font-semibold text-red-700" : p === "URGENT" ? "border-l-4 border-l-amber-400 text-slate-500" : "border-l-4 border-l-transparent text-slate-500");
 
 export const EVENT_LABEL: Record<string, string> = {
   CREATED: "Entered the queue", PRIORITY_CHANGED: "Priority changed", NURSE_ASSIGNED: "Nurse assigned", TECH_ASSIGNED: "Technician assigned", COLLECTED: "Sample taken / patient ready", SAMPLE_REJECTED: "Sample rejected", SENT_BACK: "Patient sent back",

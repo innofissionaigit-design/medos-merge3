@@ -114,7 +114,7 @@ export default function QueuePage() {
           {list.isLoading ? <div className="p-4"><Spinner /></div> : shown.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{needle || statusFilter ? "Nobody in the queue matches." : "Nobody is in the queue."}</p> : (
             <div className="overflow-x-auto px-4 pb-1">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 pr-3 font-medium">Token</th><th className="py-2 pr-3 font-medium">Patient</th><th className="py-2 pr-3 font-medium">Doctor</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2 pr-3 text-right font-medium">Waiting</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
+                <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">Token</th><th className="py-2 pr-3 font-medium">Patient</th><th className="py-2 pr-3 font-medium">Doctor</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2 pr-3 text-right font-medium">Waiting</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {shown.map((e) => {
                     const waiting = e.status === "WAITING";
@@ -128,7 +128,7 @@ export default function QueuePage() {
                           {e.tokenDate && e.tokenDate < todayStr && <div className="mt-1"><Badge tone="amber">from {e.tokenDate}</Badge></div>}
                           {e.priority !== "NORMAL" && <div className="mt-1"><Badge tone={PRIORITY_TONE[e.priority]}>{e.priority.toLowerCase()}</Badge></div>}
                         </td>
-                        <td className="py-2.5 pr-3">{e.patientId ? <Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/patients/${e.patientId}`}>{e.patientName}</Link> : <span className="font-semibold text-slate-900">{e.patientName}</span>}<div className="text-xs text-slate-400">{e.mrn}</div></td>
+                        <td className="py-2.5 pr-3">{e.patientId ? <Link className="font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/patients/${e.patientId}`}>{e.patientName}</Link> : <span className="font-semibold text-slate-900">{e.patientName}</span>}<div className="text-xs text-slate-500">{e.mrn}</div></td>
                         <td className="py-2.5 pr-3"><div className="text-slate-800">{e.practitionerName}</div><div className="text-xs text-slate-500">{e.departmentName}</div></td>
                         <td className="py-2.5 pr-3"><StatusBadge value={e.status} /></td>
                         <td className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${wait !== null && wait >= 60 && (waiting || called) ? "font-semibold text-amber-700" : "text-slate-600"}`}>{wait !== null ? `${wait} min` : "—"}</td>
