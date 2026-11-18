@@ -5,6 +5,7 @@ import { IdempotencyService } from "../../common/idempotency.service";
 import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { fmt } from "./billing.domain";
+import { InvoiceDeliveryService } from "./invoice-delivery.service";
 import { InvoicesService } from "./invoices.service";
 import { LedgerService } from "./ledger.service";
 import { amount } from "./money.schema";
@@ -26,6 +27,7 @@ export class PaymentsService {
     private readonly idempotency: IdempotencyService,
     private readonly ledger: LedgerService,
     private readonly invoices: InvoicesService,
+    private readonly billCopies: InvoiceDeliveryService,
   ) {}
 
   /**
@@ -37,6 +39,8 @@ export class PaymentsService {
     return this.idempotency.run(ctx.tenantId, `PAYMENT:${invoiceId}`, key, input, async (tx) => {
       const inv = await this.ledger.lock(tx, ctx, invoiceId);
       const r = await this.ledger.receive(tx, ctx, inv, input.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference ?? null })));
+      // The bill is now paid in full: queue the soft copy for the patient (email, WhatsApp, SMS). Never fails the payment.
+      await this.billCopies.queueAuto(tx, ctx, invoiceId);
       return { receipt: await this.receiptView(tx, ctx, r.receiptId), invoice: await this.invoices.view(tx, ctx, invoiceId) };
     });
   }

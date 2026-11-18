@@ -43,7 +43,7 @@ const cell = (v: unknown): string => (v === null || v === undefined ? "—" : v 
 
 /** Generic renderer: scalar fields become summary tiles, arrays of objects become tables. Reports are read-only views of server-computed data. */
 const NUMERIC = /^[-+]?[\d,]*\.?\d+(%| min)?$/;
-function Render({ data }: { data: Record<string, unknown> }) {
+function Render({ data, onRow }: { data: Record<string, unknown>; onRow?: ((table: string, row: Record<string, unknown>) => (() => void) | null) | undefined }) {
   const scalars = Object.entries(data).filter(([, v]) => isPrim(v));
   const objects = Object.entries(data).filter(([, v]) => v && !Array.isArray(v) && typeof v === "object") as [string, Record<string, unknown>][];
   const arrays = Object.entries(data).filter(([, v]) => Array.isArray(v) && v.length > 0 && typeof v[0] === "object") as [string, Record<string, unknown>[]][];
@@ -84,7 +84,7 @@ function Render({ data }: { data: Record<string, unknown> }) {
             <div className="overflow-x-auto px-4 pb-1">
               <table className="w-full text-sm">
                 <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500">{cols.map((c) => <th key={c} className={`py-2 pr-3 font-medium ${right.has(c) ? "text-right" : "text-left"}`}>{humanize(c)}</th>)}</tr></thead>
-                <tbody className="divide-y divide-slate-100">{rows.map((r, i) => <tr key={i} className="hover:bg-slate-50/70">{cols.map((c) => <td key={c} className={`py-2 pr-3 ${right.has(c) ? "whitespace-nowrap text-right tabular-nums text-slate-800" : "text-slate-800"}`}>{cell(r[c])}</td>)}</tr>)}</tbody>
+                <tbody className="divide-y divide-slate-100">{rows.map((r, i) => { const open = onRow?.(name, r) ?? null; return <tr key={i} {...(open ? { role: "button", tabIndex: 0, title: "Open the list of visits", onClick: open, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } } } : {})} className={open ? "cursor-pointer hover:bg-teal-50/70 focus:bg-teal-50/70 focus:outline-none" : "hover:bg-slate-50/70"}>{cols.map((c) => <td key={c} className={`py-2 pr-3 ${right.has(c) ? "whitespace-nowrap text-right tabular-nums text-slate-800" : "text-slate-800"}`}>{cell(r[c])}</td>)}</tr>; })}</tbody>
               </table>
             </div>
           </section>
@@ -108,6 +108,44 @@ function saveFile(title: string, base: string, data: Record<string, unknown>) {
 /** Number of table rows in a report, for the audit entry (the rows themselves are not sent). */
 const rowCount = (data: Record<string, unknown>): number => Object.values(data).reduce<number>((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
 
+interface Drill { title: string; query: Record<string, string> }
+interface VisitRow { encounterId: string; patientId: string; visit: string | null; token: number | null; time: string; patient: string; mrn: string | null; gender: string | null; mobile: string | null; doctor: string | null; department: string | null; status: string }
+
+/** The visits behind one row of an OPD report, shown in place of the report. */
+function VisitList({ drill, onBack }: { drill: Drill; onBack: () => void }) {
+  const { dateTime } = useMe();
+  const q = useQuery({ queryKey: ["report-opd-visits", drill.query], queryFn: () => api.get<{ total: number; visits: VisitRow[] }>("/reports/opd/visits", drill.query) });
+  const rows = q.data?.visits ?? [];
+  return (
+    <section className={PANEL}>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" onClick={onBack}>← Back to the report</Button>
+          <h2 className="text-sm font-semibold text-slate-800">{drill.title}</h2>
+        </div>
+        {q.data && <span className="text-xs text-slate-500">{q.data.total} {q.data.total === 1 ? "visit" : "visits"}{q.data.total > rows.length ? ` (first ${rows.length} shown)` : ""}</span>}
+      </header>
+      {q.isLoading ? <div className="p-4"><Spinner /></div> : q.error ? <div className="p-4"><ErrorNote error={q.error} /></div> : (
+        <div className="overflow-x-auto px-4 pb-1">
+          <table className="w-full text-sm" data-testid="report-visit-list">
+            <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500">{["Time", "Token", "Visit", "Patient", "MRN", "Mobile", "Doctor", "Department", "Status"].map((h) => <th key={h} className="py-2 pr-3 text-left font-medium">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.length === 0 && <tr><td colSpan={9} className="py-6 text-center text-slate-500">No visits.</td></tr>}
+              {rows.map((v) => (
+                <tr key={v.encounterId} className="hover:bg-slate-50/70">
+                  <td className="whitespace-nowrap py-2 pr-3">{dateTime(v.time)}</td><td className="py-2 pr-3 tabular-nums">{v.token ?? "—"}</td><td className="whitespace-nowrap py-2 pr-3">{v.visit ?? "—"}</td>
+                  <td className="py-2 pr-3 font-medium text-slate-900">{v.patient}</td><td className="whitespace-nowrap py-2 pr-3">{v.mrn ?? "—"}</td><td className="whitespace-nowrap py-2 pr-3">{v.mobile ?? "—"}</td>
+                  <td className="py-2 pr-3">{v.doctor ?? "—"}</td><td className="py-2 pr-3">{v.department ?? "—"}</td><td className="py-2 pr-3">{v.status === "COMPLETED" ? "Completed" : v.status === "ACTIVE" ? "In progress" : v.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function ReportsPage() {
   const { me, features, can } = useMe();
   const tz = me.facility?.timezone ?? me.tenant.timezone;
@@ -127,6 +165,16 @@ export default function ReportsPage() {
   const [to, setTo] = useState(todayIn(tz));
   const [days, setDays] = useState("90");
   const def = available.find((r) => r.id === id) ?? available[0];
+  // A row of an OPD report opens the list of its visits right here, in the Reports page; "Back to the report" returns to the counts.
+  const [drill, setDrill] = useState<Drill | null>(null);
+  useEffect(() => setDrill(null), [id, from, to]);
+  const drillFor = (table: string, r: Record<string, unknown>): (() => void) | null => {
+    const go = (d: Drill) => () => setDrill(d);
+    if (def?.id === "opd-daily" && table === "days" && typeof r["day"] === "string") return go({ title: `OPD visits on ${r["day"]}`, query: { from: r["day"], to: r["day"] } });
+    if (def?.id === "opd-doctor" && typeof r["practitionerId"] === "string") return go({ title: `OPD visits: ${String(r["doctor"] ?? "doctor")}`, query: { from, to, practitionerId: r["practitionerId"] } });
+    if (def?.id === "opd-dept" && typeof r["departmentId"] === "string") return go({ title: `OPD visits: ${String(r["department"] ?? "department")}`, query: { from, to, departmentId: r["departmentId"] } });
+    return null;
+  };
   // The export is written to the audit trail first; if that fails the file is not saved, so no export goes unrecorded.
   const exportCsv = useMutation({
     mutationFn: async (d: { def: ReportDef; data: Record<string, unknown> }) => {
@@ -193,7 +241,7 @@ export default function ReportsPage() {
                 </div>
               </section>
               {exportCsv.error ? <ErrorNote error={exportCsv.error} /> : null}
-              {q.isLoading ? <Spinner /> : q.error ? <ErrorNote error={q.error} /> : q.data ? <Render data={q.data} /> : null}
+              {drill ? <VisitList drill={drill} onBack={() => setDrill(null)} /> : q.isLoading ? <Spinner /> : q.error ? <ErrorNote error={q.error} /> : q.data ? <Render data={q.data} onRow={drillFor} /> : null}
             </div>
           </div>
         )}

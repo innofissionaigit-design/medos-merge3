@@ -40,6 +40,10 @@ import { CatalogService } from "./modules/billing/catalog.service";
 import { InvoicesService } from "./modules/billing/invoices.service";
 import { LedgerService } from "./modules/billing/ledger.service";
 import { PaymentsService } from "./modules/billing/payments.service";
+import { PatientMessagesService } from "./modules/patients/patient-messages.service";
+import { InvoiceDeliveryService } from "./modules/billing/invoice-delivery.service";
+import { OpdLedgerService } from "./modules/billing/opd-ledger.service";
+import { InvoiceDeliveryController, OpdLedgerController, PublicBillController } from "./modules/billing/invoice-delivery.controller";
 import { ShiftsService } from "./modules/billing/shifts.service";
 import { DispensingService } from "./modules/pharmacy/dispensing.service";
 import { InventoryService } from "./modules/pharmacy/inventory.service";
@@ -217,7 +221,7 @@ export const CONTROLLERS = [
   HealthController, AuthController, TenantsController, FacilitiesController,
   UsersController, NumberingController, AuditController, MastersController, PatientsController,
   EncountersController, AppointmentsController, QueueController, VitalsController,
-  AllergiesController, ConsultationsController, TestOrdersController, PrescriptionsController, BillingController, PharmacyController, StockLocationsController, WardStoresController, PrescriptionDeliveryController, EarningsReportsController, LabController, RadiologyController, RadImagesController, LimsController, ClaimsController, ClaimDocumentsController, PayrollController, AttendanceController, PortalAuthController, PortalController, AppointmentRequestsController, TelemedicineController, NotificationsController, EmailController, AbdmController, AiController, IpdController, NursingController, DischargeController, SettingsController, MedicineMasterController, PrintController, ReportsController, FilesController, FollowUpsController, PrivacyController, ImportsController, AdvancesController, StatementController, BookingApiController, IntegrationsController, EarningsController, ScansController, TemplatesController, OcrConfigController, PrescriptionShareController, PublicPrescriptionController, EmergencyController, IcuController, OverviewController, RequestsController, PlannedController, RoundsController,
+  AllergiesController, ConsultationsController, TestOrdersController, PrescriptionsController, BillingController, PharmacyController, StockLocationsController, WardStoresController, PrescriptionDeliveryController, InvoiceDeliveryController, PublicBillController, OpdLedgerController, EarningsReportsController, LabController, RadiologyController, RadImagesController, LimsController, ClaimsController, ClaimDocumentsController, PayrollController, AttendanceController, PortalAuthController, PortalController, AppointmentRequestsController, TelemedicineController, NotificationsController, EmailController, AbdmController, AiController, IpdController, NursingController, DischargeController, SettingsController, MedicineMasterController, PrintController, ReportsController, FilesController, FollowUpsController, PrivacyController, ImportsController, AdvancesController, StatementController, BookingApiController, IntegrationsController, EarningsController, ScansController, TemplatesController, OcrConfigController, PrescriptionShareController, PublicPrescriptionController, EmergencyController, IcuController, OverviewController, RequestsController, PlannedController, RoundsController,
   BedTurnoverController, PostDischargeController, RecordRetentionController, HousekeepingController, ProcurementController, ProcurementExtrasController, AftercareController, PublicFeedbackController, ProceduresController, InsuranceMoneyController, ClaimChecklistController, DischargeFlowController, MissedBillingController,
 ];
 
@@ -229,7 +233,7 @@ export const CONTROLLERS = [
     AuthService, TenantsService, FacilitiesService, UsersService, NumberingService, MastersService, PatientsService, IdempotencyService,
     EncountersService, AppointmentsService, QueueService, VitalsService,
     ClinicianService, AllergiesService, ConsultationsService, PrescriptionsService,
-    CatalogService, InvoicesService, LedgerService, PaymentsService, ShiftsService,
+    CatalogService, InvoicesService, LedgerService, PaymentsService, InvoiceDeliveryService, OpdLedgerService, PatientMessagesService, ShiftsService,
     StockService, MedicinesService, InventoryService, StockLocationsService, DispensingService,
     WardsService, AdmissionsService, ChargesService, NursingService, MarService, SettingsService, DischargeService, SummaryService, PrintService, ReportsService, FilesService, StorageService, ScanService,
     RemindersService, ReminderWorker, FollowUpsService, TestOrdersService, PrescriptionDraftService, CashierViewService, CashierCollectService, PrivacyService, ImportsService, MergeService, PatientIdentifiersService, AdvancesService, StatementService, BookingApiService, IntegrationsService, EarningsService, ShareLedgerService, PayoutsService, LabService, RadiologyService, RadImagesService, LimsCoreService, LimsService, LimsScheduleService, LimsInsightsService, LimsOpsService, LimsMessagesService, LimsBillingService, ClaimsService, ClaimDocumentsService, PayrollService, AttendanceService, PortalAuthService, PortalService, PortalGuard, TelemedicineService, NotificationsService, EmailService, EmailWorker, AbdmService, AiService, ScansService, TemplatesService, OcrConfigService, SecretsService, PrescriptionShareService, RegistrationFeeService, EmergencyBillService, EmergencyService, IcuService, OverviewService, RequestsService, PlannedCore, PlannedService, PlannedFinanceService, RoundsService, WardBoardService, ProcedureRecordsService, RoundWorker,

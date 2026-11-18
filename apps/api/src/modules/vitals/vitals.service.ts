@@ -8,6 +8,7 @@ import type { RequestContext } from "../../common/request-context";
 import { assertPatientVisible, visitScope } from "../../common/data-scope";
 import { chartPatientIds } from "../patients/patient-links";
 import { EncountersService } from "../encounters/encounters.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { bmi, fahrenheitToCelsius, inRange, OBS_META, WRITABLE_TYPES, type ObsType } from "./vitals.domain";
 
 const reading = z.object({
@@ -46,7 +47,7 @@ export const toObservationView = (o: Row, names?: Map<string, string>) => ({
 
 @Injectable()
 export class VitalsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly encounters: EncountersService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly encounters: EncountersService, private readonly notifications: NotificationsService) {}
 
   async record(ctx: RequestContext, encounterId: string, input: z.infer<typeof recordVitalsSchema>) {
     const now = new Date();
@@ -84,6 +85,9 @@ export class VitalsService {
 
       await tx.observation.createMany({ data: rows });
       await this.audit.record(tx, actorOf(ctx), { action: "VITALS_RECORDED", entityType: "Encounter", entityId: encounterId, metadata: { types: rows.map((r) => r.type as string), count: rows.length } });
+      // The nurse has taken the vitals: tell the doctor of the visit (once for each entry), pointing at the visit where they now show.
+      const doctor = await this.notifications.doctorOfEncounter(tx, ctx.tenantId, encounterId);
+      if (doctor && doctor !== ctx.userId) await this.notifications.notify(tx, [doctor], { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "VITALS_TAKEN", entityType: "Encounter", entityId: encounterId, dedupeKey: `VITALS_TAKEN:${encounterId}:${now.getTime()}` });
       return this.listInTx(tx, ctx, encounterId, false);
     });
   }
@@ -124,7 +128,9 @@ export class VitalsService {
       this.prisma.observation.findMany({ where, select: VIEW, orderBy: { recordedAt: "desc" }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
       this.prisma.observation.count({ where }),
     ]);
-    return { items: rows.map((r) => toObservationView(r)), total };
+    const users = await this.prisma.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: [...new Set(rows.map((r) => r.recordedById))] } }, select: { id: true, fullName: true } });
+    const names = new Map(users.map((u) => [u.id, u.fullName]));
+    return { items: rows.map((r) => toObservationView(r, names)), total };
   }
 
   private async latestValue(tx: Db, ctx: RequestContext, patientId: string, type: ObsType): Promise<Decimal | null> {

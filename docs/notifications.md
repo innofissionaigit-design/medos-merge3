@@ -10,6 +10,7 @@ A bell in the top bar tells staff that something needs them, without refreshing 
 | A critical radiology finding is signed or amended | The doctor of that visit | LIS → Radiology |
 | A patient joins a doctor's queue | That doctor | OPD queue |
 | A patient joins the queue and is waiting for vitals | Nurses of the facility (`VITALS_QUEUE_ALERT`) | OPD queue: the nurse records the vitals there |
+| The nurse has recorded the patient's vitals | The doctor of the visit | The visit page; the readings also show on the patient's profile (Vitals card) |
 | A prescription is signed | Pharmacy staff who may dispense (`PHARMACY_DISPENSE`) | Pharmacy |
 | A pharmacy bill is issued | Cashiers (`PAYMENT_CREATE`) | Billing |
 | A booking is made by another system or a voice bot (API key), or a patient asks for an appointment in the patient app | Reception (`APPOINTMENT_CREATE`) | Appointments |

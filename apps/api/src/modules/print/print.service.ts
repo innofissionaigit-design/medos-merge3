@@ -83,7 +83,7 @@ export class PrintService {
       : { contentType: "text/html; charset=utf-8", body: toHtml(doc), fileName: `${doc.fileBase}.html` };
   }
 
-  async invoice(ctx: RequestContext, invoiceId: string, format: PrintFormat = "html"): Promise<Rendered> {
+  async invoice(ctx: RequestContext, invoiceId: string, format: PrintFormat = "html", opts: { quiet?: boolean } = {}): Promise<Rendered> {
     const inv = await this.invoices.get(ctx, invoiceId);
     if (inv.status === "DRAFT") throw new DomainError("INVALID_STATE", "Issue the invoice before printing it", 409);
     const e = await this.env(ctx);
@@ -101,7 +101,7 @@ export class PrintService {
         ...advance,
         ...(inv.notes ? [{ t: "para", text: inv.notes } as Block] : []),
       ],
-    }));
+    }), opts.quiet === true);
   }
 
   /**

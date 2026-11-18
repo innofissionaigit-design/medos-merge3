@@ -8,6 +8,7 @@ import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { patientScope } from "../../common/data-scope";
 import { NumberingService } from "../numbering/numbering.service";
+import { PatientMessagesService } from "./patient-messages.service";
 import { RegistrationFeeService, registrationSettlementSchema, type RegistrationMode } from "./registration-fee.service";
 import {
   compareSeverity, currentAge, normalizeMobile, normalizeName, scoreDuplicate,
@@ -150,6 +151,7 @@ export class PatientsService {
     private readonly numbering: NumberingService,
     private readonly idempotency: IdempotencyService,
     private readonly registrationFee: RegistrationFeeService,
+    private readonly messages: PatientMessagesService,
   ) {}
 
   async search(ctx: RequestContext, q: z.infer<typeof searchPatientsSchema>) {
@@ -260,6 +262,8 @@ export class PatientsService {
       await this.audit.record(tx, actorOf(ctx), { action: "PATIENT_CREATED", entityType: "Patient", entityId: created.id, metadata: { mrn, ...(extras.legacyId ? { legacyId: extras.legacyId } : {}) } });
       // The fee is settled in this same transaction: if it cannot be (no payment given, wrong amount, no open shift for cash), the patient and the Patient ID are not created.
       const fee = await this.registrationFee.onRegister(tx, ctx, created.id, extras.registration ?? "COLLECT", registration);
+      // Welcome the patient with their Patient ID (not for patients brought in by a data migration). Never fails the registration.
+      if (!extras.legacyId && (extras.registration ?? "COLLECT") !== "NONE") await this.messages.queueRegistration(tx, ctx, created.id, mrn);
       const view = { ...toPatientView({ ...created, identifiers: [{ value: mrn }], mergedInto: null, mergedFrom: [] }), registration: fee };
       if (candidates.length > 0 && duplicateOverride) {
         await this.audit.record(tx, actorOf(ctx), {

@@ -15,6 +15,7 @@ import { MergeCard } from "@/components/patient-merge";
 import { RegistrationFeeCard } from "@/components/registration-fee";
 import { EditPatientModal, PatientPhoto, type EditablePatient } from "@/components/patient-extras";
 import { AbhaCard } from "@/components/abdm";
+import { PatientVitalsCard } from "@/components/patient-vitals";
 import { Button, Card, ErrorNote, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
 import { api, newKey, printUrl } from "@/lib/api";
 import { ageText, type AgeValue } from "@/lib/format";
@@ -142,6 +143,7 @@ export default function PatientPage() {
               {(pt.guardianName || pt.emergencyContactName) && <div className="col-span-2"><KV label="Guardian / emergency contact">{[pt.guardianName && `${pt.guardianName}${pt.guardianRelation ? ` (${pt.guardianRelation})` : ""} ${pt.guardianMobile ?? ""}`, pt.emergencyContactName && `${pt.emergencyContactName} ${pt.emergencyContactMobile ?? ""}`].filter(Boolean).join(" · ")}</KV></div>}
             </dl>
           </Card>
+          {!pt.mergedInto && <PatientVitalsCard patientId={pt.id} />}
           <Card title="Visits and admissions">
             {enc.isLoading ? <Spinner /> : (
               <Table head={["Visit", "Type", "Status", "Doctor", "Started"]} {...(enc.data?.data.length === 0 ? { empty: "No visits yet." } : {})}>

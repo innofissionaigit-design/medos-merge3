@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UseAdvanceButton } from "@/components/advance-extras";
+import { BillCopyCard } from "@/components/bill-copy";
 import { DoctorShareCard } from "@/components/doctor-share";
 import { Gate } from "@/components/gate";
 import { Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
@@ -245,6 +246,7 @@ export default function InvoicePage() {
       )}
       <ErrorNote error={issue.error ?? cancel.error ?? emailReceipt.error} />
       {emailReceipt.data && <Notice tone={emailReceipt.data.queued ? "success" : "warn"}>{emailReceipt.data.queued ? "The receipt email is queued and will be sent shortly." : (notEmailed[emailReceipt.data.reason ?? ""] ?? "The receipt email was not queued.")}</Notice>}
+      {i.status !== "DRAFT" && i.status !== "CANCELLED" && <div className="mb-4"><BillCopyCard invoiceId={i.id} /></div>}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Items" className="lg:col-span-2">
           <Table head={i.taxSplit ? ["#", "Item", "Qty", "Rate", "Tax", "CGST", "SGST", "Amount"] : ["#", "Item", "Qty", "Rate", "Tax", "Amount"]}>

@@ -14,6 +14,8 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   CRITICAL_LAB_RESULT: { text: "A critical lab result is waiting", href: "/lis?branch=pathology", critical: true },
   CRITICAL_RAD_FINDING: { text: "A critical radiology finding is waiting", href: "/lis?branch=radiology", critical: true },
   QUEUE_PATIENT_ADDED: { text: "A patient joined your queue", href: "/queue" },
+  OPD_VISIT_TAKEN: { text: "An OPD visit was taken: make the bill and collect the payment", href: "/billing" },
+  VITALS_TAKEN: { text: "The nurse has recorded a patient's vitals", href: "/queue" },
   NURSE_VITALS_DUE: { text: "A patient is waiting for vitals", href: "/queue" },
   PRESCRIPTION_AT_PHARMACY: { text: "A prescription is waiting at the pharmacy", href: "/pharmacy" },
   PHARMACY_BILL_WAITING: { text: "A pharmacy bill is waiting for payment", href: "/billing" },
@@ -49,7 +51,7 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
 };
 export const kindOf = (type: string) => KINDS[type] ?? { text: "New notification", href: "/dashboard" };
 /** An emergency notice leads straight to the case it is about. */
-export const hrefOf = (r: NotificationRow): string => r.href ?? (r.entityType === "WardRound" && r.entityId && r.type === "ROUND_DUE" ? `/rounds/${r.entityId}` : r.type === "NURSING_INSTRUCTION" && r.entityId ? `/ipd/${r.entityId}` : r.entityType === "PlannedAdmission" && r.entityId ? `/planned/${r.entityId}` : r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
+export const hrefOf = (r: NotificationRow): string => r.href ?? (r.entityType === "WardRound" && r.entityId && r.type === "ROUND_DUE" ? `/rounds/${r.entityId}` : r.type === "NURSING_INSTRUCTION" && r.entityId ? `/ipd/${r.entityId}` : r.entityType === "PlannedAdmission" && r.entityId ? `/planned/${r.entityId}` : r.type === "VITALS_TAKEN" && r.entityId ? `/visits/${r.entityId}` : r.entityType === "EmergencyCase" && r.entityId ? `/emergency/${r.entityId}` : (r.type.startsWith("ICU_") || (r.type.startsWith("ORDER_REQUEST") && r.entityType === "Admission")) && r.entityId ? `/icu/${r.entityId}` : kindOf(r.type).href);
 
 /**
  * The bell in the top bar. The browser listens to a live stream that says "something changed" and then fetches; if the stream is not open

@@ -6,7 +6,7 @@
 export const LANGUAGES = ["en", "bn", "hi"] as const;
 export type EmailLanguage = (typeof LANGUAGES)[number];
 
-export const TEMPLATE_KEYS = ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST_SCHEDULED", "TEST"] as const;
+export const TEMPLATE_KEYS = ["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "VIDEO_CONSULTATION", "RECEIPT", "REPORT_READY", "TEST_SCHEDULED", "REGISTRATION", "TEST"] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 export interface TemplateDef {
@@ -71,6 +71,15 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       en: { subject: "Your test at {facility}", body: "Dear {name},\n\nYour {departments} test at {facility} is booked. Time: {when}.\n\nBefore you come: {instructions}\n\nYour report will be ready at the reception desk.\n\n{facility}" },
       bn: { subject: "{facility}-এ আপনার পরীক্ষা", body: "প্রিয় {name},\n\n{facility}-এ আপনার {departments} পরীক্ষা নির্ধারিত হয়েছে। সময়: {when}।\n\nআসার আগে: {instructions}\n\nরিপোর্ট প্রস্তুত হলে রিসেপশন ডেস্ক থেকে সংগ্রহ করুন।\n\n{facility}" },
       hi: { subject: "{facility} में आपकी जाँच", body: "प्रिय {name},\n\n{facility} में आपकी {departments} जाँच तय हो गई है। समय: {when}।\n\nआने से पहले: {instructions}\n\nआपकी रिपोर्ट रिसेप्शन डेस्क पर तैयार मिलेगी।\n\n{facility}" },
+    },
+  },
+  REGISTRATION: {
+    key: "REGISTRATION", label: "Registration confirmed", description: "Sent to the patient right after they are registered: a welcome and their Patient ID (MRN) to quote on the next visit. No clinical content.",
+    vars: { name: "Asha", mrn: "MRN-000123", facility: "City Hospital" },
+    defaults: {
+      en: { subject: "Welcome to {facility}", body: "Dear {name},\n\nYou are now registered at {facility}. Your Patient ID is {mrn}. Please quote it when you call or visit, so we can find your records quickly.\n\n{facility}" },
+      bn: { subject: "{facility}-এ স্বাগতম", body: "প্রিয় {name},\n\nআপনি এখন {facility}-এ নিবন্ধিত। আপনার পেশেন্ট আইডি {mrn}। ফোন বা সরাসরি এলে এটি জানাবেন, যাতে আমরা দ্রুত আপনার রেকর্ড খুঁজে পাই।\n\n{facility}" },
+      hi: { subject: "{facility} में आपका स्वागत है", body: "प्रिय {name},\n\nआप अब {facility} में पंजीकृत हैं। आपकी पेशेंट आईडी {mrn} है। फोन करते या आते समय इसे बताएँ, ताकि हम आपका रिकॉर्ड जल्दी ढूँढ सकें।\n\n{facility}" },
     },
   },
   TEST: {

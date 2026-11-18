@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CANCEL_REASONS, ReasonSelect } from "@/components/reason-select";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import { showTemp, useTempUnit } from "@/lib/temperature";
+import { TempUnitSwitch } from "./temp-unit";
 import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, Modal, Select, Spinner, Table, Td } from "./ui";
 
 const VITALS: { type: string; label: string; unit: string }[] = [
@@ -18,9 +20,10 @@ export function VitalsCard({ encounterId, open, onChange }: { encounterId: strin
   const { can, dateTime } = useMe();
   const qc = useQueryClient();
   const [vit, setVit] = useState<Record<string, string>>({});
+  const [tu, setTu] = useTempUnit();
   const list = useQuery({ queryKey: ["ipd-vitals", encounterId], queryFn: () => api.get<{ items: Obs[] }>(`/encounters/${encounterId}/observations`), enabled: can("VITALS_READ") });
   const add = useMutation({
-    mutationFn: () => api.post(`/encounters/${encounterId}/observations`, { observations: Object.entries(vit).filter(([, v]) => v.trim() !== "").map(([type, v]) => ({ type, value: Number(v) })) }),
+    mutationFn: () => api.post(`/encounters/${encounterId}/observations`, { observations: Object.entries(vit).filter(([, v]) => v.trim() !== "").map(([type, v]) => (type === "TEMPERATURE" ? { type, value: Number(v), unit: tu } : { type, value: Number(v) })) }),
     onSuccess: async () => { setVit({}); await qc.invalidateQueries({ queryKey: ["ipd-vitals", encounterId] }); onChange?.(); },
   });
   // A wrong reading is kept in the history and hidden; the person says why before it is marked.
@@ -31,7 +34,9 @@ export function VitalsCard({ encounterId, open, onChange }: { encounterId: strin
     <Card title="Vitals">
       {open && can("VITALS_CREATE") && (
         <form className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          {VITALS.map((v) => <Input key={v.type} inputMode="decimal" placeholder={`${v.label} (${v.unit})`} aria-label={v.label} value={vit[v.type] ?? ""} onChange={(e) => setVit({ ...vit, [v.type]: e.target.value })} />)}
+          {VITALS.map((v) => v.type === "TEMPERATURE" ? (
+            <div key={v.type} className="flex items-center gap-1"><Input inputMode="decimal" placeholder={`${v.label} (°${tu})`} aria-label={v.label} value={vit[v.type] ?? ""} onChange={(e) => setVit({ ...vit, [v.type]: e.target.value })} /><TempUnitSwitch unit={tu} onChange={setTu} /></div>
+          ) : <Input key={v.type} inputMode="decimal" placeholder={`${v.label} (${v.unit})`} aria-label={v.label} value={vit[v.type] ?? ""} onChange={(e) => setVit({ ...vit, [v.type]: e.target.value })} />)}
           <Button type="submit" variant="secondary" loading={add.isPending} disabled={!Object.values(vit).some((x) => x.trim())}>Record vitals</Button>
           <div className="col-span-2 sm:col-span-4"><ErrorNote error={add.error ?? wrong.error} /></div>
         </form>
@@ -39,7 +44,7 @@ export function VitalsCard({ encounterId, open, onChange }: { encounterId: strin
       {list.isLoading ? <Spinner /> : (
         <Table head={["When", "Reading", "Value", ""]} {...(rows.length === 0 ? { empty: "No vitals recorded yet." } : {})}>
           {rows.map((o) => (
-            <tr key={o.id}><Td>{dateTime(o.recordedAt)}</Td><Td>{VITALS.find((v) => v.type === o.type)?.label ?? o.type}</Td><Td>{o.value} {o.unit}</Td>
+            <tr key={o.id}><Td>{dateTime(o.recordedAt)}</Td><Td>{VITALS.find((v) => v.type === o.type)?.label ?? o.type}</Td><Td>{o.type === "TEMPERATURE" ? `${showTemp(o.value, tu)} °${tu}` : `${o.value} ${o.unit}`}</Td>
               <Td>{open && can("VITALS_CREATE") && (fix?.id === o.id ? (
                 <span className="flex flex-wrap items-center gap-1"><Input aria-label="Why is this reading wrong?" className="w-44" placeholder="Why is it wrong?" value={fix.reason} onChange={(e) => setFix({ id: o.id, reason: e.target.value })} />
                   <Button variant="danger" disabled={fix.reason.trim().length < 3} loading={wrong.isPending} onClick={() => wrong.mutate(fix)}>Mark as wrong</Button><Button variant="ghost" onClick={() => setFix(null)}>Keep</Button></span>

@@ -288,3 +288,30 @@ model LimsMessage {
   @@unique([tenantId, batchId, kind, channel])
   @@index([status, nextAttemptAt])
 }
+
+// ───────────────────────── Messages to patients (docs/registration-message.md) ─────────────────────────
+
+/// One WhatsApp or SMS message to a patient that carries no private link (for now: the welcome after registration). The text and the full number are never kept, only who it was for (masked), the channel, and what happened. Email goes through the email outbox instead.
+model PatientMessage {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String        @db.Uuid
+  facilityId        String        @db.Uuid
+  patientId         String        @db.Uuid
+  /// REGISTRATION.
+  kind              String
+  channel           String
+  toMask            String
+  status            MessageStatus @default(PENDING)
+  attempts          Int           @default(0)
+  nextAttemptAt     DateTime      @default(now()) @db.Timestamptz(3)
+  providerName      String?
+  providerMessageId String?
+  lastError         String?
+  createdById       String        @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?     @db.Timestamptz(3)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, patientId, kind, channel])
+  @@index([status, nextAttemptAt])
+}

@@ -12,6 +12,7 @@ import { FeeLine, SkipFeeModal, TakeFeeModal, type FeeInfo } from "@/components/
 import { DuplicateBookingNotice, isDuplicateBooking } from "@/components/booking-guard";
 import { GiveBackDeposit } from "@/components/advance-extras";
 import { AppointmentRequestsCard } from "@/components/appointment-requests";
+import { ExpectedFollowUpsCard } from "@/components/expected-follow-ups";
 import { DoctorSchedules, filterDoctors } from "@/components/doctor-schedules";
 import { MakeVideoButton } from "@/components/telemedicine";
 import { Button, ErrorNote, Field, Input, Modal, Notice, PageHeader, Select, Spinner, StatusBadge } from "@/components/ui";
@@ -238,6 +239,7 @@ export default function AppointmentsPage() {
           </div>
         </section>
         <AppointmentRequestsCard />
+        <ExpectedFollowUpsCard />
         <ErrorNote error={act.error} />
         {notice && <div className="mb-3"><Notice tone="success"><span className="mr-3">{notice}</span><button className="text-sm underline" onClick={() => setNotice(null)}>Dismiss</button></Notice></div>}
         <section className={`${PANEL} mb-3`}>

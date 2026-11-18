@@ -11,6 +11,7 @@ import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, PageHeader
 import { needsDesk, useDesk } from "@/lib/desk";
 import { api } from "@/lib/api";
 import { useT, T } from "@/lib/i18n";
+import { OpdLedgerCard } from "@/components/opd-ledger";
 import { useMe } from "@/lib/me";
 import { visitForBill, type BillableVisit } from "@/lib/visit-for-bill";
 import { Icon, PANEL, useDeskKeys } from "@/components/desk-ui";
@@ -185,6 +186,7 @@ function BillingInner() {
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="space-y-3 lg:col-span-2">
             {/* Prescriptions and tests waiting to be billed come first: they are the cashier's work queue. */}
+            {can("OPD_BILL_ALERT") && <OpdLedgerCard />}
             {can("TEST_BILL") && <ReceptionChargesLedger />}
             {can("TEST_BILL") && <CashierPrescriptions />}
 

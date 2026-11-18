@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query } from "@nestjs/common";
 import { Feature } from "../../common/feature.guard";
 import { Ctx, parse, RequireAnyPermission } from "../../common/http";
 import type { RequestContext } from "../../common/request-context";
-import { exportLogSchema, expirySchema, outstandingSchema, rangeSchema, ReportsService } from "./reports.service";
+import { exportLogSchema, expirySchema, opdVisitsSchema, outstandingSchema, rangeSchema, ReportsService } from "./reports.service";
 
 /**
  * Operational reports only. All are read-only, facility-scoped from the session, and bounded (date ranges ≤ 93 days).
@@ -20,6 +20,11 @@ export class ReportsController {
   @RequireAnyPermission("REPORT_READ", "REPORT_OPD")
   @Get("opd/daily")
   async opdDaily(@Ctx() ctx: RequestContext, @Query() q: unknown) { return { data: await this.reports.opdDaily(ctx, parse(rangeSchema, q)) }; }
+
+  /** The visits behind one row of an OPD report (a day, a doctor or a department). */
+  @RequireAnyPermission("REPORT_READ", "REPORT_OPD")
+  @Get("opd/visits")
+  async opdVisits(@Ctx() ctx: RequestContext, @Query() q: unknown) { return { data: await this.reports.opdVisits(ctx, parse(opdVisitsSchema, q)) }; }
 
   @RequireAnyPermission("REPORT_READ", "REPORT_OPD")
   @Get("opd/by-doctor")

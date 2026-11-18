@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { type AgeValue } from "@/lib/format";
 import { useMe } from "@/lib/me";
+import { showTemp, useTempUnit } from "@/lib/temperature";
+import { TempUnitSwitch } from "./temp-unit";
 import { Badge, Button, Card, ErrorNote, Field, Input, Notice, Select, Table, Td, Textarea } from "./ui";
 
 export interface IcuRow {
@@ -38,7 +40,7 @@ export function useRefreshIcu() {
 
 const OPTIONS = [[5, "Every 5 minutes"], [15, "Every 15 minutes"], [60, "Every hour"], [120, "Every 2 hours"]] as const;
 const COLS = [["PULSE", "HR"], ["SYSTOLIC_BP", "SBP"], ["DIASTOLIC_BP", "DBP"], ["SPO2", "SpO₂"], ["TEMPERATURE", "Temp"], ["RESPIRATORY_RATE", "RR"], ["BLOOD_GLUCOSE", "Glucose"]] as const;
-const FIELDS = [["SYSTOLIC_BP", "BP systolic (mmHg)"], ["DIASTOLIC_BP", "BP diastolic (mmHg)"], ["PULSE", "Pulse (/min)"], ["SPO2", "SpO₂ (%)"], ["TEMPERATURE", "Temperature (°C)"], ["RESPIRATORY_RATE", "Resp. rate (/min)"], ["BLOOD_GLUCOSE", "Glucose (mg/dL)"]] as const;
+const FIELDS = [["SYSTOLIC_BP", "BP systolic (mmHg)"], ["DIASTOLIC_BP", "BP diastolic (mmHg)"], ["PULSE", "Pulse (/min)"], ["SPO2", "SpO₂ (%)"], ["TEMPERATURE", "Temperature"], ["RESPIRATORY_RATE", "Resp. rate (/min)"], ["BLOOD_GLUCOSE", "Glucose (mg/dL)"]] as const;
 
 /** How often vitals are taken. The ICU doctor picks 5, 15 minutes, 1 or 2 hours; everyone sees what is in force and when the next reading is due. */
 export function ScheduleCard({ s, onChange }: { s: IcuStay; onChange: () => void }) {
@@ -72,15 +74,18 @@ export function ScheduleCard({ s, onChange }: { s: IcuStay; onChange: () => void
 export function IcuVitalsCard({ s, onChange }: { s: IcuStay; onChange: () => void }) {
   const { can, dateTime } = useMe();
   const [v, setV] = useState<Record<string, string>>({});
+  const [tu, setTu] = useTempUnit();
   const add = useMutation({
-    mutationFn: () => api.post(`/encounters/${s.encounterId}/observations`, { observations: Object.entries(v).filter(([, x]) => x.trim() !== "").map(([type, x]) => ({ type, value: Number(x) })) }),
+    mutationFn: () => api.post(`/encounters/${s.encounterId}/observations`, { observations: Object.entries(v).filter(([, x]) => x.trim() !== "").map(([type, x]) => (type === "TEMPERATURE" ? { type, value: Number(x), unit: tu } : { type, value: Number(x) })) }),
     onSuccess: () => { setV({}); onChange(); },
   });
   return (
     <Card title="Vitals" actions={s.schedule.lastVitalsAt ? <span className="text-xs text-slate-500">last {dateTime(s.schedule.lastVitalsAt)}</span> : undefined}>
       {can("ICU_NURSE") && can("VITALS_CREATE") && (
         <form className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          {FIELDS.map(([k, label]) => <Input key={k} inputMode="decimal" placeholder={label} aria-label={label.replace(/ \(.*/, "")} value={v[k] ?? ""} onChange={(e) => setV({ ...v, [k]: e.target.value })} />)}
+          {FIELDS.map(([k, label]) => k === "TEMPERATURE" ? (
+            <div key={k} className="flex items-center gap-1"><Input inputMode="decimal" placeholder={`${label} (°${tu})`} aria-label={label} value={v[k] ?? ""} onChange={(e) => setV({ ...v, [k]: e.target.value })} /><TempUnitSwitch unit={tu} onChange={setTu} /></div>
+          ) : <Input key={k} inputMode="decimal" placeholder={label} aria-label={label.replace(/ \(.*/, "")} value={v[k] ?? ""} onChange={(e) => setV({ ...v, [k]: e.target.value })} />)}
           <Button type="submit" loading={add.isPending} disabled={!Object.values(v).some((x) => x.trim())}>Record vitals</Button>
           <div className="col-span-2 sm:col-span-4"><ErrorNote error={add.error} /></div>
         </form>
@@ -91,7 +96,7 @@ export function IcuVitalsCard({ s, onChange }: { s: IcuStay; onChange: () => voi
           <tbody className="divide-y divide-slate-100">{s.readings.slice(0, 40).map((r, i) => (
             <tr key={i} className={r.phase === "BEFORE" ? "text-slate-500" : ""}>
               <td className="whitespace-nowrap px-2 py-1">{dateTime(r.at)}{r.phase === "BEFORE" && <span className="ml-1 text-xs">(before the ICU)</span>}</td>
-              {COLS.map(([k]) => <td key={k} className="px-2 py-1">{r.values[k] ? Number(r.values[k].value) : "—"}</td>)}
+              {COLS.map(([k]) => <td key={k} className="px-2 py-1">{r.values[k] ? (k === "TEMPERATURE" ? showTemp(r.values[k].value, tu) : Number(r.values[k].value)) : "—"}</td>)}
               <td className="px-2 py-1">{r.by ?? "—"}</td>
             </tr>
           ))}</tbody>

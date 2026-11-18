@@ -110,6 +110,8 @@ model Invoice {
   encounter   Encounter?    @relation(fields: [encounterId], references: [id], onDelete: Restrict)
   lines       InvoiceLine[]
   receipts    Receipt[]
+  shares      InvoiceShare[]
+  deliveries  InvoiceDelivery[]
   refunds     Refund[]
   creditNotes CreditNote[]
   advanceUses AdvanceUse[]
@@ -680,4 +682,61 @@ model LabResultVersion {
 
   @@unique([tenantId, id])
   @@unique([resultId, version])
+}
+
+// ───────────────────────── Soft copy of a bill (docs/bill-copy.md) ─────────────────────────
+
+/// A private link to one issued bill, opened by the patient without signing in. Only a hash of the secret is kept; the link expires, can be revoked, and every opening is counted.
+model InvoiceShare {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  facilityId   String    @db.Uuid
+  invoiceId    String    @db.Uuid
+  patientId    String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime  @db.Timestamptz(3)
+  status       String    @default("ACTIVE")
+  createdById  String    @db.Uuid
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  openCount    Int       @default(0)
+  lastOpenedAt DateTime? @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, invoiceId, createdAt(sort: Desc)])
+}
+
+/// One message that carries the patient's bill link, by email, WhatsApp or SMS. The text, the address and the full number are never kept here, only who it was for (masked), the channel, and what happened.
+model InvoiceDelivery {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String        @db.Uuid
+  facilityId        String        @db.Uuid
+  invoiceId         String        @db.Uuid
+  patientId         String        @db.Uuid
+  shareId           String?       @db.Uuid
+  /// EMAIL, WHATSAPP or SMS.
+  channel           String
+  toMask            String
+  /// AUTO (when the bill is paid) or MANUAL (staff pressed Send).
+  trigger           String
+  /// The same bill, amount paid and channel is queued once automatically.
+  dedupeKey         String?
+  status            MessageStatus @default(PENDING)
+  attempts          Int           @default(0)
+  nextAttemptAt     DateTime      @default(now()) @db.Timestamptz(3)
+  providerName      String?
+  providerMessageId String?
+  lastError         String?
+  createdById       String        @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?     @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, dedupeKey])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, invoiceId, createdAt(sort: Desc)])
 }

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { actorOf, AuditService } from "../../common/audit.service";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
-import { admissionScopeSql, visitScopeSql } from "../../common/data-scope";
+import { admissionScopeSql, visitScope, visitScopeSql } from "../../common/data-scope";
 import { dateOnly, endOfLocalDay, localDateStr, startOfLocalDay } from "../../common/time";
 import { balanceDue, fmt } from "../billing/billing.domain";
 import { doctorShare, pickRule, type EarningKind, type ShareRule } from "../earnings/earnings.domain";
@@ -14,6 +14,8 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => !Number.isNaN(
 const MAX_DAYS = 93;
 
 export const rangeSchema = z.object({ from: day.optional(), to: day.optional() }).strict();
+/** One row of an OPD report opened as a list: the range, and optionally the doctor or department of that row. */
+export const opdVisitsSchema = z.object({ from: day.optional(), to: day.optional(), practitionerId: z.string().uuid().optional(), departmentId: z.string().uuid().optional() }).strict();
 export const expirySchema = z.object({ withinDays: z.coerce.number().int().min(1).max(730).default(90) }).strict();
 export const outstandingSchema = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).strict();
 
@@ -65,6 +67,36 @@ export class ReportsService {
       FROM "Encounter" e WHERE e."tenantId" = ${ctx.tenantId}::uuid AND e."facilityId" = ${ctx.facilityId}::uuid AND e.type = 'OPD' AND e.status <> 'CANCELLED' AND NOT e."labOnly"
         AND e."startedAt" >= ${r.start} AND e."startedAt" < ${r.end} ${visitScopeSql(ctx, "e")} GROUP BY 1 ORDER BY 1`;
     return { from: r.from, to: r.to, total: rows.reduce((n, x) => n + x.visits, 0), days: rows };
+  }
+
+  /** The visits behind a row of an OPD report (a day, a doctor or a department): the same visits the counts were made from, at most 500. */
+  async opdVisits(ctx: RequestContext, q: z.infer<typeof opdVisitsSchema>) {
+    const r = await this.range(ctx, { ...(q.from ? { from: q.from } : {}), ...(q.to ? { to: q.to } : {}) });
+    const where = {
+      tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "OPD" as const, status: { not: "CANCELLED" as const }, labOnly: false,
+      startedAt: { gte: r.start, lt: r.end }, AND: [visitScope(ctx)],
+      ...(q.practitionerId ? { practitionerId: q.practitionerId } : {}), ...(q.departmentId ? { departmentId: q.departmentId } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.encounter.findMany({
+        where, orderBy: { startedAt: "asc" }, take: 500,
+        select: {
+          id: true, encounterNumber: true, startedAt: true, status: true,
+          patient: { select: { id: true, firstName: true, lastName: true, gender: true, mobile: true, identifiers: { where: { type: "MRN" }, select: { value: true }, take: 1 } } },
+          practitioner: { select: { displayName: true } }, department: { select: { name: true } }, queueEntry: { select: { tokenNumber: true } },
+        },
+      }),
+      this.prisma.encounter.count({ where }),
+    ]);
+    const showMobile = ctx.permissions.has("PATIENT_READ");
+    return {
+      from: r.from, to: r.to, total,
+      visits: rows.map((e) => ({
+        encounterId: e.id, patientId: e.patient.id, visit: e.encounterNumber, token: e.queueEntry?.tokenNumber ?? null, time: e.startedAt,
+        patient: [e.patient.firstName, e.patient.lastName].filter(Boolean).join(" "), mrn: e.patient.identifiers[0]?.value ?? null, gender: e.patient.gender,
+        mobile: showMobile ? e.patient.mobile : null, doctor: e.practitioner?.displayName ?? null, department: e.department?.name ?? null, status: e.status,
+      })),
+    };
   }
 
   async opdByDoctor(ctx: RequestContext, q: z.infer<typeof rangeSchema>) {

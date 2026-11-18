@@ -18,6 +18,7 @@ import type { FillResult } from "@/components/scan-prescription";
 import { blankItem, RxRows, toPayload, type RxItem } from "@/components/rx-editor";
 import { api, ApiError, printUrl } from "@/lib/api";
 import { ageText, type AgeValue } from "@/lib/format";
+import { followUpDate, followUpDays } from "@/lib/follow-up-date";
 import { useMe } from "@/lib/me";
 import { PrintLink } from "@/components/print-link";
 
@@ -39,7 +40,8 @@ interface Warning { allergyId: string; allergen: string; severity: string; match
 
 export default function VisitPage() {
   const { id } = useParams<{ id: string }>();
-  const { can, dateTime } = useMe();
+  const { can, dateTime, me } = useMe();
+  const tz = me.facility?.timezone ?? me.tenant.timezone;
   const qc = useQueryClient();
   const ws = useQuery({ queryKey: ["workspace", id], queryFn: () => api.get<Workspace>(`/encounters/${id}/workspace`) });
   const [note, setNote] = useState<Content>({});
@@ -87,7 +89,7 @@ export default function VisitPage() {
       ...(inv.length ? { investigationsAdvised: inv } : {}), ...(img.length ? { otherTestsAdvised: img } : {}), ...(card.length ? { cardiologyAdvised: card } : {}), ...(proc.length ? { proceduresAdvised: proc } : {}),
       ...(r.advice ? { advice: join(note.advice, r.advice) } : {}), ...(r.dietAdvice ? { dietAdvice: join(note.dietAdvice, r.dietAdvice) } : {}),
       ...(r.referral && !note.referral?.trim() ? { referral: r.referral } : {}),
-      ...(r.followUpDays && !note.followUp?.afterDays && !note.followUp?.date ? { followUp: { ...note.followUp, afterDays: r.followUpDays } } : {}),
+      ...(r.followUpDays && !note.followUp?.afterDays && !note.followUp?.date ? { followUp: { ...note.followUp, afterDays: r.followUpDays, date: followUpDate(r.followUpDays, tz) } } : {}),
     });
     if (r.items.length > 0) setItems([...items.filter((i) => i.genericName.trim()), ...r.items]);
   };
@@ -225,8 +227,8 @@ export default function VisitPage() {
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_120px_150px_1fr]">
               <Field label="Referral (optional)"><Input disabled={!canWrite} placeholder="e.g. Cardiologist" value={note.referral ?? ""} onChange={(e) => setNote({ ...note, referral: e.target.value })} /></Field>
-              <Field label="Follow up after (days)"><Input disabled={!canWrite} inputMode="numeric" value={note.followUp?.afterDays ?? ""} onChange={(e) => setNote({ ...note, followUp: { ...(note.followUp ?? {}), afterDays: e.target.value ? Number(e.target.value) : undefined } })} /></Field>
-              <Field label="or on this date"><Input type="date" disabled={!canWrite} value={note.followUp?.date ?? ""} onChange={(e) => setNote({ ...note, followUp: { ...(note.followUp ?? {}), date: e.target.value || undefined } })} /></Field>
+              <Field label="Follow up after (days)"><Input disabled={!canWrite} inputMode="numeric" value={note.followUp?.afterDays ?? ""} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); const ok = Number.isInteger(n) && n >= 1 && n <= 365; setNote({ ...note, followUp: { ...(note.followUp ?? {}), afterDays: ok ? n : undefined, date: ok ? followUpDate(n, tz) : undefined } }); }} /></Field>
+              <Field label="Follow-up date (filled in from the days)"><Input type="date" disabled={!canWrite} value={note.followUp?.date ?? ""} onChange={(e) => setNote({ ...note, followUp: { ...(note.followUp ?? {}), date: e.target.value || undefined, afterDays: e.target.value ? followUpDays(e.target.value, tz) : undefined } })} /></Field>
               <Field label="Follow-up instructions (optional)"><Input disabled={!canWrite} placeholder="e.g. Bring the blood test reports" value={note.followUp?.notes ?? ""} onChange={(e) => setNote({ ...note, followUp: { ...(note.followUp ?? {}), notes: e.target.value } })} /></Field>
             </div>
             <details open={hasTests} className="mt-3 border-t border-slate-100 pt-3">
