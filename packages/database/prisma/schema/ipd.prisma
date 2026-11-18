@@ -137,6 +137,11 @@ model Admission {
   recordFileMoves      MedicalRecordFileMovement[]
   aftercareTasks       AftercareTask[]
   patientFeedbacks     PatientFeedback[]
+  dischargePlan        DischargePlan?
+  dischargeDelays      DischargeDelay[]
+  insurerBillSend      InsurerBillSend?
+  dischargeAlerts      DischargeAlert[]
+  supplementaryBills   SupplementaryBill[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, facilityId, id])

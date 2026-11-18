@@ -8,8 +8,10 @@ import { UseAdvanceButton } from "@/components/advance-extras";
 import { DoctorShareCard } from "@/components/doctor-share";
 import { Gate } from "@/components/gate";
 import { Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
+import { CANCEL_REASONS, ReasonSelect } from "@/components/reason-select";
 import { api, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import { PrintLink } from "@/components/print-link";
 
 interface Invoice {
   id: string; invoiceNumber: string | null; status: string; kind: string; patientId: string; patientName: string; mrn: string | null; notes: string | null; issuedAt: string | null;
@@ -29,6 +31,13 @@ function PayModal({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void;
   const [key] = useState(newKey);
   const sum = rows.reduce((n, r) => n + Math.round(Number(r.amount || 0) * 100), 0);
   const due = Math.round(Number(inv.balanceDue) * 100);
+  // Split payment: whatever is not covered by the other rows goes to the last row, so the total always matches the bill.
+  const balance = (rs: Tender[], edited: number): Tender[] => {
+    const last = rs.length - 1;
+    if (rs.length < 2 || edited === last) return rs;
+    const others = rs.slice(0, last).reduce((n, r) => n + Math.round(Number(r.amount || 0) * 100), 0);
+    return rs.map((r, j) => (j === last ? { ...r, amount: String(Math.max(0, due - others) / 100) } : r));
+  };
   const pay = useMutation({
     mutationFn: () => api.post(`/invoices/${inv.id}/payments`, { payments: rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: r.amount, ...(r.reference ? { reference: r.reference } : {}) })) }, key),
     onSuccess: onDone,
@@ -38,14 +47,14 @@ function PayModal({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void;
       <div className="space-y-3">
         {rows.map((r, i) => (
           <div key={i} className="grid grid-cols-12 gap-2">
-            <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>{METHODS.map((m) => <option key={m} value={m}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
-            <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+            <Select aria-label="Mode" className="col-span-4" value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>{METHODS.map((m) => <option key={m} value={m} disabled={m !== r.method && rows.some((x) => x.method === m)}>{m.replace("_", " ").toLowerCase()}</option>)}</Select>
+            <Input aria-label="Amount" className="col-span-3" inputMode="decimal" value={r.amount} onChange={(e) => setRows(balance(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)), i))} />
             <Input aria-label="Reference" className="col-span-4" placeholder={r.method === "CASH" ? "—" : "Reference"} disabled={r.method === "CASH"} value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
-            {rows.length > 1 && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>}
+            {rows.length > 1 && <button className="col-span-1 text-slate-400 hover:text-red-700" aria-label="Remove" onClick={() => setRows(balance(rows.filter((_, j) => j !== i), -1))}>✕</button>}
           </div>
         ))}
         <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => setRows([...rows, { method: "UPI", amount: String(Math.max(0, due - sum) / 100), reference: "" }])}>+ Split payment</Button>
+          <Button variant="ghost" disabled={rows.length >= METHODS.length} onClick={() => setRows([...rows, { method: METHODS.find((m) => !rows.some((x) => x.method === m)) ?? "UPI", amount: String(Math.max(0, due - sum) / 100), reference: "" }])}>+ Split payment</Button>
           <span className={`text-sm ${sum === due ? "text-green-700" : "text-amber-700"}`}>Entered {money(sum / 100)}</span>
         </div>
         <ErrorNote error={pay.error} />
@@ -122,7 +131,7 @@ function EditDraft({ inv, onClose, onDone }: { inv: Invoice; onClose: () => void
   const [lines, setLines] = useState<EditLine[]>(inv.lines.map((l) => ({ serviceId: l.serviceId ?? null, description: l.description, unitPrice: l.unitPrice, taxPercent: l.taxPercent, quantity: l.quantity })));
   const [notes, setNotes] = useState(inv.notes ?? "");
   const [q, setQ] = useState("");
-  const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<{ id: string; name: string; price: string; taxPercent: string }>("/services", { pageSize: 100 }) });
+  const services = useQuery({ queryKey: ["services", inv.kind], queryFn: () => api.page<{ id: string; name: string; price: string; taxPercent: string }>("/services", { pageSize: 100, ...(inv.kind === "OPD" || inv.kind === "IPD" ? { scope: inv.kind } : {}) }) });
   const matches = (services.data?.data ?? []).filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
   const save = useMutation({
     mutationFn: () => api.put(`/invoices/${inv.id}`, {
@@ -166,8 +175,16 @@ export default function InvoicePage() {
   const [cancelReason, setCancelReason] = useState("");
   // Set when the bill was just created from the patient's page (reception): offer the next step, the OPD visit.
   const [fromPatient, setFromPatient] = useState(false);
-  useEffect(() => { setFromPatient(new URLSearchParams(window.location.search).get("from") === "patient"); }, []);
+  // Set right after a bill is created: the bill is shown ready to print.
+  const [justCreated, setJustCreated] = useState(false);
+  useEffect(() => { const q = new URLSearchParams(window.location.search); setFromPatient(q.get("from") === "patient"); setJustCreated(q.get("created") === "1"); }, []);
   const inv = useQuery({ queryKey: ["invoice", id], queryFn: () => api.get<Invoice>(`/invoices/${id}`) });
+  // /billing/<id>?pay=1 (the cashier dashboard's "Take payment") opens the payment form once, as soon as the bill is loaded and can take a payment.
+  const payId = inv.data?.id;
+  useEffect(() => {
+    if (!inv.data || new URLSearchParams(window.location.search).get("pay") !== "1") return;
+    if (["ISSUED", "PARTIALLY_PAID"].includes(inv.data.status) && can("PAYMENT_CREATE")) setModal("pay");
+  }, [payId]);
   const refresh = async () => { setModal(null); await qc.invalidateQueries({ queryKey: ["invoice", id] }); await qc.invalidateQueries({ queryKey: ["invoices"] }); await qc.invalidateQueries({ queryKey: ["doctor-share"] }); };
   const issue = useMutation({ mutationFn: () => api.post(`/invoices/${id}/issue`), onSuccess: refresh });
   // "Email receipt": queues the receipt email to the patient when they have an address and have agreed (docs/email.md); says why when it cannot.
@@ -206,14 +223,22 @@ export default function InvoicePage() {
           {i.status === "DRAFT" && can("INVOICE_ISSUE") && <Button loading={issue.isPending} onClick={() => issue.mutate()}>Issue bill</Button>}
           {["ISSUED", "PARTIALLY_PAID"].includes(i.status) && can("PAYMENT_CREATE") && <Button onClick={() => setModal("pay")}>Take payment</Button>}
           {["ISSUED", "PARTIALLY_PAID"].includes(i.status) && <UseAdvanceButton patientId={i.patientId} invoiceId={i.id} balanceDue={i.balanceDue} onDone={refresh} />}
-          {i.status !== "DRAFT" && <a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`invoices/${i.id}`)} target="_blank" rel="noreferrer">Print bill</a>}
-          {i.status !== "DRAFT" && <a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`invoices/${i.id}`)}?format=pdf&download=1`}>PDF</a>}
+          {i.status !== "DRAFT" && <PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`invoices/${i.id}`)}>Print bill</PrintLink>}
+          {i.status !== "DRAFT" && <a download className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`invoices/${i.id}`)}?format=pdf&download=1`}>PDF</a>}
           {Number(i.netReceived) > 0 && can("INVOICE_READ") && <Button variant="secondary" loading={emailReceipt.isPending} onClick={() => emailReceipt.mutate()}>Email receipt</Button>}
         </>}
       />
+      {justCreated && !fromPatient && i.status !== "DRAFT" && (
+        <Notice tone="success">
+          <span className="mr-3">Bill {i.invoiceNumber} is ready to print.</span>
+          <PrintLink className="mr-2 inline-block rounded-md bg-brand-600 px-3 py-1 text-sm font-medium text-white hover:bg-brand-700" href={printUrl(`invoices/${i.id}`)}>Print bill</PrintLink>
+          <a download className="inline-block rounded-md border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50" href={`${printUrl(`invoices/${i.id}`)}?format=pdf&download=1`}>PDF</a>
+        </Notice>
+      )}
       {fromPatient && (
         <Notice tone="success">
           <span className="mr-3">Bill created for {i.patientName}.</span>
+          {i.status !== "DRAFT" && <PrintLink className="mr-3 inline-block rounded-md border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50" href={printUrl(`invoices/${i.id}`)}>Print bill</PrintLink>}
           {can("APPOINTMENT_CREATE") && <Link className="mr-3 inline-block rounded-md bg-brand-600 px-3 py-1 text-sm font-medium text-white hover:bg-brand-700" href={`/patients/${i.patientId}?visit=1`}>Start OPD visit</Link>}
           <Link className="text-sm font-medium underline" href={`/patients/${i.patientId}`}>Back to patient</Link>
         </Notice>
@@ -241,7 +266,7 @@ export default function InvoicePage() {
           {live && can("PAYMENT_REFUND") && Number(i.refundable) <= 0 && Number(i.netReceived) > 0 && <p className="mt-3 text-xs text-slate-500"><T>Nothing to refund yet: the patient has paid exactly what the bill says. A refund becomes possible after the Manager issues a credit note that lowers the bill below what was paid.</T></p>}
           {live && can("INVOICE_CANCEL") && (
             <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
-              <Input placeholder="Reason to cancel this bill (min 5 characters)" aria-label="Cancel reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+              <ReasonSelect reasons={CANCEL_REASONS.bill} label="Reason to cancel this bill" onChange={setCancelReason} />
               {Number(i.netReceived) > 0 && (
                 <div className="space-y-2 rounded-md bg-amber-50 p-3 text-sm">
                   <div className="font-medium">Cancelling gives back everything received: {money(i.netReceived)}</div>
@@ -263,7 +288,7 @@ export default function InvoicePage() {
             <Table head={["Receipt", "When", "Paid by", "Amount", ""]}>
               {i.receipts.map((r) => (
                 <tr key={r.id}><Td>{r.receiptNumber}</Td><Td>{dateTime(r.receivedAt)}</Td><Td>{r.payments.map((p) => `${p.method.toLowerCase().replace("_", " ")} ${money(p.amount)}`).join(" + ")}</Td><Td>{money(r.total)}</Td>
-                  <Td><a className="text-brand-700 hover:underline" href={printUrl(`receipts/${r.id}`)} target="_blank" rel="noreferrer">Print</a> · <a className="text-brand-700 hover:underline" href={`${printUrl(`receipts/${r.id}`)}?format=pdf&download=1`}>PDF</a></Td></tr>
+                  <Td><PrintLink className="text-brand-700 hover:underline" href={printUrl(`receipts/${r.id}`)}>Print</PrintLink> · <a download className="text-brand-700 hover:underline" href={`${printUrl(`receipts/${r.id}`)}?format=pdf&download=1`}>PDF</a></Td></tr>
               ))}
               {i.refunds.map((r) => <tr key={r.id} className="bg-red-50"><Td>{r.refundNumber}</Td><Td>{dateTime(r.createdAt)}</Td><Td>Refund · {r.method.toLowerCase()} · {r.reason}</Td><Td>−{money(r.amount)}</Td><Td /></tr>)}
               {i.creditNotes.map((c) => <tr key={c.id} className="bg-amber-50"><Td>{c.creditNoteNumber}</Td><Td /><Td>Credit note · {c.reason}</Td><Td>−{money(c.amount)}</Td><Td /></tr>)}

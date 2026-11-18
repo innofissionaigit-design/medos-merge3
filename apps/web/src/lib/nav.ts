@@ -1,6 +1,7 @@
 /** Navigation is derived from permissions and facility feature flags (never from role names); role only influences order. */
 
-export interface NavItem { href: string; label: string; anyOf?: string[]; /** Hidden for people who hold any of these (the page they replace). */ hideWith?: string[]; feature?: "PHARMACY_ENABLED" | "IPD_ENABLED" | "NURSING_ENABLED" }
+/** `desk` marks a screen that belongs to one reception desk only (OPD or IPD); a receptionist at the other desk does not see it. */
+export interface NavItem { href: string; label: string; anyOf?: string[]; /** Hidden for people who hold any of these (the page they replace). */ hideWith?: string[]; feature?: "PHARMACY_ENABLED" | "IPD_ENABLED" | "NURSING_ENABLED"; desk?: "OPD" | "IPD" }
 
 /** REPORT_READ opens every report; each REPORT_<AREA> opens that area's reports (the API enforces the same rule). */
 export const REPORT_PERMISSIONS = ["REPORT_READ", "REPORT_OPD", "REPORT_FINANCE", "REPORT_IPD", "REPORT_PHARMACY", "REPORT_MY_PRACTICE"];
@@ -17,29 +18,33 @@ export const NAV: NavItem[] = [
   // The intensive care unit (docs/icu.md): the ICU doctor and the ICU nurse work from one board.
   { href: "/icu", label: "ICU", anyOf: ["ICU_READ"] },
   { href: "/patients", label: "Patients", anyOf: ["PATIENT_READ"] },
-  { href: "/appointments", label: "Appointments", anyOf: ["APPOINTMENT_READ"] },
-  { href: "/queue", label: "OPD queue", anyOf: ["QUEUE_READ"] },
+  { href: "/appointments", label: "Appointments", anyOf: ["APPOINTMENT_READ"], desk: "OPD" },
+  { href: "/queue", label: "OPD queue", anyOf: ["QUEUE_READ"], desk: "OPD" },
   { href: "/billing", label: "Billing", anyOf: ["INVOICE_READ"] },
+  { href: "/missed-billing", label: "Missed billing", anyOf: ["MISSED_BILLING_READ"] },
   { href: "/pharmacy", label: "Pharmacy", anyOf: ["PHARMACY_READ"], feature: "PHARMACY_ENABLED" },
   { href: "/procurement", label: "Procurement", anyOf: ["STORES_INDENT", "PURCHASE_ORDER", "PURCHASE_APPROVE", "PURCHASE_READ", "STOCK_CONSUME", "STOCK_COUNT", "STOCK_COUNT_APPROVE", "SUPPLIER_PAY"], feature: "PHARMACY_ENABLED" },
-  { href: "/teleconsult", label: "Video consultations", anyOf: ["TELE_READ"] },
+  { href: "/teleconsult", label: "Video consultations", anyOf: ["TELE_READ"], desk: "OPD" },
   { href: "/payroll", label: "Payroll", anyOf: ["PAYROLL_READ"] },
   { href: "/claims", label: "Insurance claims", anyOf: ["CLAIM_MANAGE", "CLAIM_SETTLE", "CLAIM_MASTERS"] },
+  { href: "/insurance-money", label: "Insurance money", anyOf: ["CLAIM_READ"] },
+  { href: "/estimate", label: "Estimate", anyOf: ["CLAIM_READ"] },
   // The laboratory portal (docs/lims-portal.md): one place for the LIMS manager, the technicians, the pathologist and radiologist, the nurse who takes samples, and reception.
   { href: "/lims", label: "Laboratory (LIMS)", anyOf: LIMS_NAV },
   // The earlier two-branch laboratory page stays for people who work in it but are not part of the portal.
   { href: "/lis", label: "LIS", anyOf: ["LAB_COLLECT", "LAB_RESULT", "LAB_VERIFY", "LAB_MASTERS", "RAD_PERFORM", "RAD_REPORT"], hideWith: LIMS_NAV },
-  // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
-  // Planned admission (docs/planned-admission.md): the request queue for reception, the doctor, the admission desk, billing, insurance and bed management.
   // Ward rounds (docs/ward-rounds.md): the ward coordinator's board of every ward, and the doctor's own rounds.
   { href: "/wards", label: "Ward board", anyOf: ["WARD_BOARD_READ"], feature: "IPD_ENABLED" },
   { href: "/rounds", label: "My rounds", anyOf: ["ROUND_DO"], feature: "IPD_ENABLED" },
+  // Planned admission (docs/planned-admission.md): the request queue for reception, the doctor, the admission desk, billing, insurance and bed management.
   { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED" },
-  { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED" },
-  { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED" },
-  { href: "/housekeeping", label: "Housekeeping", anyOf: ["BED_HOUSEKEEPING", "HOUSEKEEPING_REQUEST", "HOUSEKEEPING_MANAGE"], feature: "IPD_ENABLED" },
-  { href: "/aftercare", label: "After discharge", anyOf: ["AFTERCARE_MANAGE", "COMPLAINT_READ", "COMPLAINT_MANAGE"] },
-  { href: "/post-discharge", label: "Post-discharge", anyOf: ["MRD_RECORD_COMPLETE", "CLAIM_READ", "REPORT_FINANCE", "MRD_RETENTION"], feature: "IPD_ENABLED" },
+  // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
+  { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
+  { href: "/discharge-board", label: "Going home", anyOf: ["ADMISSION_READ"], feature: "IPD_ENABLED", desk: "IPD" },
+  { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED", desk: "IPD" },
+  { href: "/housekeeping", label: "Housekeeping", anyOf: ["BED_HOUSEKEEPING", "HOUSEKEEPING_REQUEST", "HOUSEKEEPING_MANAGE"], feature: "IPD_ENABLED", desk: "IPD" },
+  { href: "/aftercare", label: "After discharge", anyOf: ["AFTERCARE_MANAGE", "COMPLAINT_READ", "COMPLAINT_MANAGE"], desk: "IPD" },
+  { href: "/post-discharge", label: "Post-discharge", anyOf: ["MRD_RECORD_COMPLETE", "CLAIM_READ", "REPORT_FINANCE", "MRD_RETENTION"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/reports", label: "Reports", anyOf: REPORT_PERMISSIONS },
   { href: "/admin", label: "Administration", anyOf: ["ADMIN_USERS", "ADMIN_MASTERS", "ADMIN_SETTINGS"] },
   { href: "/audit", label: "Audit", anyOf: ["AUDIT_READ"] },
@@ -76,13 +81,15 @@ const ROLE_ORDER: Record<string, string[]> = {
   LIMS_MANAGER: ["/lims", "/patients", "/dashboard"],
   P_LAB_TECH: ["/dashboard", "/lims", "/patients"],
   R_LAB_TECH: ["/dashboard", "/lims", "/patients"],
+  BILLING: ["/billing", "/missed-billing", "/ipd", "/claims", "/patients", "/dashboard"],
   CASHIER: ["/billing", "/planned", "/dashboard", "/patients"],
   ADMINISTRATOR: ["/dashboard", "/overview", "/reports", "/admin", "/audit"],
-  MANAGER: ["/overview", "/wards", "/dashboard", "/reports", "/billing", "/audit"],
+  MANAGER: ["/overview", "/wards", "/dashboard", "/reports", "/billing", "/missed-billing", "/audit"],
 };
 
-export function visibleNav(permissions: ReadonlySet<string>, features: Record<string, boolean>, roles: string[]): NavItem[] {
-  const items = NAV.filter((n) => (!n.anyOf || n.anyOf.some((p) => permissions.has(p))) && !(n.hideWith?.some((p) => permissions.has(p))) && (!n.feature || features[n.feature] !== false));
+/** `desk` is the reception desk the person chose (null for everyone else): a screen that belongs to the other desk is left out. */
+export function visibleNav(permissions: ReadonlySet<string>, features: Record<string, boolean>, roles: string[], desk: "OPD" | "IPD" | null = null): NavItem[] {
+  const items = NAV.filter((n) => (!n.anyOf || n.anyOf.some((p) => permissions.has(p))) && !(n.hideWith?.some((p) => permissions.has(p))) && (!n.feature || features[n.feature] !== false) && (!desk || !n.desk || n.desk === desk));
   const order = roles.flatMap((r) => ROLE_ORDER[r] ?? []);
   const rank = (href: string) => { const i = order.indexOf(href); return i === -1 ? 1000 + NAV.findIndex((n) => n.href === href) : i; };
   return [...items].sort((a, b) => rank(a.href) - rank(b.href));

@@ -78,6 +78,9 @@ async function main(): Promise<void> {
   };
 
   step("settings, departments and staff");
+  // The demo data starts OPD visits without a consultation bill, so the rule "pay the consultation before the visit" (on by default) is held off while seeding
+  // and switched back to the default at the end.
+  await call("PUT", "/settings/OPD_FEE_BEFORE_VISIT", admin, { value: false });
   await call("PUT", "/settings/EMERGENCY_FEE_AMOUNT", admin, { value: "500.00" });
   await call("PUT", "/settings/PRINT_HEADER", admin, { value: { hospitalName: "Demo City Hospital", tagline: "Care you can trust", address: "12 Synthetic Road, Kolkata 700091", phone: "033-5550123" } });
   const deptNames = ["General Medicine", "Paediatrics", "Obstetrics and Gynaecology", "Orthopaedics", "General Surgery", "ENT", "Dermatology", "Cardiology"];
@@ -116,7 +119,7 @@ async function main(): Promise<void> {
     // The laboratory portal (docs/lims-portal.md): one login for each role.
     ["lims_manager1", "Lab Manager One", "LIMS_MANAGER"], ["p_lab_tech1", "Pathology Technician One", "P_LAB_TECH"], ["r_lab_tech1", "Radiology Technician One", "R_LAB_TECH"], ["pathologist1", "Dr. Pathologist One", "PATHOLOGIST"], ["radiologist1", "Dr. Radiologist One", "RADIOLOGIST"]] as const) await mkUser(u, n, r);
   // After-care roles (docs/discharge-stages.md, docs/procedures.md, docs/housekeeping.md, docs/procurement.md, docs/aftercare.md). The care coordinator is carecoord1 (coordinator1 is the ward coordinator).
-  for (const [u, n, r] of [["labtech1", "Lab Technician One", "LAB_TECHNICIAN"], ["radiographer1", "Radiographer One", "RADIOGRAPHER"], ["otcoord1", "OT Coordinator One", "OT_COORDINATOR"], ["tpa1", "TPA Desk One", "CLAIMS_OFFICER"], ["transport1", "Patient Transport One", "PATIENT_TRANSPORT"], ["housekeeping1", "Housekeeping One", "HOUSEKEEPING"], ["mrd1", "Medical Records One", "MEDICAL_RECORDS"], ["procurement1", "Procurement One", "PROCUREMENT"], ["carecoord1", "Care Coordinator One", "CARE_COORDINATOR"], ["relations1", "Patient Relations One", "PATIENT_RELATIONS"]] as const) await mkUser(u, n, r);
+  for (const [u, n, r] of [["labtech1", "Lab Technician One", "LAB_TECHNICIAN"], ["radiographer1", "Radiographer One", "RADIOGRAPHER"], ["otcoord1", "OT Coordinator One", "OT_COORDINATOR"], ["tpa1", "TPA Desk One", "CLAIMS_OFFICER"], ["transport1", "Patient Transport One", "PATIENT_TRANSPORT"], ["housekeeping1", "Housekeeping One", "HOUSEKEEPING"], ["mrd1", "Medical Records One", "MEDICAL_RECORDS"], ["procurement1", "Procurement One", "PROCUREMENT"], ["carecoord1", "Care Coordinator One", "CARE_COORDINATOR"], ["relations1", "Patient Relations One", "PATIENT_RELATIONS"], ["billing1", "Billing One", "BILLING"]] as const) await mkUser(u, n, r);
   const [reception, cashier, pharmacist] = await Promise.all([login("reception1"), login("cashier1"), login("pharmacist1")]);
 
   step(`registering ${COUNTS.patients} patients`);
@@ -179,8 +182,15 @@ async function main(): Promise<void> {
 
   step(`billing: ${COUNTS.invoices} invoices`);
   const services: string[] = [];
+  // The OPD desk bills only outpatient services: surgeries are inpatient (IPD) by default, so the OPD invoices below choose from the others.
+  const opdServices: string[] = [];
+  // Inpatient-only (IPD) by default: surgeries, the emergency stabilisation package, the ICU equipment and the central line. The OPD invoices below choose from the rest.
+  const INPATIENT_ONLY = ["APPEN", "HERNIA", "ARTHRO", "ERSTAB", "ICUVENT", "ICUMON", "ICUPUMP", "CVLINE"];
   for (const [c, n, price, cat] of [["CONS", "OPD consultation", "500", "CONSULTATION"], ["DRESS", "Dressing (small)", "150", "INJECTION_DRESSING"], ["INJ", "Injection charge", "80", "INJECTION_DRESSING"], ["ECG", "ECG", "300", "PROCEDURE"], ["ERSTAB", "Emergency resuscitation and stabilisation", "1500", "PROCEDURE"], ["ICUVENT", "ICU ventilator (per day)", "2500", "ROOM_BED"], ["ICUMON", "ICU cardiac monitor (per day)", "800", "ROOM_BED"], ["ICUPUMP", "ICU infusion pump (per day)", "300", "ROOM_BED"], ["CVLINE", "Central line insertion", "1200", "PROCEDURE"], ["APPEN", "Appendectomy", "15000", "PROCEDURE"], ["HERNIA", "Hernia repair", "18000", "PROCEDURE"], ["ARTHRO", "Knee arthroscopy", "22000", "PROCEDURE"], ["IMPLT", "Orthopaedic plate and screws (implant)", "8500", "OTHER"], ["IMPMS", "Surgical mesh (implant)", "3500", "OTHER"], ["CONKT", "Surgical consumables kit", "1800", "OTHER"], ["CONSU", "Suture pack", "600", "OTHER"]] as const) {
-    services.push((await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0 }))["id"] as string);
+    // An ECG is a procedure by category but an outpatient service too, so it is offered at both desks; the OPD consultation is outpatient only.
+    const id = (await call("POST", "/services", admin, { code: c, name: n, category: cat, price, taxPercent: 0, ...(c === "ECG" ? { availableFor: "BOTH" } : c === "CONS" ? { availableFor: "OPD" } : {}) }))["id"] as string;
+    services.push(id);
+    if (!INPATIENT_ONLY.includes(c)) opdServices.push(id);
   }
   // The hospital's lab-test and investigation list, which feeds the Lab test dropdown of the prescription and the Cashier's test billing (synthetic prices).
   for (const [c, n, price] of [["XRC", "X-ray chest PA", "350"], ["USGA", "Ultrasound abdomen", "800"], ["CTH", "CT head (plain)", "3000"], ["MRIB", "MRI brain", "6000"], ["CBC", "CBC (complete blood count)", "250"], ["ESR", "ESR", "100"], ["LFT", "Liver function test (LFT)", "600"], ["KFT", "Kidney function test (KFT)", "550"], ["RBS", "Random blood sugar", "80"], ["FBS", "Fasting blood sugar", "80"], ["HBA1C", "HbA1c", "450"], ["LIPID", "Lipid profile", "700"], ["TSH", "TSH", "350"], ["CRP", "CRP", "400"], ["URINE", "Urine routine", "120"], ["XRAYCH", "Chest X-ray", "400"], ["USGAB", "USG abdomen", "900"], ["ECHO", "2D echo", "1500"]] as const) {
@@ -206,7 +216,7 @@ async function main(): Promise<void> {
   }
   await call("POST", "/shifts/open", cashier, { openingCash: "2000" });
   for (let i = 0; i < COUNTS.invoices; i++) {
-    const inv = await call("POST", "/invoices", cashier, { patientId: patients[COUNTS.invAt + i], lines: [{ serviceId: pick(services), quantity: 1 }, ...(i % 3 === 0 ? [{ serviceId: pick(services), quantity: 2 }] : [])] });
+    const inv = await call("POST", "/invoices", cashier, { patientId: patients[COUNTS.invAt + i], lines: [{ serviceId: pick(opdServices), quantity: 1 }, ...(i % 3 === 0 ? [{ serviceId: pick(opdServices), quantity: 2 }] : [])] });
     const issued = await call("POST", `/invoices/${inv["id"]}/issue`, cashier, {});
     if (i % 4 === 0) continue; // left outstanding on purpose
     const total = Number(issued["total"]);
@@ -217,6 +227,8 @@ async function main(): Promise<void> {
     await call("POST", `/invoices/${inv["id"]}/payments`, cashier, { payments }, { "idempotency-key": randomUUID() });
   }
 
+  // Back to the product default (on), unless the seed is told otherwise: SEED_OPD_FEE_BEFORE_VISIT=false (the browser tests, which bill after the consultation).
+  await call("PUT", "/settings/OPD_FEE_BEFORE_VISIT", admin, { value: process.env["SEED_OPD_FEE_BEFORE_VISIT"] !== "false" });
   await app.close();
   process.stdout.write(`
 Seed complete. Tenant code: ${code}
@@ -225,6 +237,7 @@ Emergency ward (menu: Emergency): er_reception1 (desk), er_nurse1 (triage), er_d
 Intensive care (menu: ICU): icu_doctor1, icu_nurse1.
 Laboratory (menu: Laboratory (LIMS)): lims_manager1, p_lab_tech1, r_lab_tech1, pathologist1, radiologist1.
 After-care: labtech1, radiographer1, otcoord1, tpa1, transport1, housekeeping1, mrd1, procurement1, carecoord1 (care coordinator), relations1.
+Billing desk (menu: Billing): billing1.
 `);
   process.stdout.write(generated ? `Password (generated, shown once): ${password}\n` : "Password: the value of SEED_PASSWORD\n");
 }

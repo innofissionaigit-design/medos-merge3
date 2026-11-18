@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gate } from "@/components/gate";
 import { ClaimModal } from "@/components/claims";
+import { BillPreviewCard, DischargeFlowCard } from "@/components/discharge-flow";
 import { CancelAdmission, DoseReasonModal, TasksCard, VitalsCard, WaiveButton } from "@/components/ipd-extras";
 import { todayIn, useAvailableBeds } from "@/components/pickers";
 import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Tabs, Td, Textarea } from "@/components/ui";
@@ -17,6 +18,7 @@ import { LimsVisitCard } from "@/components/lims-order";
 import { VisitRadiology } from "@/components/radiology";
 import { api, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import { PrintLink } from "@/components/print-link";
 
 interface Admission {
   id: string; admissionNumber: string; status: string; patientId: string; encounterId: string; patientName: string; mrn: string | null; consultantName: string; reason: string | null; admittedAt: string; dischargedAt: string | null; lengthOfStayDays: number;
@@ -589,6 +591,8 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
   const d = st.data;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <div className="lg:col-span-2"><DischargeFlowCard admissionId={adm.id} open={open} /></div>
+      <div className="lg:col-span-2"><BillPreviewCard admissionId={adm.id} /></div>
       <Card title="Discharge checklist">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm" data-testid="discharge-stages">
@@ -694,7 +698,7 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
           </div>
         )}
         {!open && <p className="mt-3 text-sm text-slate-600">This admission is {adm.status.toLowerCase()}. {d?.finalInvoice && <Link className="text-brand-700 hover:underline" href={`/billing/${d.finalInvoice.id}`}>Final bill</Link>}</p>}
-        {adm.status === "DISCHARGED" && money("0") && <p className="mt-2 space-x-3"><a className="text-sm text-brand-700 hover:underline" href={printUrl(`discharge-summaries/${adm.id}`)} target="_blank" rel="noreferrer">Print discharge summary</a><a className="text-sm text-brand-700 hover:underline" href={`${printUrl(`discharge-summaries/${adm.id}`)}?format=pdf&download=1`}>Download PDF</a></p>}
+        {adm.status === "DISCHARGED" && money("0") && <p className="mt-2 space-x-3"><PrintLink className="text-sm text-brand-700 hover:underline" href={printUrl(`discharge-summaries/${adm.id}`)}>Print discharge summary</PrintLink><a download className="text-sm text-brand-700 hover:underline" href={`${printUrl(`discharge-summaries/${adm.id}`)}?format=pdf&download=1`}>Download PDF</a></p>}
       </Card>
       <TestsCard adm={adm} open={open} />
       <ProceduresCard adm={adm} open={open} />
@@ -741,9 +745,9 @@ export default function AdmissionPage() {
       <PageHeader
         title={a.patientName} subtitle={`${a.admissionNumber} · MRN ${a.mrn ?? "—"} · admitted ${dateTime(a.admittedAt)} · ${a.lengthOfStayDays} day(s) · ${a.consultantName}${a.bed ? ` · ${a.bed.ward} ${a.bed.code}` : ""}`}
         actions={<><StatusBadge value={a.status} /><Link href={`/patients/${a.patientId}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50">Patient record</Link>
-          {a.status !== "CANCELLED" && <a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`admission-forms/${a.id}`)} target="_blank" rel="noreferrer">Print admission form</a>}
-          {a.status !== "CANCELLED" && <a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?format=pdf&download=1`}>PDF</a>}
-          {a.status !== "CANCELLED" && <><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=bn`} target="_blank" rel="noreferrer">বাংলা</a><a className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=hi`} target="_blank" rel="noreferrer">हिन्दी</a></>}</>}
+          {a.status !== "CANCELLED" && <PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`admission-forms/${a.id}`)}>Print admission form</PrintLink>}
+          {a.status !== "CANCELLED" && <a download className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?format=pdf&download=1`}>PDF</a>}
+          {a.status !== "CANCELLED" && <><PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=bn`}>বাংলা</PrintLink><PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=hi`}>हिन्दी</PrintLink></>}</>}
       />
       {a.reason && <div className="mb-3"><KV label="Reason for admission">{a.reason}</KV></div>}
       {a.planned && <div className="mb-3"><Notice tone="info"><span>{`Planned admission ${a.planned.requestNumber}: estimate ${money(a.planned.estimate)}, deposit held ${money(a.planned.depositHeld)}. `}<Link className="text-brand-700 hover:underline" href={`/planned/${a.planned.id}`}>Open the request</Link>{". The deposit is set against the final bill from the cashier (advance payments)."}</span></Notice></div>}

@@ -7,10 +7,12 @@ import { Gate } from "@/components/gate";
 import { PatientPicker, todayIn, type PickedPatient } from "@/components/pickers";
 import { CashierPrescriptions } from "@/components/cashier-prescriptions";
 import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
+import { needsDesk, useDesk } from "@/lib/desk";
 import { api } from "@/lib/api";
 import { useT, T } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { visitForBill, type BillableVisit } from "@/lib/visit-for-bill";
+import { Icon, PANEL, useDeskKeys } from "@/components/desk-ui";
 
 interface InvoiceRow { id: string; invoiceNumber: string | null; status: string; kind: string; patientName: string; mrn: string | null; total: string; balanceDue: string; createdAt: string }
 interface Service { id: string; code: string; name: string; price: string; taxPercent: string; category: string }
@@ -20,23 +22,27 @@ type Line = { serviceId?: string; description: string; unitPrice: string; taxPer
 /** `fromPatient`: opened from a patient's page, so the bill page offers the way back (and the OPD visit) afterwards. */
 function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: PickedPatient | null; fromPatient: boolean; onClose: () => void }) {
   const router = useRouter();
-  const { money, can, me } = useMe();
+  const { money, can, me, features } = useMe();
+  const { desk: chosenDesk } = useDesk();
+  // OPD and IPD bills are kept apart: the price list offered is the one for the kind of bill (the IPD desk makes IPD bills, everyone else OPD bills).
+  const kind: "OPD" | "IPD" = needsDesk(me.roles, features) && chosenDesk === "IPD" ? "IPD" : "OPD";
   const [patient, setPatient] = useState<PickedPatient | null>(initialPatient);
   const [lines, setLines] = useState<Line[]>([]);
   const [q, setQ] = useState("");
-  const services = useQuery({ queryKey: ["services"], queryFn: () => api.page<Service>("/services", { pageSize: 100 }) });
+  const services = useQuery({ queryKey: ["services", kind], queryFn: () => api.page<Service>("/services", { pageSize: 100, scope: kind }) });
   // A bill for a patient who is being seen today is added to that visit: the booking and earnings reports and the doctor's share only count money on a visit's bills.
   const tz = me.facility?.timezone ?? me.tenant.timezone;
   const visits = useQuery({ queryKey: ["bill-visits", patient?.id], queryFn: () => api.page<BillableVisit>(`/patients/${patient!.id}/encounters`, { type: "OPD", pageSize: 10 }), enabled: !!patient });
   const visit = visitForBill(visits.data?.data ?? [], todayIn(tz), tz);
   const create = useMutation({
     mutationFn: () => api.post<{ id: string }>("/invoices", {
-      patientId: patient!.id,
-      ...(visit ? { encounterId: visit.id } : {}),
+      patientId: patient!.id, kind,
+      ...(visit && kind === "OPD" ? { encounterId: visit.id } : {}),
       lines: lines.map((l) => (l.serviceId ? { serviceId: l.serviceId, quantity: l.quantity } : { description: l.description, unitPrice: l.unitPrice, taxPercent: l.taxPercent || "0", quantity: l.quantity })),
     }),
     // From a patient's page (Reception): the bill is issued straight away, so the payment can be taken on the next screen.
-    onSuccess: async (inv) => { if (fromPatient && can("INVOICE_ISSUE")) await api.post(`/invoices/${inv.id}/issue`).catch(() => undefined); router.push(fromPatient ? `/billing/${inv.id}?from=patient` : `/billing/${inv.id}`); },
+    // An OPD bill is issued straight away so it can be printed and paid; an IPD bill stays a draft until it is reviewed.
+    onSuccess: async (inv) => { if ((fromPatient || kind === "OPD") && can("INVOICE_ISSUE")) await api.post(`/invoices/${inv.id}/issue`).catch(() => undefined); router.push(fromPatient ? `/billing/${inv.id}?from=patient` : `/billing/${inv.id}?created=1`); },
   });
   const matches = (services.data?.data ?? []).filter((s) => !q || `${s.code} ${s.name}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
   const total = lines.reduce((n, l) => n + Number(l.unitPrice || 0) * Number(l.quantity || 0) * (1 + Number(l.taxPercent || 0) / 100), 0);
@@ -146,8 +152,8 @@ function BillingInner() {
   const t = useT();
   const router = useRouter();
   const params = useSearchParams();
-  const [adding, setAdding] = useState(!!params.get("patient"));
-  const [status, setStatus] = useState("");
+  const [adding, setAdding] = useState(!!params.get("patient") || params.get("new") === "1");
+  const [status, setStatus] = useState(params.get("status") ?? "");
   const [qNum, setQNum] = useState("");
   const [kind, setKind] = useState("");
   const pre = params.get("patient");
@@ -156,37 +162,76 @@ function BillingInner() {
   const preP = useQuery({ queryKey: ["pre-patient", pre], queryFn: () => api.get<{ id: string; mrn: string | null; firstName: string; lastName: string | null }>(`/patients/${pre}`), enabled: !!pre });
   const list = useQuery({ queryKey: ["invoices", status, qNum, kind], queryFn: () => api.page<InvoiceRow>("/invoices", { ...(status === "OUTSTANDING" ? { outstanding: "true" } : status ? { status } : {}), ...(kind ? { kind } : {}), ...(qNum ? { q: qNum } : {}), pageSize: 50 }), refetchInterval: 15_000 });
   const waitingCount = waiting.data?.meta.total ?? 0;
+  const rows = list.data?.data ?? [];
+  const owing = rows.filter((i) => Number(i.balanceDue) > 0);
+  const dueTotal = owing.reduce((n, i) => n + Math.round(Number(i.balanceDue) * 100), 0) / 100;
+  const canPay = can("PAYMENT_CREATE");
+  const FILTERS: [string, string][] = [["", "All"], ["OUTSTANDING", "Outstanding"], ["PAID", "Paid"], ["DRAFT", "Draft"], ["CANCELLED", "Cancelled"]];
+  // N starts a new bill from anywhere on this page (ignored while typing).
+  useDeskKeys((k, e) => { if (k === "N" && can("INVOICE_CREATE") && !adding) { e.preventDefault(); setAdding(true); } });
   return (
     <Gate anyOf={["INVOICE_READ"]}>
-      <PageHeader title="Billing" subtitle="Bills, payments and your cash shift" actions={can("INVOICE_CREATE") ? <Button onClick={() => setAdding(true)}>New bill</Button> : undefined} />
-      {waitingCount > 0 && (
-        <div className="mb-3"><Notice tone="warn">
-          {waitingCount} pharmacy {waitingCount === 1 ? "bill is" : "bills are"} waiting for payment. The pharmacy does not take payment; collect it here.{" "}
-          <button className="font-medium underline" onClick={() => { setKind("PHARMACY"); setStatus("OUTSTANDING"); }}><T>Show them</T></button>
-        </Notice></div>
-      )}
-      {can("TEST_BILL") && <div className="mb-4"><CashierPrescriptions /></div>}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Card title="Bills" actions={<>
-            <Input placeholder="Bill number" aria-label="Bill number" className="w-36" value={qNum} onChange={(e) => setQNum(e.target.value)} />
-            <Select aria-label="Bill type" className="w-36" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All types</option><option value="OPD">OPD</option><option value="REGISTRATION">Registration</option><option value="PHARMACY">Pharmacy</option><option value="IPD">Admission</option><option value="EMERGENCY">Emergency</option><option value="OTHER">Other</option></Select>
-            <Select aria-label="Status" className="w-40" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All</option><option value="OUTSTANDING">Outstanding</option><option value="DRAFT">Draft</option><option value="PAID">Paid</option><option value="CANCELLED">Cancelled</option></Select>
-          </>}>
-            {list.isLoading ? <Spinner /> : (
-              <Table head={["Bill", "Patient", "Status", "Total", "Due", "Date"]} {...(list.data?.data.length === 0 ? { empty: "No bills found." } : {})}>
-                {list.data?.data.map((i) => (
-                  <tr key={i.id} className="hover:bg-slate-50">
-                    <Td><Link className="font-medium text-brand-700 hover:underline" href={`/billing/${i.id}`}>{i.invoiceNumber ?? t("Draft")}</Link> <Badge>{i.kind.toLowerCase()}</Badge></Td>
-                    <Td>{i.patientName}<div className="text-xs text-slate-500">{i.mrn}</div></Td><Td><StatusBadge value={i.status} /></Td><Td>{money(i.total)}</Td><Td>{money(i.balanceDue)}</Td><Td>{date(i.createdAt)}</Td>
-                  </tr>
-                ))}
-              </Table>
-            )}
-          </Card>
-          <div className="mt-4"><UnbilledCard /></div>
+      <div className="-mx-4 -mb-4 min-h-[calc(100vh-8rem)] bg-white p-4 md:-mx-6 md:-mb-6 md:px-6 md:py-4">
+        <PageHeader title="Billing" subtitle="Bills, payments and your cash shift" actions={can("INVOICE_CREATE") ? <Button className="gap-2 rounded-lg px-4 py-2 shadow-sm" onClick={() => setAdding(true)}><Icon name="plus" />New bill<kbd className="rounded bg-white/20 px-1.5 text-[11px]">N</kbd></Button> : undefined} />
+        {waitingCount > 0 && (
+          <div className="mb-3"><Notice tone="warn">
+            {waitingCount} pharmacy {waitingCount === 1 ? "bill is" : "bills are"} waiting for payment. The pharmacy does not take payment; collect it here.{" "}
+            <button className="font-medium underline" onClick={() => { setKind("PHARMACY"); setStatus("OUTSTANDING"); }}><T>Show them</T></button>
+          </Notice></div>
+        )}
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="space-y-3 lg:col-span-2">
+            {/* Prescriptions and tests waiting to be billed come first: they are the cashier's work queue. */}
+            {can("TEST_BILL") && <CashierPrescriptions />}
+
+            <section className={PANEL}>
+              <header className="space-y-2.5 border-b border-slate-100 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-slate-800">{t("Bills")} <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{rows.length}</span></h2>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">{owing.length} {t("owing")} · {money(dueTotal.toFixed(2))}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-0.5" role="tablist" aria-label={t("Status")}>
+                    {FILTERS.map(([v, label]) => (
+                      <button key={v} type="button" role="tab" aria-selected={status === v} onClick={() => setStatus(v)} className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${status === v ? "bg-white text-brand-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{t(label)}</button>
+                    ))}
+                  </div>
+                  <div className="w-36"><Select aria-label="Bill type" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All types</option><option value="OPD">OPD</option><option value="REGISTRATION">Registration</option><option value="PHARMACY">Pharmacy</option><option value="IPD">Admission</option><option value="EMERGENCY">Emergency</option><option value="OTHER">Other</option></Select></div>
+                  <div className="ml-auto w-44"><Input placeholder="Search bill number" aria-label="Bill number" value={qNum} onChange={(e) => setQNum(e.target.value)} /></div>
+                </div>
+              </header>
+              {list.isLoading ? <div className="p-4"><Spinner /></div> : rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{t("No bills found.")}</p> : (
+                <div className="overflow-x-auto px-4 pb-1">
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 font-medium">{t("Bill")}</th><th className="py-2 font-medium">{t("Patient")}</th><th className="py-2 font-medium">{t("Status")}</th><th className="py-2 text-right font-medium">{t("Total")}</th><th className="py-2 text-right font-medium">{t("Due")}</th><th className="hidden py-2 pl-4 font-medium md:table-cell">{t("Date")}</th><th className="w-28" /></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rows.map((i) => {
+                        const owes = Number(i.balanceDue) > 0;
+                        return (
+                          <tr key={i.id} className="hover:bg-slate-50/70">
+                            <td className="whitespace-nowrap py-2.5 pr-3"><Link className="font-semibold tabular-nums text-brand-700 hover:underline" href={`/billing/${i.id}`}>{i.invoiceNumber ?? t("Draft")}</Link> <Badge>{i.kind.toLowerCase()}</Badge></td>
+                            <td className="py-2.5 pr-3"><div className="font-medium text-slate-900">{i.patientName}</div><div className="text-xs text-slate-400">{i.mrn}</div></td>
+                            <td className="py-2.5 pr-3"><StatusBadge value={i.status} /></td>
+                            <td className="whitespace-nowrap py-2.5 text-right tabular-nums text-slate-800">{money(i.total)}</td>
+                            <td className={`whitespace-nowrap py-2.5 text-right tabular-nums ${owes ? "font-semibold text-amber-700" : "text-slate-400"}`}>{owes ? money(i.balanceDue) : "—"}</td>
+                            <td className="hidden whitespace-nowrap py-2.5 pl-4 text-xs text-slate-500 md:table-cell">{date(i.createdAt)}</td>
+                            <td className="py-2.5 pl-3 text-right">{canPay && ["ISSUED", "PARTIALLY_PAID"].includes(i.status) ? <Link href={`/billing/${i.id}?pay=1`} className="inline-block whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700">{t("Take payment")}</Link> : <Link href={`/billing/${i.id}`} className="inline-block whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">{t("Open")}</Link>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+          <div className="space-y-3">
+            <ShiftCard />
+            <UnbilledCard />
+          </div>
         </div>
-        <ShiftCard />
       </div>
       {/* Opened from a patient's page: wait for that patient, so the form never opens empty and has to be searched again. */}
       {adding && (!pre || preP.data || preP.isError) && (

@@ -4,16 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { Desk } from "@/lib/desk";
 import { doctorText } from "@/lib/format";
 import { localeFor, useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { hrefOf, kindOf, type NotificationRow } from "./notifications";
 import { Empty, Icon, Panel, StatTile, TONE, td, th, useFitToScreen, type IconName, type Tone } from "./dashboard-kit";
 import { StatusBadge } from "./ui";
+import { WalkIn } from "./walk-in";
 
 /**
  * The front desk's home screen: today's numbers, the common actions, the OPD queue, today's appointments, bed status and notifications.
  * Every panel reads live data and appears only when the user's permissions allow that data; nothing here is decided by role name alone.
+ * Reception works at one desk (docs/reception-desks.md): at the OPD desk the inpatient panels are left out and "Start new visit" comes first; at the IPD desk
+ * the outpatient panels are left out and the admitted patients and the going-home board come first. With no desk (inpatient care switched off) it shows everything.
  */
 
 
@@ -22,6 +26,7 @@ import { StatusBadge } from "./ui";
 interface QueueRow { id: string; tokenNumber: number; status: string; priority: string; checkedInAt: string; patientId: string; patientName: string; gender: string; mrn: string | null; practitionerName: string; departmentName: string | null }
 interface ApptRow { id: string; startAt: string; status: string; patientId: string; patientName: string; mrn: string | null; practitionerName: string; departmentName: string | null }
 interface Occupancy { wards: { wardId: string; ward: string; total: number; occupied: number; occupancyPercent: number }[]; total: number; occupied: number; occupancyPercent: number }
+interface AdmRow { id: string; admissionNumber: string; patientId: string; patientName: string; mrn: string | null; consultantName: string; admittedAt: string; bed: { code: string; ward: string } | null }
 interface RegRow { patientId: string; registeredAt: string; patient: string; mrn: string | null; status: "PAID" | "EXEMPTED" | "PENDING" }
 
 const OPEN_QUEUE = ["IN_CONSULTATION", "CALLED", "WAITING"];
@@ -30,8 +35,9 @@ const QUEUE_ORDER: Record<string, number> = { IN_CONSULTATION: 0, CALLED: 1, WAI
 
 // ───────────────────────── the dashboard ─────────────────────────
 
-export function ReceptionDashboard() {
+export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
   const { me, can, features } = useMe();
+  const [starting, setStarting] = useState(false);
   const { lang, t } = useI18n();
   const fit = useFitToScreen<HTMLDivElement>();
   const tz = me.facility?.timezone ?? me.tenant.timezone;
@@ -50,13 +56,16 @@ export function ReceptionDashboard() {
     return new Intl.DateTimeFormat(locale, { timeZone: tz, day: "numeric", month: "short" }).format(new Date(v));
   };
 
-  const ipd = features.IPD_ENABLED;
-  const opd = useQuery({ queryKey: ["rd-opd", today], queryFn: () => api.get<{ total: number }>("/reports/opd/daily"), enabled: can("REPORT_READ", "REPORT_OPD"), refetchInterval: 60_000 });
-  const queue = useQuery({ queryKey: ["rd-queue"], queryFn: () => api.get<QueueRow[]>("/queue"), enabled: can("QUEUE_READ"), refetchInterval: 20_000 });
-  const appts = useQuery({ queryKey: ["rd-appts", today], queryFn: () => api.page<ApptRow>("/appointments", { date: today, pageSize: 100 }), enabled: can("APPOINTMENT_READ"), refetchInterval: 30_000 });
+  // The inpatient panels belong to the IPD desk and the outpatient ones to the OPD desk (and to everyone when no desk was chosen).
+  const ipd = features.IPD_ENABLED && desk !== "OPD";
+  const opdOn = desk !== "IPD";
+  const opd = useQuery({ queryKey: ["rd-opd", today], queryFn: () => api.get<{ total: number }>("/reports/opd/daily"), enabled: can("REPORT_READ", "REPORT_OPD") && opdOn, refetchInterval: 60_000 });
+  const queue = useQuery({ queryKey: ["rd-queue"], queryFn: () => api.get<QueueRow[]>("/queue"), enabled: can("QUEUE_READ") && opdOn, refetchInterval: 20_000 });
+  const appts = useQuery({ queryKey: ["rd-appts", today], queryFn: () => api.page<ApptRow>("/appointments", { date: today, pageSize: 100 }), enabled: can("APPOINTMENT_READ") && opdOn, refetchInterval: 30_000 });
   const admitted = useQuery({ queryKey: ["rd-admitted"], queryFn: () => api.page<unknown>("/admissions", { status: "ADMITTED", pageSize: 1 }), enabled: can("ADMISSION_READ") && ipd, refetchInterval: 60_000 });
   const admDay = useQuery({ queryKey: ["rd-adm-day", today], queryFn: () => api.get<{ totalAdmissions: number; totalDischarges: number }>("/reports/ipd/admissions-discharges"), enabled: can("REPORT_READ", "REPORT_IPD") && ipd, refetchInterval: 60_000 });
   const occ = useQuery({ queryKey: ["rd-occ"], queryFn: () => api.get<Occupancy>("/reports/ipd/bed-occupancy"), enabled: can("REPORT_READ", "REPORT_IPD") && ipd, refetchInterval: 60_000 });
+  const admittedNow = useQuery({ queryKey: ["rd-admitted-now"], queryFn: () => api.page<AdmRow>("/admissions", { status: "ADMITTED", pageSize: 5 }), enabled: can("ADMISSION_READ") && ipd && desk === "IPD", refetchInterval: 30_000 });
   const er = useQuery({ queryKey: ["rd-er"], queryFn: () => api.page<unknown>("/emergency/cases", { view: "active", pageSize: 1 }), enabled: can("ER_READ"), refetchInterval: 15_000 });
   const notes = useQuery({ queryKey: ["rd-notes"], queryFn: () => api.page<NotificationRow>("/notifications", { pageSize: 4 }), refetchInterval: 30_000 });
   const regs = useQuery({ queryKey: ["rd-regs", today], queryFn: () => api.get<{ rows: RegRow[] }>("/reports/registrations"), enabled: can("REPORT_READ", "REPORT_FINANCE"), refetchInterval: 30_000 });
@@ -69,15 +78,18 @@ export function ReceptionDashboard() {
   const upcoming = apptRows.filter((a) => a.status !== "CANCELLED").sort((a, b) => a.startAt.localeCompare(b.startAt));
   const recentCheckIns = [...qRows].sort((a, b) => b.checkedInAt.localeCompare(a.checkedInAt)).slice(0, 5);
 
-  const allActions: { label: string; href: string; icon: IconName; tone: Tone; show: boolean }[] = [
+  const allActions: { label: string; href: string; icon: IconName; tone: Tone; show: boolean; onClick?: () => void }[] = [
+    // The one thing the OPD desk does most (docs/reception-desks.md): pick the patient, then a doctor, and put them in that doctor's queue.
+    { label: "Start new visit", href: "/queue", icon: "plus", tone: "emerald", show: desk === "OPD" && can("APPOINTMENT_CREATE"), onClick: () => setStarting(true) },
     { label: "New Registration", href: "/patients?register=1", icon: "userPlus", tone: "brand", show: can("PATIENT_CREATE") },
-    { label: "Book Appointment", href: "/appointments", icon: "calendarPlus", tone: "violet", show: can("APPOINTMENT_CREATE") },
-    { label: "OPD Check-in", href: "/queue", icon: "clipboard", tone: "emerald", show: can("QUEUE_MANAGE") },
+    { label: "Book Appointment", href: "/appointments", icon: "calendarPlus", tone: "violet", show: can("APPOINTMENT_CREATE") && opdOn },
+    { label: "OPD Check-in", href: "/queue", icon: "clipboard", tone: "emerald", show: can("QUEUE_MANAGE") && opdOn },
     { label: "Emergency (ER)", href: "/emergency", icon: "siren", tone: "rose", show: can("ER_REGISTER", "ER_READ") },
     { label: "IP Admission", href: "/ipd", icon: "bed", tone: "amber", show: can("ADMISSION_CREATE") && ipd },
     { label: "Billing & Payment", href: "/billing", icon: "receipt", tone: "sky", show: can("INVOICE_READ") },
     { label: "Lab Request", href: "/lims?tab=book", icon: "flask", tone: "violet", show: can("LIMS_REQUEST") },
-    { label: "Planned Admission", href: "/planned", icon: "calendar", tone: "emerald", show: can("PLANNED_READ") && ipd },
+    { label: "Going home", href: "/discharge-board", icon: "check", tone: "emerald", show: can("ADMISSION_READ") && ipd },
+    { label: "Planned Admission", href: "/planned", icon: "calendar", tone: "emerald", show: can("PLANNED_READ") && features.IPD_ENABLED !== false },
   ];
   const actions = allActions.filter((a) => a.show).slice(0, 6);
 
@@ -102,12 +114,12 @@ export function ReceptionDashboard() {
 
       {/* Today's numbers */}
       <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {can("REPORT_READ", "REPORT_OPD") && <StatTile icon="user" tone="brand" value={opd.data?.total} label={t("OPD Today")} note={queue.data ? `${waiting} ${t("waiting")}` : undefined} noteTone="brand" href="/queue" />}
-        {can("APPOINTMENT_READ") && <StatTile icon="calendar" tone="violet" value={appts.data?.meta.total} label={t("Appointments")} note={appts.data ? `${toArrive} ${t("to arrive")}` : undefined} noteTone="violet" href="/appointments" />}
+        {can("REPORT_READ", "REPORT_OPD") && opdOn && <StatTile icon="user" tone="brand" value={opd.data?.total} label={t("OPD Today")} note={queue.data ? `${waiting} ${t("waiting")}` : undefined} noteTone="brand" href="/queue" />}
+        {can("APPOINTMENT_READ") && opdOn && <StatTile icon="calendar" tone="violet" value={appts.data?.meta.total} label={t("Appointments")} note={appts.data ? `${toArrive} ${t("to arrive")}` : undefined} noteTone="violet" href="/appointments" />}
         {can("ADMISSION_READ") && ipd && <StatTile icon="bed" tone="rose" value={admitted.data?.meta.total} label={t("IP Admissions")} note={admDay.data ? `${admDay.data.totalAdmissions} ${t("today")}` : undefined} noteTone="rose" href="/ipd" />}
         {can("ER_READ")
           ? <StatTile icon="siren" tone="emerald" value={er.data?.meta.total} label={t("Emergency")} note={t("in the ER now")} noteTone="emerald" href="/emergency" />
-          : can("QUEUE_READ") && <StatTile icon="pulse" tone="emerald" value={queue.data ? waiting : undefined} label={t("Waiting in OPD")} note={queue.data ? `${qRows.filter((q) => q.status === "IN_CONSULTATION").length} ${t("in consultation")}` : undefined} noteTone="emerald" href="/queue" />}
+          : can("QUEUE_READ") && opdOn && <StatTile icon="pulse" tone="emerald" value={queue.data ? waiting : undefined} label={t("Waiting in OPD")} note={queue.data ? `${qRows.filter((q) => q.status === "IN_CONSULTATION").length} ${t("in consultation")}` : undefined} noteTone="emerald" href="/queue" />}
         {can("REPORT_READ", "REPORT_IPD") && ipd && <StatTile icon="percent" tone="violet" value={occ.data ? `${Math.round(occ.data.occupancyPercent)}%` : undefined} label={t("Bed Occupancy")} note={occ.data ? `${occ.data.occupied} / ${occ.data.total}` : undefined} href="/ipd" />}
       </div>
 
@@ -116,17 +128,41 @@ export function ReceptionDashboard() {
           {/* Quick actions */}
           <Panel title={t("Quick Actions")}>
             <div className="grid h-full grid-cols-2 gap-2.5 sm:grid-cols-3 xl:auto-rows-fr">
-              {actions.map((a) => (
-                <Link key={a.href + a.label} href={a.href} className={clsx("flex min-h-[4.75rem] flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-sm font-semibold transition", TONE[a.tone].tile)}>
-                  <Icon name={a.icon} className="h-6 w-6" />
-                  <span className="leading-tight">{t(a.label)}</span>
-                </Link>
-              ))}
+              {actions.map((a) => {
+                const cls = clsx("flex min-h-[4.75rem] flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-sm font-semibold transition", TONE[a.tone].tile);
+                const body = (<><Icon name={a.icon} className="h-6 w-6" /><span className="leading-tight">{t(a.label)}</span></>);
+                return a.onClick
+                  ? <button key={a.label} type="button" onClick={a.onClick} className={cls}>{body}</button>
+                  : <Link key={a.href + a.label} href={a.href} className={cls}>{body}</Link>;
+              })}
             </div>
           </Panel>
 
+          {/* The IPD desk's list: who is in the wards now */}
+          {desk === "IPD" && can("ADMISSION_READ") && ipd && (
+            <Panel title={t("Admitted now")} href="/ipd" viewAll={t("View All")}>
+              {(admittedNow.data?.data.length ?? 0) === 0 ? <Empty>{admittedNow.isLoading ? t("Loading…") : t("No one is admitted right now.")}</Empty> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-slate-100"><tr><th className={th}>{t("Patient Name")}</th><th className={th}>{t("Bed")}</th><th className={th}>{t("Doctor")}</th><th className={th}>{t("Admitted")}</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {admittedNow.data?.data.map((a) => (
+                        <tr key={a.id}>
+                          <td className={td}><Link href={`/patients/${a.patientId}`} className="font-medium text-slate-900 hover:text-brand-600">{a.patientName}</Link><span className="block text-xs text-slate-500">{a.admissionNumber}</span></td>
+                          <td className={clsx(td, "text-slate-700")}>{a.bed ? `${a.bed.ward} · ${a.bed.code}` : "—"}</td>
+                          <td className={clsx(td, "text-slate-700")}>{doctorText(a.consultantName)}</td>
+                          <td className={clsx(td, "whitespace-nowrap text-slate-600")}>{ago(a.admittedAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
+          )}
+
           {/* Today's OPD queue */}
-          {can("QUEUE_READ") && (
+          {can("QUEUE_READ") && opdOn && (
             <Panel title={t("Today's Queue – OPD")} href="/queue" viewAll={t("View All")}>
               {openQueue.length === 0 ? <Empty>{queue.isLoading ? t("Loading…") : t("No one is waiting in the OPD queue.")}</Empty> : (
                 <div className="overflow-x-auto">
@@ -170,7 +206,7 @@ export function ReceptionDashboard() {
                 </div>
               )}
             </Panel>
-          ) : can("QUEUE_READ") && (
+          ) : can("QUEUE_READ") && opdOn && (
             <Panel title={t("Recent Check-ins")} href="/queue" viewAll={t("View All")}>
               {recentCheckIns.length === 0 ? <Empty>{queue.isLoading ? t("Loading…") : t("No patients checked in today yet.")}</Empty> : (
                 <div className="overflow-x-auto">
@@ -195,7 +231,7 @@ export function ReceptionDashboard() {
           )}
 
           {/* Today's appointments */}
-          {can("APPOINTMENT_READ") && (
+          {can("APPOINTMENT_READ") && opdOn && (
             <Panel title={t("Appointments – Today")} href="/appointments" viewAll={t("View All")}>
               {upcoming.length === 0 ? <Empty>{appts.isLoading ? t("Loading…") : t("No appointments today.")}</Empty> : (
                 <div className="overflow-x-auto">
@@ -268,6 +304,7 @@ export function ReceptionDashboard() {
           </Panel>
         </aside>
       </div>
+      {starting && <WalkIn title="Start new visit" onClose={() => setStarting(false)} />}
     </div>
   );
 }

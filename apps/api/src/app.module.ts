@@ -80,6 +80,9 @@ import { NursingController } from "./modules/nursing/nursing.controller";
 import { NursingService } from "./modules/nursing/nursing.service";
 import { DischargeController } from "./modules/discharge/discharge.controller";
 import { DischargeService } from "./modules/discharge/discharge.service";
+import { DischargeFlowController } from "./modules/discharge-flow/discharge-flow.controller";
+import { DischargeFlowService } from "./modules/discharge-flow/discharge-flow.service";
+import { DischargeFlowJobsService, DischargeFlowWorker } from "./modules/discharge-flow/discharge-flow-jobs.service";
 import { AdmissionTestsService } from "./modules/discharge/admission-tests.service";
 import { ProceduresController } from "./modules/procedures/procedures.controller";
 import { ProceduresService } from "./modules/procedures/procedures.service";
@@ -150,9 +153,13 @@ import { LimsOpsService } from "./modules/lims/lims-ops.service";
 import { LimsService } from "./modules/lims/lims.service";
 import { LimsScheduleService } from "./modules/lims/lims-schedule.service";
 import { ClaimsController } from "./modules/claims/claims.controller";
+import { ClaimChecklistController } from "./modules/claims/claim-checklist.controller";
+import { ClaimChecklistService } from "./modules/claims/claim-checklist.service";
 import { ClaimDocumentsController } from "./modules/claims/claim-documents.controller";
 import { ClaimDocumentsService } from "./modules/claims/claim-documents.service";
 import { ClaimsService } from "./modules/claims/claims.service";
+import { InsuranceMoneyController } from "./modules/claims/insurance-money.controller";
+import { InsuranceMoneyService } from "./modules/claims/insurance-money.service";
 import { PayrollController } from "./modules/payroll/payroll.controller";
 import { PayrollService } from "./modules/payroll/payroll.service";
 import { AttendanceController } from "./modules/payroll/attendance.controller";
@@ -176,6 +183,8 @@ import { BookingApiService } from "./modules/appointments/booking-api.service";
 import { IntegrationsController } from "./modules/integrations/integrations.controller";
 import { IntegrationsService } from "./modules/integrations/integrations.service";
 import { StatementController } from "./modules/billing/statement.controller";
+import { MissedBillingController } from "./modules/billing/missed-billing.controller";
+import { MissedBillingService } from "./modules/billing/missed-billing.service";
 import { StatementService } from "./modules/billing/statement.service";
 import { AdvancesService } from "./modules/billing/advances.service";
 import { MergeService } from "./modules/patients/merge.service";
@@ -209,7 +218,7 @@ export const CONTROLLERS = [
   UsersController, NumberingController, AuditController, MastersController, PatientsController,
   EncountersController, AppointmentsController, QueueController, VitalsController,
   AllergiesController, ConsultationsController, TestOrdersController, PrescriptionsController, BillingController, PharmacyController, StockLocationsController, WardStoresController, PrescriptionDeliveryController, EarningsReportsController, LabController, RadiologyController, RadImagesController, LimsController, ClaimsController, ClaimDocumentsController, PayrollController, AttendanceController, PortalAuthController, PortalController, AppointmentRequestsController, TelemedicineController, NotificationsController, EmailController, AbdmController, AiController, IpdController, NursingController, DischargeController, SettingsController, MedicineMasterController, PrintController, ReportsController, FilesController, FollowUpsController, PrivacyController, ImportsController, AdvancesController, StatementController, BookingApiController, IntegrationsController, EarningsController, ScansController, TemplatesController, OcrConfigController, PrescriptionShareController, PublicPrescriptionController, EmergencyController, IcuController, OverviewController, RequestsController, PlannedController, RoundsController,
-  BedTurnoverController, PostDischargeController, RecordRetentionController, HousekeepingController, ProcurementController, ProcurementExtrasController, AftercareController, PublicFeedbackController, ProceduresController,
+  BedTurnoverController, PostDischargeController, RecordRetentionController, HousekeepingController, ProcurementController, ProcurementExtrasController, AftercareController, PublicFeedbackController, ProceduresController, InsuranceMoneyController, ClaimChecklistController, DischargeFlowController, MissedBillingController,
 ];
 
 @Module({
@@ -224,7 +233,7 @@ export const CONTROLLERS = [
     StockService, MedicinesService, InventoryService, StockLocationsService, DispensingService,
     WardsService, AdmissionsService, ChargesService, NursingService, MarService, SettingsService, DischargeService, SummaryService, PrintService, ReportsService, FilesService, StorageService, ScanService,
     RemindersService, ReminderWorker, FollowUpsService, TestOrdersService, PrescriptionDraftService, CashierViewService, CashierCollectService, PrivacyService, ImportsService, MergeService, PatientIdentifiersService, AdvancesService, StatementService, BookingApiService, IntegrationsService, EarningsService, ShareLedgerService, PayoutsService, LabService, RadiologyService, RadImagesService, LimsCoreService, LimsService, LimsScheduleService, LimsInsightsService, LimsOpsService, LimsMessagesService, LimsBillingService, ClaimsService, ClaimDocumentsService, PayrollService, AttendanceService, PortalAuthService, PortalService, PortalGuard, TelemedicineService, NotificationsService, EmailService, EmailWorker, AbdmService, AiService, ScansService, TemplatesService, OcrConfigService, SecretsService, PrescriptionShareService, RegistrationFeeService, EmergencyBillService, EmergencyService, IcuService, OverviewService, RequestsService, PlannedCore, PlannedService, PlannedFinanceService, RoundsService, WardBoardService, ProcedureRecordsService, RoundWorker,
-    BedTurnoverService, PostDischargeService, RecordRetentionService, HousekeepingService, ProcurementService, CostLedgerService, CostLedgerBackfillService, AftercareScriptsService, AftercareService, FeedbackService, FeedbackLinkService, AftercareJobsService, AftercareWorker, PayablesService, StockCountsService, StockRequestsService, AdmissionTestsService, ProceduresService,
+    BedTurnoverService, PostDischargeService, RecordRetentionService, HousekeepingService, ProcurementService, CostLedgerService, CostLedgerBackfillService, AftercareScriptsService, AftercareService, FeedbackService, FeedbackLinkService, AftercareJobsService, AftercareWorker, PayablesService, StockCountsService, StockRequestsService, AdmissionTestsService, ProceduresService, DischargeFlowService, DischargeFlowJobsService, DischargeFlowWorker, MissedBillingService, InsuranceMoneyService, ClaimChecklistService,
     { provide: OCR_PROVIDER, useFactory: (c: AppConfig) => createOcrProvider(c), inject: [CONFIG] },
     { provide: CLAIM_TRANSPORT, useFactory: (c: AppConfig) => createClaimTransport(c), inject: [CONFIG] },
     ClaimExchangeService,

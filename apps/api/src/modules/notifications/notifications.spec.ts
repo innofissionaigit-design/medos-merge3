@@ -17,6 +17,8 @@ describe("notifications", () => {
   let d1: TestDoctor;
   let d2: TestDoctor;
   let bPharmacist: { id: string; token: string };
+  let nurse: { id: string; token: string };
+  let bNurse: { id: string; token: string };
 
   const mine = async (token: string, query: Record<string, string> = {}) => {
     const r = await t.api("get", "/notifications", token).query(query);
@@ -33,6 +35,8 @@ describe("notifications", () => {
     pharmacist = await t.makeUser(a, ["PHARMACIST"]);
     cashier = await t.makeUser(a, ["CASHIER"]);
     bPharmacist = await t.makeUser(b, ["PHARMACIST"]);
+    nurse = await t.makeUser(a, ["NURSE"]);
+    bNurse = await t.makeUser(b, ["NURSE"]);
     d1 = await makeDoctor(t, a);
     d2 = await makeDoctor(t, a);
   });
@@ -51,6 +55,21 @@ describe("notifications", () => {
     assert.equal(ofType((await mine(d2.token)).items, "QUEUE_PATIENT_ADDED").length, 0, "another doctor");
     assert.equal(ofType((await mine(rec.token)).items, "QUEUE_PATIENT_ADDED").length, 0, "the receptionist who did it");
     assert.equal(ofType((await mine(cashier.token)).items, "QUEUE_PATIENT_ADDED").length, 0);
+  });
+
+  it("a nurse is told when a patient is waiting for vitals, once, and no one else is (nor another hospital's nurse)", async () => {
+    const p = await registerPatient(t, rec.token);
+    const v = await startVisit(t, rec.token, d1, p.id);
+    const due = ofType((await mine(nurse.token)).items, "NURSE_VITALS_DUE");
+    const forThis = due.filter((r) => r.entityId === v.queueId);
+    assert.equal(forThis.length, 1, "told once for this patient");
+    assert.equal(forThis[0]!.entityType, "QueueEntry");
+    assert.equal(forThis[0]!.readAt, null);
+    for (const other of [rec, cashier, pharmacist, bNurse]) assert.equal(ofType((await mine(other.token)).items, "NURSE_VITALS_DUE").length, 0);
+    // The nurse can then record the vitals from the queue entry's visit.
+    const q = await t.api("get", "/queue", nurse.token);
+    assert.equal(q.status, 200, JSON.stringify(q.body));
+    assert.ok((q.body.data as { id: string; encounterId: string }[]).some((e) => e.id === v.queueId && e.encounterId === v.encounterId));
   });
 
   it("a notification is a pointer: no patient name, number or clinical text", async () => {

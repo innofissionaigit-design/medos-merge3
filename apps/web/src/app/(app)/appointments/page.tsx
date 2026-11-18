@@ -1,4 +1,8 @@
 "use client";
+import { CANCEL_REASONS, ReasonSelect } from "@/components/reason-select";
+import { DoctorPicker } from "@/components/doctor-picker";
+import { WalkIn } from "@/components/walk-in";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apptStatus, RemindersModal } from "@/components/follow-up-extras";
@@ -8,15 +12,16 @@ import { FeeLine, SkipFeeModal, TakeFeeModal, type FeeInfo } from "@/components/
 import { DuplicateBookingNotice, isDuplicateBooking } from "@/components/booking-guard";
 import { GiveBackDeposit } from "@/components/advance-extras";
 import { AppointmentRequestsCard } from "@/components/appointment-requests";
-import { DoctorSchedules } from "@/components/doctor-schedules";
+import { DoctorSchedules, filterDoctors } from "@/components/doctor-schedules";
 import { MakeVideoButton } from "@/components/telemedicine";
-import { Button, Card, ErrorNote, Field, Input, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, Modal, Notice, PageHeader, Select, Spinner, StatusBadge } from "@/components/ui";
 import { api, newKey } from "@/lib/api";
+import { Icon, PANEL, useDeskKeys } from "@/components/desk-ui";
 import { useMe } from "@/lib/me";
 
 interface Appt extends FeeInfo { practitionerId: string; id: string; startAt: string; status: string; patientName: string; mrn: string | null; practitionerName: string; departmentName: string | null; type: string; patientId: string; version: number; followUpOfVisit: { encounterNumber: string } | null }
 interface Slot { startAt: string; endAt: string; available: boolean }
-interface Doc { id: string; displayName: string }
+interface Doc { id: string; displayName: string; departmentId?: string | null; userId?: string | null }
 
 interface Booked { startAt: string; patientName: string; practitionerName: string }
 
@@ -33,7 +38,6 @@ function zonedToIso(day: string, hm: string, tz: string): string {
 
 function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; onBooked: (b: Booked) => void }) {
   const qc = useQueryClient();
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
   const [patient, setPatient] = useState<PickedPatient | null>(null);
   const [doc, setDoc] = useState("");
   const [day, setDay] = useState(date);
@@ -67,7 +71,7 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
     <Modal title="Book appointment" onClose={onClose} wide>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2"><Field as="div" label="Patient"><PatientPicker value={patient} onPick={setPatient} autoFocus /></Field></div>
-        <Field label="Doctor"><Select value={doc} onChange={(e) => { setDoc(e.target.value); setSlot(""); }}><option value="">Choose…</option>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select></Field>
+        <DoctorPicker value={doc} onChange={(id) => { setDoc(id); setSlot(""); }} />
         <Field label="Date"><Input type="date" value={day} min={date} onChange={(e) => { setDay(e.target.value); setSlot(""); }} /></Field>
         {can("APPOINTMENT_OVERBOOK") && (
           <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={exception} onChange={(e) => setException(e.target.checked)} /> Book outside the free times (exception, needs a reason)</label>
@@ -80,7 +84,7 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
           </div>
         )}
         <div className={exception ? "hidden" : "sm:col-span-2"}>
-          <div className="mb-1 text-sm font-medium text-slate-700">Time</div>
+          <div className="mb-1 flex items-center justify-between text-sm font-medium text-slate-700"><span>Time</span>{slots.data && slots.data.length > 0 && <span className="text-xs font-normal text-slate-500">{slots.data.filter((x) => x.available).length} free · {slots.data.filter((x) => !x.available).length} taken</span>}</div>
           {!doc ? <p className="text-sm text-slate-500">Choose a doctor to see free times.</p> : slots.isLoading ? <Spinner /> : slots.data?.length === 0 ? <p className="text-sm text-slate-500">This doctor does not see patients on that day.</p> : (
             <div className="flex flex-wrap gap-1.5">
               {slots.data?.map((s) => (
@@ -98,30 +102,10 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
   );
 }
 
-function WalkIn({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
-  const [patient, setPatient] = useState<PickedPatient | null>(null);
-  const [doc, setDoc] = useState("");
-  const [key] = useState(newKey);
-  const go = useMutation({ mutationFn: (override?: string) => api.post("/appointments/walk-in", { patientId: patient!.id, practitionerId: doc, ...(override ? { duplicateOverride: { reason: override } } : {}) }, key), onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["appointments"] }); await qc.invalidateQueries({ queryKey: ["queue"] }); onClose(); } });
-  return (
-    <Modal title="Walk-in patient" onClose={onClose}>
-      <div className="space-y-3">
-        <Field as="div" label="Patient"><PatientPicker value={patient} onPick={setPatient} autoFocus /></Field>
-        <Field label="Doctor"><Select value={doc} onChange={(e) => setDoc(e.target.value)}><option value="">Choose…</option>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select></Field>
-        {isDuplicateBooking(go.error) ? <DuplicateBookingNotice error={go.error} pending={go.isPending} onOverride={(r) => go.mutate(r)} /> : <ErrorNote error={go.error} />}
-        <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!patient || !doc} loading={go.isPending} onClick={() => go.mutate(undefined)}>Check in and add to queue</Button></div>
-      </div>
-    </Modal>
-  );
-}
-
 /** Move a booked appointment to another time (and optionally another doctor). The version guards against concurrent changes. */
 function Reschedule({ appt, today, onClose, onMoved }: { appt: Appt; today: string; onClose: () => void; onMoved: (b: Booked) => void }) {
   const qc = useQueryClient();
   const { dateTime } = useMe();
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
   const [doc, setDoc] = useState(appt.practitionerId);
   const [day, setDay] = useState(today);
   const [slot, setSlot] = useState("");
@@ -134,10 +118,10 @@ function Reschedule({ appt, today, onClose, onMoved }: { appt: Appt; today: stri
     <Modal title={`Reschedule — ${appt.patientName}`} onClose={onClose} wide>
       <div className="grid gap-3 sm:grid-cols-2">
         <p className="text-sm text-slate-500 sm:col-span-2">Currently {dateTime(appt.startAt)} with {appt.practitionerName}.</p>
-        <Field label="Doctor"><Select value={doc} onChange={(e) => { setDoc(e.target.value); setSlot(""); }}>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select></Field>
+        <DoctorPicker value={doc} onChange={(id) => { setDoc(id); setSlot(""); }} />
         <Field label="Date"><Input type="date" min={today} value={day} onChange={(e) => { setDay(e.target.value); setSlot(""); }} /></Field>
         <div className="sm:col-span-2">
-          <div className="mb-1 text-sm font-medium text-slate-700">New time</div>
+          <div className="mb-1 flex items-center justify-between text-sm font-medium text-slate-700"><span>New time</span>{slots.data && slots.data.length > 0 && <span className="text-xs font-normal text-slate-500">{slots.data.filter((x) => x.available).length} free · {slots.data.filter((x) => !x.available).length} taken</span>}</div>
           {slots.isLoading ? <Spinner /> : slots.data?.length === 0 ? <p className="text-sm text-slate-500">No sessions on that day.</p> : (
             <div className="flex flex-wrap gap-1.5">
               {slots.data?.map((s) => (
@@ -160,6 +144,7 @@ export default function AppointmentsPage() {
   const today = todayIn(tz);
   const [date, setDate] = useState(today);
   const [doctor, setDoctor] = useState("");
+  const [dept, setDept] = useState("");
   const [modal, setModal] = useState<"book" | "walkin" | null>(null);
   const [cancel, setCancel] = useState<Appt | null>(null);
   const [moving, setMoving] = useState<Appt | null>(null);
@@ -175,60 +160,125 @@ export default function AppointmentsPage() {
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(b.startAt));
     setDate(day);
     setDoctor("");
+    setDept("");
     setFollowUpsOnly(false);
     setNotice(`${verb}: ${b.patientName} with ${b.practitionerName} on ${dateTime(b.startAt)}.${day !== today ? ` Showing ${day}.` : ""}`);
   };
   const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
   const list = useQuery({ queryKey: ["appointments", date, doctor, followUpsOnly], queryFn: () => api.page<Appt>("/appointments", { date, ...(doctor ? { practitionerId: doctor } : {}), ...(followUpsOnly ? { type: "FOLLOW_UP" } : {}), pageSize: 100 }) });
+  const depts = useQuery({ queryKey: ["departments"], queryFn: () => api.get<{ id: string; name: string }[]>("/departments") });
+  // Only departments that have a doctor; the doctor list follows the department, and the day's list follows both.
+  const deptChoices = depts.data?.filter((d) => docs.data?.some((x) => x.departmentId === d.id)) ?? [];
+  const doctorChoices = filterDoctors(docs.data ?? [], dept, "");
+  const inDept = dept && !doctor ? new Set(doctorChoices.map((d) => d.id)) : null;
+  const shownAppts = (list.data?.data ?? []).filter((a) => !inDept || inDept.has(a.practitionerId));
   const refresh = () => qc.invalidateQueries({ queryKey: ["appointments"] });
   const act = useMutation({ mutationFn: ({ id, action, body }: { id: string; action: string; body?: unknown }) => api.post(`/appointments/${id}/${action}`, body), onSuccess: async () => { await refresh(); await qc.invalidateQueries({ queryKey: ["queue"] }); } });
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const visible = needle ? shownAppts.filter((a) => `${a.patientName} ${a.mrn ?? ""} ${a.practitionerName}`.toLowerCase().includes(needle)) : shownAppts;
+  const count = (...st: string[]) => shownAppts.filter((a) => st.includes(a.status)).length;
+  const summary: [string, number, string][] = [
+    ["Booked", count("BOOKED"), "bg-blue-50 text-blue-700"],
+    ["In clinic", count("CHECKED_IN", "WAITING", "IN_CONSULTATION"), "bg-teal-50 text-teal-700"],
+    ["Completed", count("COMPLETED"), "bg-emerald-50 text-emerald-700"],
+    ["Cancelled / no-show", count("CANCELLED", "NO_SHOW"), "bg-slate-100 text-slate-600"],
+  ];
+  const shiftDay = (n: number) => { const [y, m, d] = date.split("-").map(Number) as [number, number, number]; setDate(new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)); };
+  const canBook = can("APPOINTMENT_CREATE");
+  // A doctor sees "My appointments": the server already limits the list to their own patients, so the department / doctor pickers and everyone else's schedule are left out.
+  const doctorMode = can("CONSULTATION_CREATE") && !canBook;
+  const mine = docs.data?.find((d) => d.userId === me.id);
+  // B books, W starts a walk-in, T jumps back to today (ignored while typing or when a form is open).
+  useDeskKeys((k, e) => {
+    if (modal || cancel || moving) return;
+    if (k === "B" && canBook) { e.preventDefault(); setModal("book"); }
+    else if (k === "W" && canBook) { e.preventDefault(); setModal("walkin"); }
+    else if (k === "T") { e.preventDefault(); setDate(today); }
+  });
+  const nav = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-50";
   return (
     <Gate anyOf={["APPOINTMENT_READ"]}>
-      <AppointmentRequestsCard />
-      <div className="mt-4"><DoctorSchedules /></div>
-      <PageHeader
-        title="Appointments"
-        actions={<>
-          <Input type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
-          <Select aria-label="Doctor" value={doctor} onChange={(e) => setDoctor(e.target.value)} className="w-48"><option value="">All doctors</option>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select>
-          <Select aria-label="Appointment type" value={followUpsOnly ? "FOLLOW_UP" : ""} onChange={(e) => setFollowUpsOnly(e.target.value === "FOLLOW_UP")} className="w-40"><option value="">All appointments</option><option value="FOLLOW_UP">Follow-ups only</option></Select>
-          {can("APPOINTMENT_CREATE") && <Button variant="secondary" onClick={() => setModal("walkin")}>Walk-in</Button>}
-          {can("APPOINTMENT_CREATE") && <Button onClick={() => setModal("book")}>Book appointment</Button>}
-        </>}
-      />
-      <ErrorNote error={act.error} />
-      {notice && <Notice tone="success"><span className="mr-3">{notice}</span><button className="text-sm underline" onClick={() => setNotice(null)}>Dismiss</button></Notice>}
-      <Card>
-        {list.isLoading ? <Spinner /> : (
-          <Table head={["Time", "Patient", "Doctor", "Status", ""]} {...(list.data?.data.length === 0 ? { empty: "No appointments on this day." } : {})}>
-            {list.data?.data.map((a) => (
-              <tr key={a.id}>
-                <Td>{dateTime(a.startAt).split(", ").pop()}</Td>
-                <Td>
-                  <span className="font-medium">{a.patientName}</span> <span className="text-slate-500">· {a.mrn}</span>
-                  {a.type === "FOLLOW_UP" && <div className="text-xs text-brand-700">Follow-up{a.followUpOfVisit ? ` of visit ${a.followUpOfVisit.encounterNumber}` : ""}</div>}
-                  <FeeLine a={a} />
-                </Td>
-                <Td>{a.practitionerName}<div className="text-xs text-slate-500">{a.departmentName}</div></Td>
-                <Td><StatusBadge value={apptStatus(a)} /></Td>
-                <Td>
-                  <div className="flex justify-end gap-1.5">
-                    {a.type === "FOLLOW_UP" && <Button variant="ghost" onClick={() => setReminders(a)}>Reminders</Button>}
-                    {a.status === "BOOKED" && <MakeVideoButton appointmentId={a.id} />}
-                    {a.status === "CANCELLED" && a.feeHeld?.depositId && Number(a.feeHeld.amount) > 0 && can("PAYMENT_REFUND") && <Button variant="secondary" onClick={() => setGivingBack(a.feeHeld?.depositId ?? null)}>Give back fee</Button>}
-                    {a.status === "BOOKED" && a.feeStatus === "PENDING" && can("PAYMENT_CREATE") && <Button variant="secondary" onClick={() => setTakingFee(a)}>Take fee</Button>}
-                    {a.status === "BOOKED" && a.feeStatus === "PENDING" && can("BOOKING_FEE_SKIP") && <Button variant="ghost" onClick={() => setSkippingFee(a)}>Skip fee…</Button>}
-                    {a.status === "BOOKED" && can("APPOINTMENT_UPDATE", "QUEUE_MANAGE") && <Button disabled={a.feeStatus === "PENDING"} title={a.feeStatus === "PENDING" ? "Collect or skip the booking fee first" : undefined} onClick={() => act.mutate({ id: a.id, action: "check-in" })}>Check in</Button>}
-                    {a.status === "BOOKED" && can("APPOINTMENT_UPDATE") && <Button variant="ghost" onClick={() => setMoving(a)}>Reschedule</Button>}
-                    {a.status === "BOOKED" && can("APPOINTMENT_UPDATE") && <Button variant="ghost" onClick={() => act.mutate({ id: a.id, action: "no-show" })}>No-show</Button>}
-                    {["BOOKED", "CHECKED_IN"].includes(a.status) && can("APPOINTMENT_CANCEL") && <Button variant="ghost" onClick={() => { setCancel(a); setReason(""); }}>Cancel</Button>}
-                  </div>
-                </Td>
-              </tr>
-            ))}
-          </Table>
-        )}
-      </Card>
+      <div className="-mx-4 -mb-4 min-h-[calc(100vh-8rem)] bg-white p-4 md:-mx-6 md:-mb-6 md:px-6 md:py-4">
+        <PageHeader
+          title={doctorMode ? "My appointments" : "Appointments"}
+          subtitle={`${visible.length} ${visible.length === 1 ? "appointment" : "appointments"} · ${date === today ? "today" : date}`}
+          actions={<>
+            {canBook && <Button variant="secondary" className="gap-2 rounded-lg px-4 py-2" onClick={() => setModal("walkin")}>Walk-in<kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 text-[11px] text-slate-500">W</kbd></Button>}
+            {canBook && <Button className="gap-2 rounded-lg px-4 py-2 shadow-sm" onClick={() => setModal("book")}><Icon name="plus" />Book appointment<kbd className="rounded bg-white/20 px-1.5 text-[11px]">B</kbd></Button>}
+          </>}
+        />
+        {/* Every filter in one row: day (with previous / next / today), department, doctor, type and a quick search of what is listed. */}
+        <section className={`${PANEL} mb-3 px-3 py-2.5`}>
+          <div className="flex flex-wrap items-end gap-2.5">
+            <div>
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-slate-500">{date === today ? "Today" : "Date"}</div>
+              <div className="flex items-center gap-1">
+                <button type="button" aria-label="Previous day" className={nav} onClick={() => shiftDay(-1)}>‹</button>
+                <div className="w-40"><Input type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                <button type="button" aria-label="Next day" className={nav} onClick={() => shiftDay(1)}>›</button>
+                {date !== today && <button type="button" className="ml-1 rounded-md bg-teal-50 px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100" onClick={() => setDate(today)}>Today <kbd className="ml-1 text-[10px] text-teal-600">T</kbd></button>}
+              </div>
+            </div>
+            {!doctorMode && <div className="min-w-[10rem] flex-1"><Field label="Department">
+              <Select aria-label="Department filter" value={dept} onChange={(e) => { setDept(e.target.value); setDoctor(""); }}><option value="">All departments</option>{deptChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>
+            </Field></div>}
+            {!doctorMode && <div className="min-w-[10rem] flex-1"><Field label="Doctor">
+              <Select aria-label="Doctor" value={doctor} onChange={(e) => setDoctor(e.target.value)}><option value="">{dept ? "All doctors in this department" : "All doctors"}</option>{doctorChoices.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select>
+            </Field></div>}
+            <div className="min-w-[9rem]"><Field label="Show">
+              <Select aria-label="Appointment type" value={followUpsOnly ? "FOLLOW_UP" : ""} onChange={(e) => setFollowUpsOnly(e.target.value === "FOLLOW_UP")}><option value="">All appointments</option><option value="FOLLOW_UP">Follow-ups only</option></Select>
+            </Field></div>
+            <div className="min-w-[10rem] flex-1"><Field label="Search this day">
+              <Input aria-label="Search appointments" placeholder="Patient, ID or doctor" value={q} onChange={(e) => setQ(e.target.value)} />
+            </Field></div>
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs">
+            {summary.map(([label, n, tone]) => <span key={label} className={`rounded-full px-2.5 py-1 font-medium ${tone}`}>{label} <span className="tabular-nums">{n}</span></span>)}
+          </div>
+        </section>
+        <AppointmentRequestsCard />
+        <ErrorNote error={act.error} />
+        {notice && <div className="mb-3"><Notice tone="success"><span className="mr-3">{notice}</span><button className="text-sm underline" onClick={() => setNotice(null)}>Dismiss</button></Notice></div>}
+        <section className={`${PANEL} mb-3`}>
+          {list.isLoading ? <div className="p-4"><Spinner /></div> : visible.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{needle ? "No appointment matches your search." : "No appointments on this day."}</p> : (
+            <div className="overflow-x-auto px-4 pb-1">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-400"><th className="py-2 font-medium">Time</th><th className="py-2 font-medium">Patient</th><th className="py-2 font-medium">Doctor</th><th className="py-2 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {visible.map((a) => (
+                    <tr key={a.id} className={`align-top hover:bg-slate-50/70 ${a.status === "IN_CONSULTATION" ? "bg-blue-50/40" : ""}`}>
+                      <td className="whitespace-nowrap py-2.5 pr-4 font-semibold tabular-nums text-slate-900">{dateTime(a.startAt).split(", ").pop()}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className="font-medium text-slate-900">{a.patientName}</span> <span className="text-slate-400">· {a.mrn}</span>
+                        {a.type === "FOLLOW_UP" && <div className="text-xs text-teal-700">Follow-up{a.followUpOfVisit ? ` of visit ${a.followUpOfVisit.encounterNumber}` : ""}</div>}
+                        <FeeLine a={a} />
+                      </td>
+                      <td className="py-2.5 pr-4"><div className="text-slate-800">{a.practitionerName}</div><div className="text-xs text-slate-500">{a.departmentName}</div></td>
+                      <td className="py-2.5 pr-4"><StatusBadge value={apptStatus(a)} /></td>
+                      <td className="py-2.5">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {doctorMode && <Link href={`/patients/${a.patientId}`} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Open chart</Link>}
+                          {a.type === "FOLLOW_UP" && <Button variant="ghost" onClick={() => setReminders(a)}>Reminders</Button>}
+                          {a.status === "BOOKED" && <MakeVideoButton appointmentId={a.id} />}
+                          {a.status === "CANCELLED" && a.feeHeld?.depositId && Number(a.feeHeld.amount) > 0 && can("PAYMENT_REFUND") && <Button variant="secondary" onClick={() => setGivingBack(a.feeHeld?.depositId ?? null)}>Give back fee</Button>}
+                          {a.status === "BOOKED" && a.feeStatus === "PENDING" && can("PAYMENT_CREATE") && <Button variant="secondary" onClick={() => setTakingFee(a)}>Take fee</Button>}
+                          {a.status === "BOOKED" && a.feeStatus === "PENDING" && can("BOOKING_FEE_SKIP") && <Button variant="ghost" onClick={() => setSkippingFee(a)}>Skip fee…</Button>}
+                          {a.status === "BOOKED" && can("APPOINTMENT_UPDATE", "QUEUE_MANAGE") && <Button disabled={a.feeStatus === "PENDING"} title={a.feeStatus === "PENDING" ? "Collect or skip the booking fee first" : undefined} onClick={() => act.mutate({ id: a.id, action: "check-in" })}>Check in</Button>}
+                          {a.status === "BOOKED" && can("APPOINTMENT_UPDATE") && <Button variant="ghost" onClick={() => setMoving(a)}>Reschedule</Button>}
+                          {a.status === "BOOKED" && can("APPOINTMENT_UPDATE") && <Button variant="ghost" onClick={() => act.mutate({ id: a.id, action: "no-show" })}>No-show</Button>}
+                          {["BOOKED", "CHECKED_IN"].includes(a.status) && can("APPOINTMENT_CANCEL") && <Button variant="ghost" onClick={() => { setCancel(a); setReason(""); }}>Cancel</Button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+        <DoctorSchedules departmentId={dept} doctorId={doctorMode && mine ? mine.id : doctor} title={doctorMode ? "My weekly schedule" : "Doctors' weekly schedules"} />
+      </div>
       {modal === "book" && <Book date={today} onClose={() => setModal(null)} onBooked={(b) => showDay(b, "Booked")} />}
       {modal === "walkin" && <WalkIn onClose={() => setModal(null)} />}
       {moving && <Reschedule appt={moving} today={today} onClose={() => setMoving(null)} onMoved={(b) => showDay(b, "Moved")} />}
@@ -239,7 +289,7 @@ export default function AppointmentsPage() {
       {cancel && (
         <Modal title={`Cancel appointment for ${cancel.patientName}?`} onClose={() => setCancel(null)}>
           <div className="space-y-3">
-            <Field label="Reason"><Input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+            <Field label="Reason"><ReasonSelect reasons={CANCEL_REASONS.appointment} onChange={setReason} autoFocus /></Field>
             <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setCancel(null)}>Keep</Button><Button variant="danger" disabled={reason.trim().length < 3} onClick={() => { act.mutate({ id: cancel.id, action: "cancel", body: { reason: reason.trim() } }); setCancel(null); }}>Cancel appointment</Button></div>
           </div>
         </Modal>

@@ -10,6 +10,10 @@ import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { localeFor, useI18n, useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
+import { DoctorDashboard } from "@/components/doctor-desk";
+import { PharmacyDashboard } from "@/components/pharmacy-desk";
+import { CashierDashboard } from "@/components/cashier-desk";
+import { needsDesk, useDesk } from "@/lib/desk";
 import { homeFor, visibleNav } from "@/lib/nav";
 
 function Stat({ label, value, href }: { label: string; value: string | number | undefined; href?: string }) {
@@ -33,13 +37,16 @@ export default function Dashboard() {
   const { me, features } = useMe();
   const router = useRouter();
   // Laboratory staff (LIMS manager, technicians, pathologist, radiologist) start on the Laboratory page: their role puts it first in their menu.
-  const home = homeFor(visibleNav(new Set(me.permissions), features, me.roles));
+  // Reception works at the OPD or the IPD desk (docs/reception-desks.md); everyone else has no desk.
+  const { desk } = useDesk();
+  const activeDesk = needsDesk(me.roles, features) ? (desk ?? null) : null;
+  const home = homeFor(visibleNav(new Set(me.permissions), features, me.roles, activeDesk));
   useEffect(() => { if (home === "/lims") router.replace("/lims"); }, [home, router]);
   // The front desk and the laboratory floor (nurse taking samples, technician, pathologist, radiologist) each get their own layout;
   // what each panel shows is still decided by permissions. The LIMS manager keeps the control room as home.
   const { can } = useMe();
   const labFloor = can("LIMS_COLLECT", "LIMS_ISSUE", "LAB_VERIFY", "RAD_REPORT") && !can("LIMS_MANAGE");
-  if (me.roles.includes("RECEPTIONIST")) return <ReceptionDashboard />;
+  if (me.roles.includes("RECEPTIONIST")) return <ReceptionDashboard desk={activeDesk} />;
   return labFloor ? <LabStaffDashboard /> : <GeneralDashboard />;
 }
 
@@ -58,6 +65,12 @@ function GeneralDashboard() {
   const icu = useQuery({ queryKey: ["dash-icu"], queryFn: () => api.page<unknown>("/icu/stays", { pageSize: 1 }), enabled: can("ICU_READ"), refetchInterval: 15_000 });
   const nav = visibleNav(new Set(me.permissions), features, me.roles).filter((n) => n.href !== "/dashboard");
   const waiting = queue.data?.filter((q) => q.status === "WAITING" || q.status === "CALLED").length;
+  // Every doctor gets the same doctor desk: next patient, waiting list and one-key shortcuts.
+  if (me.roles.includes("DOCTOR") && can("CONSULTATION_CREATE")) return <DoctorDashboard />;
+  // The pharmacist gets the pharmacy desk: waiting prescriptions, stock and expiry alerts, and one-key shortcuts.
+  // The cashier gets the billing desk: money taken today, bills still owed with one-click payment, and shortcuts.
+  if (me.roles.includes("CASHIER") && can("INVOICE_READ")) return <CashierDashboard />;
+  if (me.roles.includes("PHARMACIST") && can("PHARMACY_READ") && features.PHARMACY_ENABLED !== false) return <PharmacyDashboard />;
 
   return (
     <>
