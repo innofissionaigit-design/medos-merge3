@@ -96,6 +96,7 @@ The project's Windows PostgreSQL script is not available on this machine, and po
 * **Reception OPD desk** no longer has Planned admissions, Insurance money or Estimate, and its Reports page has no inpatient section (`nav.ts` `desk: "IPD"`, `reports/page.tsx`, reception dashboard shortcut).
 * **Lab messages**: registering a patient for a lab test and a booking's reports becoming ready now send the day and time by email, SMS and WhatsApp, with three pop-ups (green tick sent / red cross not sent, with the reason). New route `POST /lims/batches/:batchId/notify` (see docs/lims-portal.md).
 * **Cashier and lab charges taken at reception**: reception taking a lab charge notifies the cashier (new notification `LIMS_CHARGE_TAKEN`, migration `20261125090000_lims_charge_taken`) and lists it in a ledger card at the top of Billing (`GET /lims/reception-charges`) as Taken; patients whose charge is not taken keep **Take payment** beside their name (the cashier's old "Collect total" button now reads Take payment).
+* **Chakravardhan's branch (`dev_chakravardhan`, commit bebcd32) merged**: OPD vitals alerts and profile card, bill soft copy, registration welcome, follow-up date and expected follow-ups, °C/°F, cashier OPD ledger, report drill-down. One decision kept ours: `OPD_FEE_BEFORE_VISIT` stays **on** by default (payment first); their commit had turned it off.
 
 ### Ports and local setup
 

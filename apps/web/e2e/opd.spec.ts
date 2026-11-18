@@ -28,7 +28,7 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   // Vitals are recorded from a fold in the side column of the visit page.
   await page.getByText("Vitals: record or correct").click();
   await page.getByLabel("Pulse").fill("88");
-  await page.getByLabel("Temperature").fill("38.2");
+  await page.getByLabel("Temperature", { exact: true }).fill("38.2");
   await page.getByRole("button", { name: "Record vitals" }).click();
   await expect(page.getByText("88 bpm")).toBeVisible();
 
