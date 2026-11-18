@@ -7,6 +7,7 @@ import { Badge, Button, Card, ErrorNote, Input, Modal, Notice, Select, Spinner }
 import { api, printUrl } from "@/lib/api";
 import { canEditTests } from "@/lib/cashier-edit";
 import { useMe } from "@/lib/me";
+import { PrintLink } from "@/components/print-link";
 
 interface Medicine { orderNumber: string | null; source: string; pharmacy: "WAITING" | "PARTLY_GIVEN" | "GIVEN"; items: { id: string; name: string; strength: string | null; dosage: string; frequency: string; days: number | null; quantity: number | null; suggestedQuantity?: number | null; given: number; status: string }[] }
 interface Page { pageNo: number; fileId: string; fileName: string; contentType: string }
@@ -34,7 +35,7 @@ const lineOk = (l: Line): boolean => l.removed || (l.name.trim().length >= 2 && 
 const lineCents = (l: Line): number => (l.removed || l.price === null || !validAmount(l.price) ? 0 : Math.round(cents(l.price) * l.quantity * (1 + (validTax(l.taxPercent) ? Number(l.taxPercent) : 0) / 100)));
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="mt-3"><div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>{children}</div>;
+  return <div className="mt-3 first:mt-0"><div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-teal-700"><span className="h-3 w-0.5 rounded bg-teal-500" aria-hidden />{title}</div>{children}</div>;
 }
 
 /** The doctor's original handwritten page: opens in a viewer that zooms. */
@@ -122,14 +123,14 @@ function MedicineTable({ meds }: { meds: Medicine[] }) {
     <>
       {meds.map((m, i) => (
         <div key={i} className="mb-2">
-          <div className="text-xs text-slate-500">{m.orderNumber ? `Prescription ${m.orderNumber} — ` : ""}pharmacy: {PHARMACY[m.pharmacy]}</div>
-          <div className="overflow-x-auto">
+          <div className="mb-1 text-xs text-slate-500">{m.orderNumber ? `Prescription ${m.orderNumber} — ` : ""}pharmacy: {PHARMACY[m.pharmacy]}</div>
+          <div className="overflow-x-auto rounded-md border border-slate-100 bg-white">
             <table className="w-full text-sm" data-testid="medicine-table">
-              <thead><tr className="text-left text-xs text-slate-500"><th className="py-1 pr-3 font-medium">Medicine</th><th className="pr-3 font-medium">Strength</th><th className="pr-3 font-medium">Dosage</th><th className="pr-3 font-medium">Frequency</th><th className="pr-3 font-medium">Days</th><th className="pr-3 font-medium">Quantity</th><th className="font-medium">Given</th></tr></thead>
+              <thead><tr className="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="px-3 py-1.5 font-medium">Medicine</th><th className="pr-3 font-medium">Strength</th><th className="pr-3 font-medium">Dosage</th><th className="pr-3 font-medium">Frequency</th><th className="pr-3 font-medium">Days</th><th className="pr-3 font-medium">Quantity</th><th className="font-medium">Given</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {m.items.map((x) => (
                   <tr key={x.id}>
-                    <td className="py-1 pr-3 font-medium">{x.name}</td><td className="pr-3">{x.strength ?? "—"}</td><td className="pr-3">{x.dosage}</td><td className="pr-3">{x.frequency}</td><td className="pr-3">{x.days ?? "—"}</td>
+                    <td className="px-3 py-1.5 font-medium text-slate-900">{x.name}</td><td className="pr-3">{x.strength ?? "—"}</td><td className="pr-3">{x.dosage}</td><td className="pr-3">{x.frequency}</td><td className="pr-3">{x.days ?? "—"}</td>
                     <td className="pr-3">{x.quantity ?? (x.suggestedQuantity ? `${x.suggestedQuantity} (calculated)` : "not written")}</td><td>{x.status !== "ACTIVE" ? x.status.toLowerCase() : x.given}</td>
                   </tr>
                 ))}
@@ -184,7 +185,7 @@ function CollectTotal({ patient, onClose }: { patient: PatientCard; onClose: () 
               <li key={r.receiptId} className="flex flex-wrap items-center gap-2 py-1.5">
                 <span className="font-medium">{r.invoiceNumber}</span><span className="text-slate-500">receipt {r.receiptNumber}</span><span className="ml-auto">{money(r.amount)}</span>
                 <span className="text-xs text-slate-500">{r.invoiceStatus.replace("_", " ").toLowerCase()}</span>
-                <a href={printUrl(`receipts/${r.receiptId}`)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline">Print receipt</a>
+                <PrintLink href={printUrl(`receipts/${r.receiptId}`)} className="text-xs text-brand-700 hover:underline">Print receipt</PrintLink>
               </li>
             ))}
           </ul>
@@ -267,9 +268,9 @@ function Visit({ v, services, onDirty }: { v: VisitInfo; services: Service[]; on
   const hasDigital = digitalMeds.length > 0 || digitalIdx.length > 0 || (v.pictures.length === 0 && handMeds.length === 0);
   const hasHand = v.pictures.length > 0 || handMeds.length > 0 || handIdx.length > 0;
   return (
-    <div className="rounded border border-slate-200 p-3" data-testid="cashier-visit">
+    <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3" data-testid="cashier-visit">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="text-sm text-slate-600">Visit {dateTime(v.visitDate)} · Dr {v.doctorName ?? "—"}</div>
+        <div className="text-sm font-medium text-slate-700">Visit {dateTime(v.visitDate)} <span className="font-normal text-slate-500">· Dr {v.doctorName ?? "—"}</span></div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {canEditTests(lines.length, unread.length, editing) && <Button variant="secondary" onClick={start}>Edit tests</Button>}
           {editing && <><Button variant="ghost" onClick={stop}>Cancel</Button><Button loading={save.isPending} disabled={!allOk} onClick={() => save.mutate()}>Save changes</Button></>}
@@ -378,16 +379,16 @@ export function CashierPrescriptions() {
             const total = collectable(p);
             const unsaved = p.visits.some((v) => dirty.has(v.encounterId));
             return (
-              <div key={p.patientId} className="rounded-lg border border-slate-300 p-3" data-testid="cashier-patient">
+              <div key={p.patientId} className="rounded-xl border border-slate-100 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)]" data-testid="cashier-patient">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link className="text-base font-semibold text-brand-700 hover:underline" href={`/patients/${p.patientId}`}>{p.patientName}</Link>
+                  <Link className="text-base font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/patients/${p.patientId}`}>{p.patientName}</Link>
                   <span className="text-xs text-slate-500">{p.mrn}</span>
                   {p.testsToBill > 0 && <Badge tone="amber">{p.testsToBill} {p.testsToBill === 1 ? "test" : "tests"} to bill</Badge>}
                   {p.picturesToRead > 0 && <Badge tone="amber">{p.picturesToRead} handwritten to read</Badge>}
                   {p.medicinesWaiting > 0 && <Badge>{p.medicinesWaiting} with the pharmacy</Badge>}
                   {total > 0 && (
                     <span className="ml-auto flex items-center gap-2">
-                      <span className="text-sm font-medium">To collect {money((total / 100).toFixed(2))}</span>
+                      <span className="text-sm font-semibold tabular-nums text-amber-700">To collect {money((total / 100).toFixed(2))}</span>
                       <Button disabled={unsaved} title={unsaved ? "Save your changes to the tests first" : undefined} onClick={() => setCollecting(p)}>Collect total {money((total / 100).toFixed(2))}</Button>
                     </span>
                   )}

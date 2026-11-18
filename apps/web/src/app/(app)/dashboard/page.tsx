@@ -5,6 +5,11 @@ import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { localeFor, useI18n, useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
+import { ReceptionDashboard } from "@/components/reception-desk";
+import { DoctorDashboard } from "@/components/doctor-desk";
+import { PharmacyDashboard } from "@/components/pharmacy-desk";
+import { CashierDashboard } from "@/components/cashier-desk";
+import { needsDesk, useDesk } from "@/lib/desk";
 import { visibleNav } from "@/lib/nav";
 
 function Stat({ label, value, href }: { label: string; value: string | number | undefined; href?: string }) {
@@ -37,6 +42,15 @@ export default function Dashboard() {
   const reg = useQuery({ queryKey: ["dash-reg"], queryFn: () => api.get<RegReport>("/reports/registrations"), enabled: can("REPORT_READ", "REPORT_FINANCE"), refetchInterval: 15_000 });
   const nav = visibleNav(new Set(me.permissions), features, me.roles).filter((n) => n.href !== "/dashboard");
   const waiting = queue.data?.filter((q) => q.status === "WAITING" || q.status === "CALLED").length;
+  const { desk } = useDesk();
+  // Reception has one dashboard per desk (OPD or IPD); everyone else keeps this one.
+  if (needsDesk(me.roles, features) && desk) return <ReceptionDashboard desk={desk} />;
+  // Every doctor gets the same doctor desk: next patient, waiting list and one-key shortcuts.
+  if (me.roles.includes("DOCTOR") && can("CONSULTATION_CREATE")) return <DoctorDashboard />;
+  // The pharmacist gets the pharmacy desk: waiting prescriptions, stock and expiry alerts, and one-key shortcuts.
+  // The cashier gets the billing desk: money taken today, bills still owed with one-click payment, and shortcuts.
+  if (me.roles.includes("CASHIER") && can("INVOICE_READ")) return <CashierDashboard />;
+  if (me.roles.includes("PHARMACIST") && can("PHARMACY_READ") && features.PHARMACY_ENABLED !== false) return <PharmacyDashboard />;
 
   return (
     <>

@@ -616,6 +616,8 @@ export class AppointmentsService {
     // The doctor is told a patient has joined their queue.
     const doctorUser = await this.notifications.doctorUser(tx, ctx.tenantId, appt.practitionerId);
     if (doctorUser) await this.notifications.notify(tx, [doctorUser], { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "QUEUE_PATIENT_ADDED", entityType: "QueueEntry", entityId: queue.id, dedupeKey: `QUEUE_PATIENT_ADDED:${queue.id}` });
+    // Nurses are told the patient is waiting and needs vitals taken (they record them from the OPD queue).
+    await this.notifications.notifyPermission(tx, ["VITALS_QUEUE_ALERT"], { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "NURSE_VITALS_DUE", entityType: "QueueEntry", entityId: queue.id, dedupeKey: `NURSE_VITALS_DUE:${queue.id}` });
     await this.audit.record(tx, actorOf(ctx), {
       action: "APPOINTMENT_CHECKED_IN", entityType: "Appointment", entityId: appt.id,
       metadata: { encounterId: encounter.id, queueEntryId: queue.id, tokenNumber: queue.tokenNumber, priority },

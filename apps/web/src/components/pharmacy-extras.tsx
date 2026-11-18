@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, Select, Spinner, Table, Td, useDebounced } from "./ui";
+import { PrintLink } from "@/components/print-link";
 
 interface Med { id: string; brandName: string; genericName: string; strength: string | null }
 interface Supplier { id: string; name: string; phone: string | null; email: string | null; gstin: string | null; address: string | null; status: string }
@@ -180,7 +181,7 @@ export function PurchasesTab() {
           {list.data?.data.map((p) => (
             <tr key={p.id}>
               <Td>{p.purchaseNumber}<div className="text-xs text-slate-500">{p.items.length} line(s){p.returns.length ? ` · ${p.returns.length} return(s)` : ""}</div></Td><Td>{p.supplierName}</Td><Td>{p.supplierInvoiceNo}<div className="text-xs text-slate-500">{p.supplierInvoiceDate}</div></Td>
-              <Td>{money(p.total)}</Td><Td>{dateTime(p.receivedAt)}</Td><Td><div className="flex items-center gap-2"><a className="text-xs text-brand-700" href={printUrl(`goods-receipts/${p.id}`)} target="_blank" rel="noreferrer">Print</a>{can("PHARMACY_PURCHASE") && <Button variant="ghost" onClick={() => setReturning(p)}>Return…</Button>}</div></Td>
+              <Td>{money(p.total)}</Td><Td>{dateTime(p.receivedAt)}</Td><Td><div className="flex items-center gap-2"><PrintLink className="text-xs text-brand-700" href={printUrl(`goods-receipts/${p.id}`)}>Print</PrintLink>{can("PHARMACY_PURCHASE") && <Button variant="ghost" onClick={() => setReturning(p)}>Return…</Button>}</div></Td>
             </tr>
           ))}
         </Table>
@@ -319,12 +320,12 @@ function MedicineModal({ medicine, onClose }: { medicine: Medicine | null; onClo
   );
 }
 
-export function MedicinesTab() {
+export function MedicinesTab({ startNew = false }: { startNew?: boolean }) {
   const { can } = useMe();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [inactive, setInactive] = useState(false);
-  const [editing, setEditing] = useState<Medicine | "new" | null>(null);
+  const [editing, setEditing] = useState<Medicine | "new" | null>(startNew && can("PHARMACY_MASTERS") ? "new" : null);
   const term = useDebounced(q.trim(), 250);
   const list = useQuery({ queryKey: ["medicine-master", term, inactive], queryFn: () => api.page<Medicine>("/medicines", { ...(term.length >= 2 ? { q: term } : {}), includeInactive: inactive ? "true" : "false", pageSize: 100 }) });
   const toggle = useMutation({ mutationFn: (m: Medicine) => api.patch(`/medicines/${m.id}`, { status: m.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["medicine-master"] }) });
