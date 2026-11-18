@@ -93,6 +93,9 @@ The project's Windows PostgreSQL script is not available on this machine, and po
 * **OPD desk New bill** offers only the OPD visit (consultation) for reception; the price list with X-ray, lab and the like is no longer shown there (`billing/page.tsx`).
 * **Cash payments**: the Reference box is hidden (not just greyed out) when the mode is cash, in every place money is taken from a patient (bill payment, registration fee, booking fee, advance and its refund, emergency, lab arrival, planned-admission deposit); a stale reference is never sent with cash.
 * **Reports**: the code-merge Reports page and reception report tiles were compared with ours; the page is identical and the OPD reports already carry the lab-only exclusion, so nothing needed porting.
+* **Reception OPD desk** no longer has Planned admissions, Insurance money or Estimate, and its Reports page has no inpatient section (`nav.ts` `desk: "IPD"`, `reports/page.tsx`, reception dashboard shortcut).
+* **Lab messages**: registering a patient for a lab test and a booking's reports becoming ready now send the day and time by email, SMS and WhatsApp, with three pop-ups (green tick sent / red cross not sent, with the reason). New route `POST /lims/batches/:batchId/notify` (see docs/lims-portal.md).
+* **Cashier and lab charges taken at reception**: reception taking a lab charge notifies the cashier (new notification `LIMS_CHARGE_TAKEN`, migration `20261125090000_lims_charge_taken`) and lists it in a ledger card at the top of Billing (`GET /lims/reception-charges`) as Taken; patients whose charge is not taken keep **Take payment** beside their name (the cashier's old "Collect total" button now reads Take payment).
 
 ### Ports and local setup
 

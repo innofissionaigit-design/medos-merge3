@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gate } from "@/components/gate";
 import { PatientPicker, todayIn, type PickedPatient } from "@/components/pickers";
 import { CashierPrescriptions } from "@/components/cashier-prescriptions";
+import { ReceptionChargesLedger } from "@/components/reception-charges";
 import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
 import { needsDesk, useDesk } from "@/lib/desk";
 import { api } from "@/lib/api";
@@ -184,6 +185,7 @@ function BillingInner() {
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="space-y-3 lg:col-span-2">
             {/* Prescriptions and tests waiting to be billed come first: they are the cashier's work queue. */}
+            {can("TEST_BILL") && <ReceptionChargesLedger />}
             {can("TEST_BILL") && <CashierPrescriptions />}
 
             <section className={PANEL}>

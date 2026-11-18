@@ -57,11 +57,11 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   },
   REPORT_READY: {
     key: "REPORT_READY", label: "Report ready", description: "Sent when a laboratory or radiology report is released. It says only that a report is ready, never what it says.",
-    vars: { name: "Asha", facility: "City Hospital" },
+    vars: { name: "Asha", facility: "City Hospital", when: "Wednesday, 18 Nov 2026, 4:30 pm" },
     defaults: {
-      en: { subject: "Your report is ready — {facility}", body: "Dear {name},\n\nA report for you is ready at {facility}. Please collect it from the hospital or sign in to the patient app to see it. For your privacy, test results are not sent by email.\n\n{facility}" },
-      bn: { subject: "আপনার রিপোর্ট প্রস্তুত — {facility}", body: "প্রিয় {name},\n\n{facility}-এ আপনার একটি রিপোর্ট প্রস্তুত। অনুগ্রহ করে হাসপাতাল থেকে সংগ্রহ করুন বা রোগীর অ্যাপে সাইন ইন করে দেখুন। আপনার গোপনীয়তার জন্য পরীক্ষার ফলাফল ইমেইলে পাঠানো হয় না।\n\n{facility}" },
-      hi: { subject: "आपकी रिपोर्ट तैयार है — {facility}", body: "प्रिय {name},\n\n{facility} में आपकी एक रिपोर्ट तैयार है। कृपया अस्पताल से ले लें या रोगी ऐप में साइन इन करके देखें। आपकी गोपनीयता के लिए जाँच के परिणाम ईमेल से नहीं भेजे जाते।\n\n{facility}" },
+      en: { subject: "Your report is ready — {facility}", body: "Dear {name},\n\nA report for you is ready at {facility} (ready since {when}). Please collect it from the hospital or sign in to the patient app to see it. For your privacy, test results are not sent by email.\n\n{facility}" },
+      bn: { subject: "আপনার রিপোর্ট প্রস্তুত — {facility}", body: "প্রিয় {name},\n\n{facility}-এ আপনার একটি রিপোর্ট প্রস্তুত ({when} থেকে)। অনুগ্রহ করে হাসপাতাল থেকে সংগ্রহ করুন বা রোগীর অ্যাপে সাইন ইন করে দেখুন। আপনার গোপনীয়তার জন্য পরীক্ষার ফলাফল ইমেইলে পাঠানো হয় না।\n\n{facility}" },
+      hi: { subject: "आपकी रिपोर्ट तैयार है — {facility}", body: "प्रिय {name},\n\n{facility} में आपकी एक रिपोर्ट तैयार है ({when} से)। कृपया अस्पताल से ले लें या रोगी ऐप में साइन इन करके देखें। आपकी गोपनीयता के लिए जाँच के परिणाम ईमेल से नहीं भेजे जाते।\n\n{facility}" },
     },
   },
   TEST_SCHEDULED: {
@@ -132,6 +132,11 @@ export function render(key: TemplateKey, language: EmailLanguage, vars: Record<s
 }
 
 const LOCALE: Record<EmailLanguage, string> = { en: "en-IN-u-nu-latn", bn: "bn-IN-u-nu-latn", hi: "hi-IN-u-nu-latn" };
+
+/** "Wednesday, 18 Nov 2026, 4:30 pm": the day and the time, in the facility's time zone (English; used in the messages that say when to come and since when a report is ready). */
+export function formatDayTime(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-IN", { timeZone, weekday: "long", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(at);
+}
 
 /** "12 Nov 2026, 10:30 am" in the facility's time zone and the email's language. */
 export function formatWhen(at: Date, timeZone: string, language: EmailLanguage): string {

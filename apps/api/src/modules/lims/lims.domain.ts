@@ -96,8 +96,9 @@ export function scheduledText(i: { firstName: string; facility: string; departme
   return `Dear ${i.firstName}, your ${i.departments.join(" and ")} test at ${i.facility} is booked.${when}${prep} Show your number ${i.requestNumbers.join(", ")} at the lab. Your report will be ready at reception.`.replace(/\s+/g, " ").trim();
 }
 
-export function reportReadyText(i: { firstName: string; facility: string; requestNumbers: string[] }): string {
-  return `Dear ${i.firstName}, your report (${i.requestNumbers.join(", ")}) is ready at ${i.facility}. Please collect it from the reception desk. For your privacy results are not sent by message.`;
+/** `readyAt` is the day and time the report became ready for the patient to collect (for example "Wednesday, 18 Nov 2026, 4:30 pm"). */
+export function reportReadyText(i: { firstName: string; facility: string; requestNumbers: string[]; readyAt?: string | null }): string {
+  return `Dear ${i.firstName}, your report (${i.requestNumbers.join(", ")}) is ready at ${i.facility}${i.readyAt ? ` (ready since ${i.readyAt})` : ""}. Please collect it from the reception desk. For your privacy results are not sent by message.`;
 }
 
 /**

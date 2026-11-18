@@ -89,7 +89,7 @@ export function ReceptionDashboard({ desk = null }: { desk?: Desk | null }) {
     { label: "Billing & Payment", href: "/billing", icon: "receipt", tone: "sky", show: can("INVOICE_READ") },
     { label: "Lab Request", href: "/lims?tab=book", icon: "flask", tone: "violet", show: can("LIMS_REQUEST") },
     { label: "Going home", href: "/discharge-board", icon: "check", tone: "emerald", show: can("ADMISSION_READ") && ipd },
-    { label: "Planned Admission", href: "/planned", icon: "calendar", tone: "emerald", show: can("PLANNED_READ") && features.IPD_ENABLED !== false },
+    { label: "Planned Admission", href: "/planned", icon: "calendar", tone: "emerald", show: can("PLANNED_READ") && features.IPD_ENABLED !== false && desk === "IPD" },
   ];
   const actions = allActions.filter((a) => a.show).slice(0, 6);
 

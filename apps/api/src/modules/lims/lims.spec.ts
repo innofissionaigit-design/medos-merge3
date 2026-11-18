@@ -1,6 +1,7 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import type { MessageProvider } from "../prescriptions/message.provider";
 import { LimsMessagesService } from "./lims-messages.service";
 import { makeDoctor, registerPatient, startApp, startVisit, uniqueWord, type TestApp, type TestDoctor, type TestTenant } from "../../test/harness";
 
@@ -341,6 +342,18 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal(m.status, "SENT");
       assert.ok(m.providerMessageId!.startsWith("log-only:"), "nothing real is sent until a provider is connected");
 
+      // The three pop-ups after registering: email, SMS and WhatsApp each say whether it went. With nothing connected every one is a red cross, never a tick.
+      const popup = await t.api("post", `/lims/batches/${rows[0]!.batchId}/notify`, rec.token).send({ kind: "SCHEDULED" });
+      assert.equal(popup.status, 200, JSON.stringify(popup.body));
+      const lines = popup.body.data.channels as { channel: string; ok: boolean; text: string }[];
+      assert.deepEqual(lines.map((c) => [c.channel, c.ok]), [["EMAIL", false], ["SMS", false], ["WHATSAPP", false]]);
+      assert.match(lines[1]!.text, /^SMS not sent: no message service is connected$/);
+      assert.match(lines[2]!.text, /^WhatsApp not sent: no message service is connected$/);
+      assert.match(lines[0]!.text, /^Email not sent: /);
+      assert.equal((await t.api("post", `/lims/batches/${randomUUID()}/notify`, rec.token).send({ kind: "SCHEDULED" })).status, 404);
+      assert.equal((await t.api("post", `/lims/batches/${rows[0]!.batchId}/notify`, rec.token).send({ kind: "OTHER" })).status, 400);
+      assert.equal((await t.api("post", `/lims/batches/${rows[0]!.batchId}/notify`, doc.token).send({ kind: "SCHEDULED" })).status, 403, "a doctor does not trigger the patient's messages");
+
       // The lab does the work: the assigned nurse takes the sample; the technician and the specialist follow.
       const labReq = await only(encounterId, cbc.name);
       assert.equal((await act(labReq.id, "collect", nurse.token)).status, 200);
@@ -356,6 +369,7 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await act(labReq.id, "issue", pTech.token)).status, 200);
       // The imaging booking is still open, so the patient is not yet told the reports are ready.
       assert.equal(await t.prisma.limsMessage.count({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } }), 0);
+      assert.deepEqual((await t.api("post", `/lims/batches/${rows[0]!.batchId}/notify`, rec.token).send({ kind: "REPORT_READY" })).body.data.channels, [], "no pop-ups until every report of the booking is ready");
       const radReq = await only(encounterId, "Ultrasound abdomen");
       assert.equal((await act(radReq.id, "collect", nurse.token)).status, 200);
       assert.equal((await act(radReq.id, "perform", rTech.token, { modality: "ULTRASOUND", bodyPart: "Abdomen" })).status, 200);
@@ -364,6 +378,16 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.equal((await t.api("post", `/rad/studies/${radNow.studyId}/report`, radiologist.token).send({ findings: "Liver, spleen and kidneys are normal.", impression: "Normal study.", critical: false })).status, 200);
       assert.equal((await act(radReq.id, "issue", rTech.token)).status, 200);
       assert.equal(await t.prisma.limsMessage.count({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } }), 2, "one message on each channel when every report of the booking is ready");
+      // With a message service connected (a stand-in that accepts everything) a sent message is a green tick, with the number masked; the email still has no address to go to.
+      const live = messages as unknown as { provider: MessageProvider };
+      const original = live.provider;
+      live.provider = { name: "stand-in", configured: true, send: async () => ({ providerMessageId: "accepted:stand-in" }) };
+      const ready = await t.api("post", `/lims/batches/${rows[0]!.batchId}/notify`, rec.token).send({ kind: "REPORT_READY" });
+      live.provider = original;
+      const green = ready.body.data.channels as { channel: string; ok: boolean; text: string }[];
+      assert.deepEqual(green.map((c) => [c.channel, c.ok]), [["EMAIL", false], ["SMS", true], ["WHATSAPP", true]]);
+      assert.match(green[1]!.text, /^SMS sent to •+\d{4}$/);
+      assert.deepEqual((await t.prisma.limsMessage.findMany({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } })).map((m) => m.status), ["SENT", "SENT"], "they went out at once, not when the worker next ran");
       await messages.runDue(new Date(Date.now() + 5_000), 100_000);
       assert.deepEqual((await t.prisma.limsMessage.findMany({ where: { tenantId: a.tenantId, batchId: rows[0]!.batchId, kind: "REPORT_READY" } })).map((m) => m.status), ["SENT", "SENT"]);
 
@@ -1103,6 +1127,11 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       for (const [name, tok] of [["a nurse", nurse.token], ["a doctor", doc.token], ["the cashier", cashier.token], ["the LIMS manager", mgr.token]] as const) assert.equal((await arrive(x.batchId, { payments: [pay("150.00")] }, tok)).status, 403, `${name} does not take the patient in`);
       assert.equal((await arrive(x.batchId, { payments: [pay("150.00")] }, bRec.token)).status, 404, "another hospital's reception does not know this booking");
 
+      // Until reception takes the charge it is not in the cashier's ledger and the cashier has not been told.
+      type Taken = { batchId: string; amount: string; fromAdvance: string; methods: string[]; receipts: string[]; takenBy: string | null };
+      const ledgerOf = async (tok: string) => (await t.api("get", "/lims/reception-charges", tok)).body.data as { total: string; count: number; rows: Taken[] };
+      assert.equal((await ledgerOf(cashier.token)).rows.some((r) => r.batchId === x.batchId), false);
+      assert.equal((await notes(cashier.token)).some((n) => n.type === "LIMS_CHARGE_TAKEN" && n.entityId === x.batchId), false);
       const k = key();
       const ok = await arrive(x.batchId, { payments: [pay("150.00")] }, rec.token, k);
       assert.equal(ok.status, 201, JSON.stringify(ok.body));
@@ -1123,6 +1152,19 @@ describe("LIMS portal: orders, queues, samples, reports and monitoring", () => {
       assert.ok(await t.prisma.limsRequestEvent.findFirst({ where: { requestId: x.requestId, kind: "ARRIVED" } }));
       assert.ok(await t.prisma.auditEvent.findFirst({ where: { tenantId: a.tenantId, action: "LIMS_PATIENT_ARRIVED", entityId: x.encounterId } }));
       assert.ok((await notes(nurse.token)).some((n) => n.type === "LIMS_PATIENT_ARRIVED" && n.entityId === x.requestId));
+      // The cashier is told once that reception took the charge, and it is in the cashier's ledger as taken: the cash and the advance used, the receipt, and who took it.
+      assert.equal((await notes(cashier.token)).filter((n) => n.type === "LIMS_CHARGE_TAKEN" && n.entityId === x.batchId).length, 1);
+      assert.equal((await notes(rec.token)).some((n) => n.type === "LIMS_CHARGE_TAKEN"), false, "reception is not told about its own work");
+      const ledger = await ledgerOf(cashier.token);
+      const taken = ledger.rows.find((r) => r.batchId === x.batchId);
+      assert.ok(taken, "the charge reception took is in the cashier's ledger");
+      assert.deepEqual([taken.amount, taken.fromAdvance, [...taken.methods].sort(), taken.receipts.length], ["250.00", "100.00", ["ADVANCE", "UPI"], 2]);
+      assert.equal(taken.takenBy, (await t.prisma.user.findFirstOrThrow({ where: { id: rec.id } })).fullName);
+      assert.ok(Number(ledger.total) >= 250 && ledger.count >= 1);
+      assert.equal((await t.api("get", "/lims/reception-charges", rec.token)).status, 403, "reception does not read the cashier's ledger");
+      assert.equal((await t.api("get", "/lims/reception-charges", cashier.token).query({ date: "2001-01-01" })).body.data.count, 0, "another day, nothing");
+      assert.equal((await t.api("get", "/lims/reception-charges", cashier.token).query({ date: "yesterday" })).status, 400);
+      assert.equal((await ledgerOf(bMgr.token)).rows.some((r) => r.batchId === x.batchId), false, "another hospital's ledger does not list it");
       assert.equal((await rawCollect(x.requestId)).status, 200);
 
       // Who may look at the money.

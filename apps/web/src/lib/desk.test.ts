@@ -20,6 +20,12 @@ test("the OPD desk shows outpatient screens and none of the inpatient ones", () 
   for (const h of ["/ipd", "/discharge-board", "/nursing"]) assert.ok(!nav.includes(h), `${h} belongs to the IPD desk`);
 });
 
+test("planned admissions, insurance money and estimates are not at the OPD desk, but are at the IPD desk", () => {
+  const all = new Set([...reception, "PLANNED_READ", "CLAIM_READ"]);
+  const at = (d: "OPD" | "IPD") => visibleNav(all, features, ["RECEPTIONIST"], d).map((n) => n.href);
+  for (const h of ["/planned", "/insurance-money", "/estimate"]) { assert.ok(!at("OPD").includes(h), `${h} is not at the OPD desk`); assert.ok(at("IPD").includes(h), `${h} is at the IPD desk`); }
+});
+
 test("the IPD desk shows inpatient screens and none of the outpatient ones", () => {
   const nav = hrefs("IPD");
   for (const h of ["/dashboard", "/patients", "/ipd", "/discharge-board", "/billing"]) assert.ok(nav.includes(h), h);

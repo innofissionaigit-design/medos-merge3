@@ -27,8 +27,8 @@ export const NAV: NavItem[] = [
   { href: "/teleconsult", label: "Video consultations", anyOf: ["TELE_READ"], desk: "OPD" },
   { href: "/payroll", label: "Payroll", anyOf: ["PAYROLL_READ"] },
   { href: "/claims", label: "Insurance claims", anyOf: ["CLAIM_MANAGE", "CLAIM_SETTLE", "CLAIM_MASTERS"] },
-  { href: "/insurance-money", label: "Insurance money", anyOf: ["CLAIM_READ"] },
-  { href: "/estimate", label: "Estimate", anyOf: ["CLAIM_READ"] },
+  { href: "/insurance-money", label: "Insurance money", anyOf: ["CLAIM_READ"], desk: "IPD" },
+  { href: "/estimate", label: "Estimate", anyOf: ["CLAIM_READ"], desk: "IPD" },
   // The laboratory portal (docs/lims-portal.md): one place for the LIMS manager, the technicians, the pathologist and radiologist, the nurse who takes samples, and reception.
   { href: "/lims", label: "Laboratory (LIMS)", anyOf: LIMS_NAV },
   // The earlier two-branch laboratory page stays for people who work in it but are not part of the portal.
@@ -37,7 +37,7 @@ export const NAV: NavItem[] = [
   { href: "/wards", label: "Ward board", anyOf: ["WARD_BOARD_READ"], feature: "IPD_ENABLED" },
   { href: "/rounds", label: "My rounds", anyOf: ["ROUND_DO"], feature: "IPD_ENABLED" },
   // Planned admission (docs/planned-admission.md): the request queue for reception, the doctor, the admission desk, billing, insurance and bed management.
-  { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED" },
+  { href: "/planned", label: "Planned admissions", anyOf: ["PLANNED_READ"], feature: "IPD_ENABLED", desk: "IPD" },
   // The ICU doctor and nurse reach an admission from the ICU board, so they do not also get the general admissions list; the ICU doctor does not get the nursing worklist.
   { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/discharge-board", label: "Going home", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },

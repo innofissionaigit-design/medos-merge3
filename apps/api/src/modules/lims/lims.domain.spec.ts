@@ -97,6 +97,7 @@ describe("LIMS rules", () => {
     assert.match(text, /LRQ-2026-000001/);
     assert.doesNotMatch(text, /blood|glucose|haemoglobin/i);
     assert.match(scheduledText({ firstName: "Asha", facility: "X", departments: ["laboratory", "imaging"], when: null, instructions: null, requestNumbers: ["A", "B"] }), /laboratory and imaging test/);
+    assert.match(reportReadyText({ firstName: "Asha", facility: "City Hospital", requestNumbers: ["LRQ-1"], readyAt: "Wednesday, 18 Nov 2026, 4:30 pm" }), /ready at City Hospital \(ready since Wednesday, 18 Nov 2026, 4:30 pm\)\. Please/);
     assert.match(reportReadyText({ firstName: "Asha", facility: "City Hospital", requestNumbers: ["LRQ-1"] }), /ready at City Hospital.*not sent by message/);
   });
 

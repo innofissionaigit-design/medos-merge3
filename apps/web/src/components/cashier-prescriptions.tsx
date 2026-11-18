@@ -9,6 +9,7 @@ import { canEditTests } from "@/lib/cashier-edit";
 import { doctorText } from "@/lib/format";
 import { useMe } from "@/lib/me";
 import { PrintLink } from "@/components/print-link";
+import { useReceptionCharges } from "@/components/reception-charges";
 
 interface Medicine { orderNumber: string | null; source: string; pharmacy: "WAITING" | "PARTLY_GIVEN" | "GIVEN"; items: { id: string; name: string; strength: string | null; dosage: string; frequency: string; days: number | null; quantity: number | null; suggestedQuantity?: number | null; given: number; status: string }[] }
 interface Page { pageNo: number; fileId: string; fileName: string; contentType: string }
@@ -366,6 +367,9 @@ export function CashierPrescriptions() {
   const { money } = useMe();
   const [collecting, setCollecting] = useState<PatientCard | null>(null);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
+  // A lab charge reception already took shows as taken beside the patient's name; a patient whose charge has not been taken has Take payment there instead.
+  const taken = useReceptionCharges();
+  const takenBy = new Map((taken.data?.rows ?? []).map((r) => [r.patientId, r]));
   const view = useQuery({ queryKey: ["cashier-view"], queryFn: () => api.get<{ patients: PatientCard[] }>("/cashier/prescriptions"), refetchInterval: 20_000 });
   const services = useQuery({ queryKey: ["services-all"], queryFn: () => api.page<Service>("/services", { pageSize: 100 }) });
   const list = services.data?.data ?? [];
@@ -384,13 +388,14 @@ export function CashierPrescriptions() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Link className="text-base font-semibold text-slate-900 hover:text-brand-700 hover:underline" href={`/patients/${p.patientId}`}>{p.patientName}</Link>
                   <span className="text-xs text-slate-500">{p.mrn}</span>
+                  {takenBy.get(p.patientId) && <Badge tone="green">Lab charge taken at reception · {money(takenBy.get(p.patientId)!.amount)}</Badge>}
                   {p.testsToBill > 0 && <Badge tone="amber">{p.testsToBill} {p.testsToBill === 1 ? "test" : "tests"} to bill</Badge>}
                   {p.picturesToRead > 0 && <Badge tone="amber">{p.picturesToRead} handwritten to read</Badge>}
                   {p.medicinesWaiting > 0 && <Badge>{p.medicinesWaiting} with the pharmacy</Badge>}
                   {total > 0 && (
                     <span className="ml-auto flex items-center gap-2">
                       <span className="text-sm font-semibold tabular-nums text-amber-700">To collect {money((total / 100).toFixed(2))}</span>
-                      <Button disabled={unsaved} title={unsaved ? "Save your changes to the tests first" : undefined} onClick={() => setCollecting(p)}>Collect total {money((total / 100).toFixed(2))}</Button>
+                      <Button disabled={unsaved} title={unsaved ? "Save your changes to the tests first" : undefined} onClick={() => setCollecting(p)}>Take payment {money((total / 100).toFixed(2))}</Button>
                     </span>
                   )}
                 </div>

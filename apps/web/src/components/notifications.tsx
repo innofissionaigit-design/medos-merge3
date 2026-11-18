@@ -30,6 +30,7 @@ const KINDS: Record<string, { text: string; href: string; critical?: boolean }> 
   LIMS_REPORT_ISSUED: { text: "A laboratory or imaging report was issued", href: "/dashboard" },
   LIMS_EXCEPTION_RAISED: { text: "A laboratory exception or failed check needs your attention", href: "/lims" },
   LIMS_PATIENT_ARRIVED: { text: "A patient has reported at reception for a test", href: "/lims" },
+  LIMS_CHARGE_TAKEN: { text: "Reception took a lab charge: it is in your ledger, nothing to collect", href: "/billing" },
   EMERGENCY_ARRIVAL: { text: "EMERGENCY: a patient has arrived", href: "/emergency", critical: true },
   EMERGENCY_TRIAGED: { text: "An emergency patient was triaged", href: "/emergency" },
   EMERGENCY_DECISION: { text: "The doctor has decided where an emergency patient goes", href: "/emergency" },

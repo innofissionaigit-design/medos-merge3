@@ -7,6 +7,7 @@ import { Button, Card, ErrorNote, Input, PageHeader, Select, Spinner } from "@/c
 import { PANEL } from "@/components/desk-ui";
 import { reportToCsv } from "@/lib/csv";
 import { api } from "@/lib/api";
+import { needsDesk, useDesk } from "@/lib/desk";
 import { useMe } from "@/lib/me";
 import { REPORT_PERMISSIONS } from "@/lib/nav";
 
@@ -110,7 +111,10 @@ const rowCount = (data: Record<string, unknown>): number => Object.values(data).
 export default function ReportsPage() {
   const { me, features, can } = useMe();
   const tz = me.facility?.timezone ?? me.tenant.timezone;
-  const available = REPORTS.filter((r) => (!r.feature || features[r.feature]) && (r.perm === "REPORT_MY_PRACTICE" ? can("REPORT_MY_PRACTICE") : can("REPORT_READ", r.perm)));
+  // Reception at the OPD desk sees the outpatient reports only: the inpatient (IPD) section belongs to the IPD desk.
+  const { desk } = useDesk();
+  const opdDesk = needsDesk(me.roles, features) && desk === "OPD";
+  const available = REPORTS.filter((r) => !(opdDesk && r.perm === "REPORT_IPD") && (!r.feature || features[r.feature]) && (r.perm === "REPORT_MY_PRACTICE" ? can("REPORT_MY_PRACTICE") : can("REPORT_READ", r.perm)));
   // A cashier (finance reports, not all reports) opens on the money taken; everyone else on the first report they may see.
   const firstReport = (can("REPORT_FINANCE") && !can("REPORT_READ") ? available.find((r) => r.id === "collections") : undefined) ?? available[0];
   const [id, setId] = useState(firstReport?.id ?? "opd-daily");

@@ -11,7 +11,7 @@ import { tenantScope } from "../../common/tenant-scope";
 import { emailConsentState } from "../privacy/consent";
 import { SettingsService } from "../settings/settings.service";
 import { EMAIL_LOG_ONLY_PREFIX, EMAIL_PROVIDER, EmailError, maskEmail, type EmailProvider } from "./email.provider";
-import { formatWhen, isTemplateKey, LANGUAGES, render, TEMPLATE_KEYS, TEMPLATES, templateProblem, toHtml, type EmailLanguage, type TemplateKey } from "./email.templates";
+import { formatDayTime, formatWhen, isTemplateKey, LANGUAGES, render, TEMPLATE_KEYS, TEMPLATES, templateProblem, toHtml, type EmailLanguage, type TemplateKey } from "./email.templates";
 
 // ───────────────────────── input schemas ─────────────────────────
 
@@ -131,11 +131,11 @@ export class EmailService {
   /** A laboratory or radiology report was released: tell the patient that one is ready (never what it says). Called inside the caller's transaction. */
   async reportReadyEmail(db: Db, at: { tenantId: string; facilityId: string; userId?: string }, testOrderId: string, entityId: string, entityType: "LabResult" | "RadStudy"): Promise<QueueResult> {
     if (!(await this.enabled(db, at.tenantId, at.facilityId))) return { queued: false, reason: "DISABLED" };
-    const o = await db.testOrder.findFirst({ where: { id: testOrderId, tenantId: at.tenantId }, select: { encounter: { select: { patientId: true, patient: { select: { firstName: true } }, facility: { select: { name: true } } } } } });
+    const o = await db.testOrder.findFirst({ where: { id: testOrderId, tenantId: at.tenantId }, select: { encounter: { select: { patientId: true, patient: { select: { firstName: true } }, facility: { select: { name: true, timezone: true } } } } } });
     if (!o) return { queued: false, reason: "NO_ADDRESS" };
     return this.enqueue(db, {
       tenantId: at.tenantId, facilityId: at.facilityId, templateKey: "REPORT_READY", patientId: o.encounter.patientId, createdById: at.userId,
-      vars: { name: o.encounter.patient.firstName, facility: o.encounter.facility.name },
+      vars: { name: o.encounter.patient.firstName, facility: o.encounter.facility.name, when: formatDayTime(new Date(), o.encounter.facility.timezone) },
       entityType, entityId, dedupeKey: `REPORT_READY:${entityId}`,
     });
   }
@@ -304,6 +304,11 @@ export class EmailService {
    * Sends every email due at `now`. Each is claimed with FOR UPDATE SKIP LOCKED in its own short transaction, so several API servers never send the same one, and it is
    * checked again just before sending: switched off, suppressed, or the patient has withdrawn means SKIPPED.
    */
+  /** Sends one queued email right now: the screen that queued it wants to tell the user whether it went. Does nothing if it is not due or the worker already took it. */
+  async deliverNow(emailId: string, now = new Date()): Promise<Outcome | null> {
+    return this.prisma.$transaction((tx) => this.deliverOne(tx, now, this.provider, emailId));
+  }
+
   async runDue(now = new Date(), provider: EmailProvider = this.provider, limit = 100): Promise<Record<Outcome, number>> {
     const counts: Record<Outcome, number> = { sent: 0, skipped: 0, retried: 0, failed: 0 };
     const tenants = await tenantScope.system("email worker: hospitals with emails due", () =>
@@ -320,10 +325,10 @@ export class EmailService {
     return counts;
   }
 
-  private async deliverOne(tx: Db, now: Date, provider: EmailProvider): Promise<Outcome | null> {
+  private async deliverOne(tx: Db, now: Date, provider: EmailProvider, onlyId: string | null = null): Promise<Outcome | null> {
     const [r] = await tx.$queryRaw<{ id: string; tenantId: string; facilityId: string; attempts: number }[]>`
       SELECT id, "tenantId", "facilityId", attempts FROM "EmailOutbox"
-      WHERE status = 'PENDING' AND "nextAttemptAt" <= ${now} ORDER BY "nextAttemptAt", id FOR UPDATE SKIP LOCKED LIMIT 1`;
+      WHERE status = 'PENDING' AND "nextAttemptAt" <= ${now} AND (${onlyId}::uuid IS NULL OR id = ${onlyId}::uuid) ORDER BY "nextAttemptAt", id FOR UPDATE SKIP LOCKED LIMIT 1`;
     if (!r) return null;
     const where = { id: r.id, tenantId: r.tenantId };
     const e = await tx.emailOutbox.findFirstOrThrow({ where, select: { templateKey: true, patientId: true, toAddress: true, subject: true, bodyText: true } });

@@ -116,6 +116,42 @@ test("reception OPD desk: the bill offers only the OPD visit, and a cash payment
   await expect(page.getByRole("dialog")).toBeHidden();
 });
 
+test("reception OPD desk: no planned admissions, insurance money or estimates, and no inpatient reports", async ({ page }) => {
+  await loginAs(page, "reception1", "OPD");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  for (const name of ["Planned admissions", "Insurance money", "Estimate"]) await expect(nav.getByRole("link", { name })).toHaveCount(0);
+  await page.goto("/reports");
+  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
+  await expect(page.getByText("OPD visits per day").first()).toBeVisible();
+  await expect(page.getByText("Current admissions")).toHaveCount(0);
+  await expect(page.getByText("Bed occupancy")).toHaveCount(0);
+  // The IPD desk still has all of them.
+  await page.getByLabel("Switch desk").selectOption("IPD");
+  await expect(nav.getByRole("link", { name: "Planned admissions" })).toBeVisible();
+  await page.goto("/reports");
+  await expect(page.getByText("Current admissions").first()).toBeVisible();
+});
+
+test("lab: registering a patient for a test shows three pop-ups, one each for email, SMS and WhatsApp", async ({ page }) => {
+  await loginAs(page, "reception1", "OPD");
+  const p = await registerPatient(page);
+  await page.goto("/lims");
+  await page.getByRole("tab", { name: "Book a test" }).click();
+  await page.getByLabel("Find the patient").fill(p.first);
+  await page.getByRole("button", { name: new RegExp(p.mrn) }).click();
+  await page.getByRole("group", { name: /Pathology/ }).getByRole("checkbox").first().check();
+  await page.getByRole("checkbox", { name: /The patient has agreed/ }).check();
+  await page.getByRole("button", { name: "Book and send to the lab" }).click();
+  // No message service is connected in the test database, so none can be sent: every pop-up is a red cross that says why, never a green tick.
+  await expect(page.getByTestId("delivery-failed")).toHaveCount(3, { timeout: 15_000 });
+  await expect(page.getByText("SMS not sent: no message service is connected")).toBeVisible();
+  await expect(page.getByText("WhatsApp not sent: no message service is connected")).toBeVisible();
+  await expect(page.getByText(/^Email not sent: /)).toBeVisible();
+  await expect(page.getByTestId("delivery-ok")).toHaveCount(0);
+  // They come and go on their own.
+  await expect(page.getByTestId("delivery-failed")).toHaveCount(0, { timeout: 20_000 });
+});
+
 test("consultation: a signed note is amended with a reason and the history shows both versions", async ({ page }) => {
   const doc = await doctorName(page, "doctor2");
   await loginAs(page, "reception1");

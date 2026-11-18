@@ -531,6 +531,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/encounters/:id/lims` | LIMS_READ |  |
 | POST | `/lims/batches/:batchId/arrive` | LIMS_REQUEST + PAYMENT_CREATE |  |
 | GET | `/lims/batches/:batchId/billing` | any of LIMS_REQUEST / LIMS_REPORTS |  |
+| POST | `/lims/batches/:batchId/notify` | any of LIMS_REQUEST / LIMS_ISSUE |  |
 | GET | `/lims/catalogue` | any of LIMS_ORDER / LIMS_REQUEST / LIMS_MANAGE / LIMS_DEPARTMENTS / LAB_MASTERS |  |
 | PUT | `/lims/catalogue/:serviceId` | any of LIMS_DEPARTMENTS / LAB_MASTERS |  |
 | GET | `/lims/dashboard` | LIMS_READ |  |
@@ -551,6 +552,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/lims/qc` | LIMS_READ |  |
 | POST | `/lims/qc` | LIMS_QC |  |
 | POST | `/lims/qc/:id/review` | LIMS_MANAGE |  |
+| GET | `/lims/reception-charges` | any of TEST_BILL / LEDGER_READ / LIMS_REPORTS |  |
 | GET | `/lims/reports/billing` | LIMS_REPORTS |  |
 | GET | `/lims/reports/performance` | LIMS_REPORTS |  |
 | GET | `/lims/reports/pressure` | LIMS_REPORTS |  |

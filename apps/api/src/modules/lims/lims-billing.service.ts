@@ -15,6 +15,8 @@ import { TestOrdersService } from "../test-orders/test-orders.service";
 import { LimsCoreService } from "./lims-core.service";
 
 const ZERO = new Decimal(0);
+/** Which day's lab charges taken at reception to list (today in the facility's time zone when left out). */
+export const receptionChargesSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict();
 const dec = (v: { toString(): string } | null | undefined) => new Decimal(v?.toString() ?? 0);
 
 /** The patient reports at reception: what is still owed after the advance is paid now (one or several ways), then the nurse may take the sample. */
@@ -153,9 +155,73 @@ export class LimsBillingService {
         const nurses = await this.core.collectors(tx, ctx, { assignedNurseId: r.assignedNurseId });
         await this.core.notify(tx, ctx, [...nurses, ...(r.assignedNurseId ? [] : managers)], "LIMS_PATIENT_ARRIVED", r, "arrived");
       }
+      // The cashier is told that reception took the lab charge (so there is nothing for the cashier to collect): it is in their ledger of lab charges taken at reception.
+      if (tendered.gt(0) || advanceUsed.gt(0)) {
+        await this.notifications.notifyPermission(tx, ["TEST_BILL"], { tenantId: ctx.tenantId, facilityId: ctx.facilityId, type: "LIMS_CHARGE_TAKEN", entityType: "LimsBatch", entityId: batchId, dedupeKey: `LIMS_CHARGE_TAKEN:${batchId}` });
+      }
       // `invoiceIds` lets the screen open the printable bill of everything paid at this arrival.
       return { batchId, arrivedAt: now, billed, invoiceIds: bills.map((b) => b.inv.id), owed: fmt(owed), advanceUsed: fmt(advanceUsed), collected: fmt(tendered), receipts };
     });
+  }
+
+  /**
+   * The cashier's ledger of laboratory charges that reception took when the patient reported (docs/lims-portal.md): for each booking, who it was, which tests, how much was
+   * taken (and how: cash, UPI..., or from an advance), the receipts and who took it. Only what reception took when the patient reported is listed: a bill the cashier collected
+   * is the cashier's own. Newest first, with the day's totals.
+   */
+  async receptionCharges(ctx: RequestContext, input: z.infer<typeof receptionChargesSchema>) {
+    const facility = await this.prisma.facility.findFirst({ where: { id: ctx.facilityId, tenantId: ctx.tenantId }, select: { timezone: true } });
+    const tz = facility?.timezone ?? "Asia/Kolkata";
+    const day = input.date ?? null;
+    const batches = await this.prisma.$queryRaw<{ batchId: string }[]>`
+      SELECT DISTINCT "batchId"::text AS "batchId" FROM "LimsRequest"
+      WHERE "tenantId" = ${ctx.tenantId}::uuid AND "facilityId" = ${ctx.facilityId}::uuid AND origin = 'OPD' AND "arrivedAt" IS NOT NULL AND status <> 'CANCELLED'
+        AND ("arrivedAt" AT TIME ZONE ${tz})::date = COALESCE(${day}::date, (now() AT TIME ZONE ${tz})::date)`;
+    const empty = { date: day, total: "0.00", collected: "0.00", fromAdvance: "0.00", count: 0, rows: [] as unknown[] };
+    if (batches.length === 0) return empty;
+    const reqs = await this.prisma.limsRequest.findMany({
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, batchId: { in: batches.map((b) => b.batchId) }, status: { not: "CANCELLED" } },
+      orderBy: { requestNumber: "asc" },
+      select: { batchId: true, patientId: true, arrivedAt: true, arrivedById: true, testOrder: { select: { name: true, invoiceId: true } } },
+    });
+    const invoiceIds = [...new Set(reqs.flatMap((r) => (r.testOrder.invoiceId ? [r.testOrder.invoiceId] : [])))];
+    const receipts = invoiceIds.length ? await this.prisma.receipt.findMany({
+      where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, invoiceId: { in: invoiceIds } },
+      select: { invoiceId: true, receiptNumber: true, total: true, receivedAt: true, receivedById: true, payments: { select: { method: true, amount: true, advanceUseId: true } } },
+    }) : [];
+    const patientIds = [...new Set(reqs.map((r) => r.patientId))];
+    const userIds = [...new Set(reqs.flatMap((r) => (r.arrivedById ? [r.arrivedById] : [])))];
+    const [patients, users] = await Promise.all([
+      this.prisma.patient.findMany({ where: { tenantId: ctx.tenantId, id: { in: patientIds } }, select: { id: true, firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true }, take: 1 } } }),
+      userIds.length ? this.prisma.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: userIds } }, select: { id: true, fullName: true } }) : Promise.resolve([] as { id: string; fullName: string }[]),
+    ]);
+    const patientOf = new Map(patients.map((p) => [p.id, p]));
+    const userOf = new Map(users.map((u) => [u.id, u.fullName]));
+    const WINDOW_MS = 2 * 60_000;
+    const rows = [];
+    let total = ZERO; let collected = ZERO; let fromAdvance = ZERO;
+    for (const batchId of batches.map((b) => b.batchId)) {
+      const mine = reqs.filter((r) => r.batchId === batchId);
+      const first = mine[0];
+      if (!first?.arrivedAt) continue;
+      const at = first.arrivedAt.getTime();
+      const ids = new Set(mine.flatMap((r) => (r.testOrder.invoiceId ? [r.testOrder.invoiceId] : [])));
+      // What reception took at that step: the receipts of the booking's bills written by the same person within moments of the patient reporting.
+      const taken = receipts.filter((r) => ids.has(r.invoiceId) && r.receivedById === first.arrivedById && Math.abs(r.receivedAt.getTime() - at) <= WINDOW_MS);
+      if (taken.length === 0) continue;
+      const adv = taken.flatMap((r) => r.payments).filter((p) => p.advanceUseId !== null).reduce((a, p) => a.plus(dec(p.amount)), ZERO);
+      const sum = taken.reduce((a, r) => a.plus(dec(r.total)), ZERO);
+      const p = patientOf.get(first.patientId);
+      total = total.plus(sum); fromAdvance = fromAdvance.plus(adv); collected = collected.plus(sum.minus(adv));
+      rows.push({
+        batchId, patientId: first.patientId, patientName: p ? [p.firstName, p.lastName].filter(Boolean).join(" ") : "", mrn: p?.identifiers[0]?.value ?? null,
+        tests: mine.map((r) => r.testOrder.name), amount: fmt(sum), fromAdvance: fmt(adv),
+        methods: [...new Set(taken.flatMap((r) => r.payments).map((x) => (x.advanceUseId !== null ? "ADVANCE" : x.method)))],
+        receipts: taken.map((r) => r.receiptNumber), takenAt: first.arrivedAt, takenBy: first.arrivedById ? userOf.get(first.arrivedById) ?? null : null,
+      });
+    }
+    rows.sort((a, b) => b.takenAt.getTime() - a.takenAt.getTime());
+    return { date: day, total: fmt(total), collected: fmt(collected), fromAdvance: fmt(fromAdvance), count: rows.length, rows };
   }
 
   /**

@@ -722,7 +722,8 @@ export class LimsService {
       // An emergency patient's test goes on the emergency bill (or, once the patient has been sent to the OT or ICU, on the admission).
       if (req.origin === "EMERGENCY") await this.billing.chargeEmergency(tx, ctx, req);
       if (req.origin === "OPD") await this.messages.queueReportReady(tx, ctx, req.patientId, req.batchId);
-      return this.done(req, "ISSUED");
+      // The booking and its origin, so the screen can ask for the patient to be told once every report of the booking is ready.
+      return { ...this.done(req, "ISSUED"), batchId: req.batchId, origin: req.origin };
     });
   }
 

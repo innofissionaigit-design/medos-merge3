@@ -73,6 +73,8 @@ test("OPD: register → check in → queue → consult → sign → dispense →
   // The bill list is filtered with tabs (All, Outstanding, Paid, ...).
   await page.getByRole("tab", { name: "Outstanding" }).click();
   await page.getByRole("row", { name: new RegExp(p.first) }).first().getByRole("link").first().click();
+  // The bill list also has Take payment buttons (one per patient waiting at the cashier): wait until this bill is open before taking its payment.
+  await expect(page).toHaveURL(/\/billing\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Take payment" }).click();
   const pay = page.getByRole("dialog", { name: /^Take payment/ });
   await pay.getByLabel("Mode").selectOption("UPI");

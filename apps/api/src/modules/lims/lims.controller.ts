@@ -10,9 +10,9 @@ import { rejectSampleSchema } from "../lab/lab.service";
 import { PrintService } from "../print/print.service";
 import { sendRendered } from "../print/print.controller";
 import { performSchema } from "../radiology/radiology.service";
-import { arriveSchema, LimsBillingService } from "./lims-billing.service";
+import { receptionChargesSchema, arriveSchema, LimsBillingService } from "./lims-billing.service";
 import { LimsInsightsService, rangeSchema } from "./lims-insights.service";
-import { LimsMessagesService } from "./lims-messages.service";
+import { LimsMessagesService, notifySchema } from "./lims-messages.service";
 import { availabilitySchema, LimsScheduleService, pressureSchema } from "./lims-schedule.service";
 import {
   departmentSchema, exceptionDecisionSchema, exceptionListSchema, exceptionSchema, instrumentSchema, instrumentUpdateSchema, LimsOpsService, qcListSchema, qcReviewSchema, qcSchema,
@@ -92,6 +92,20 @@ export class LimsController {
   @RequirePermissions("LIMS_REPORTS")
   @Get("lims/reports/pressure")
   async pressure(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.schedule.pressure(ctx, parse(pressureSchema, query)) }; }
+
+  /**
+   * Send this booking's email, SMS and WhatsApp now and say, for each, whether it went (the screen shows them as three pop-ups). `SCHEDULED` after registering the patient
+   * for tests; `REPORT_READY` when the reports are ready to hand over.
+   */
+  @RequireAnyPermission("LIMS_REQUEST", "LIMS_ISSUE")
+  @Post("lims/batches/:batchId/notify")
+  @HttpCode(200)
+  async notify(@Ctx() ctx: RequestContext, @Param("batchId") batchId: string, @Body() body: unknown) { return { data: await this.messages.notifyNow(ctx, id(batchId), parse(notifySchema, body).kind) }; }
+
+  /** The cashier's ledger: the laboratory charges reception took when patients reported (today, or `?date=`), with the day's totals. */
+  @RequireAnyPermission("TEST_BILL", "LEDGER_READ", "LIMS_REPORTS")
+  @Get("lims/reception-charges")
+  async receptionCharges(@Ctx() ctx: RequestContext, @Query() query: unknown) { return { data: await this.batchBillingSvc.receptionCharges(ctx, parse(receptionChargesSchema, query)) }; }
 
   /** What a booking costs, what the patient has paid or left in advance, and what is still to collect. */
   @RequireAnyPermission("LIMS_REQUEST", "LIMS_REPORTS")

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { notifyBatch } from "@/components/delivery-toasts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
@@ -63,7 +64,8 @@ export function TechModal({ req, onClose }: { req: Req; onClose: () => void }) {
   const accept = useMutation({ mutationFn: () => api.post(`/lims/requests/${req.id}/accept`, {}, newKey()), onSuccess: () => done(true) });
   const reject = useMutation({ mutationFn: (reason: string) => api.post(`/lims/requests/${req.id}/reject-sample`, { reason }, newKey()), onSuccess: () => done(true) });
   const perform = useMutation({ mutationFn: () => api.post(`/lims/requests/${req.id}/perform`, { modality, bodyPart: bodyPart.trim(), ...(notes.trim() ? { clinicalNotes: notes.trim() } : {}) }, newKey()), onSuccess: () => done(true) });
-  const issue = useMutation({ mutationFn: () => api.post(`/lims/requests/${req.id}/issue`, {}, newKey()), onSuccess: () => done(true) });
+  // Issuing the last report of a booking tells the patient it is ready (email, SMS and WhatsApp; three pop-ups say whether each went).
+  const issue = useMutation({ mutationFn: () => api.post<{ batchId: string; origin: string }>(`/lims/requests/${req.id}/issue`, {}, newKey()), onSuccess: (r) => { done(true); if (r.origin === "OPD") void notifyBatch(r.batchId, "REPORT_READY"); } });
   const returned = lastReturn(d.data);
   return (
     <Modal title={`${req.test}: ${req.patient.name}`} onClose={onClose} wide>
@@ -356,7 +358,7 @@ export function CollectionDesk() {
 // ───────────────────────── reception ─────────────────────────
 
 interface Pending { encounterId: string; visitNumber: string; doctor: string | null; patient: { id: string; name: string; mrn: string | null; hasMobile: boolean }; orderedAt: string; tests: { testOrderId: string; name: string; department: string; billed: boolean; amount: string | null; instructions: string | null; specimen: string | null }[] }
-interface Launched { messages: { kind: string; channel: string; to: string; status: string; sentForReal: boolean }[]; requests: { requestNumber: string }[]; scheduledFor?: string | null; autoScheduled?: boolean }
+interface Launched { batchId: string; messages: { kind: string; channel: string; to: string; status: string; sentForReal: boolean }[]; requests: { requestNumber: string }[]; scheduledFor?: string | null; autoScheduled?: boolean }
 
 interface Availability { suggestedAt: string; immediate: boolean; departments: { kind: string; name: string; capacityPerHour: number; waiting: number; todayPercent: number; needed: number }[] }
 
@@ -392,7 +394,7 @@ function LaunchedNote({ name, mrn, patientId, result, onClose }: { name: string;
     <Card title={`${name} · ${mrn}`} actions={<Button variant="ghost" onClick={onClose}>Dismiss</Button>}>
       <Notice tone="success">Sent to the lab: {result.requests.map((r) => r.requestNumber).join(", ")}. The patient is now in the queue.</Notice>
       <p className="mt-2 text-sm font-medium text-slate-800">{result.scheduledFor ? `Come on ${dateTime(result.scheduledFor)}${result.autoScheduled ? " (the first free time, from how busy the labs are)" : ""}` : "Come now"}</p>
-      {result.messages.length > 0 ? <p className="mt-2 text-sm text-slate-600">{result.messages.map((m) => `${m.channel === "WHATSAPP" ? "WhatsApp" : "SMS"} to ${m.to}: ${m.status.toLowerCase()}${m.status === "PENDING" ? " (goes out within a minute)" : ""}${m.status === "SENT" && !m.sentForReal ? " (no message service is connected, so nothing left the server)" : ""}`).join("; ")}</p>
+      {result.messages.length > 0 ? <p className="mt-2 text-sm text-slate-600">The pop-ups at the bottom of the screen say whether the email, SMS and WhatsApp reached the patient.</p>
         : <p className="mt-2 text-sm text-amber-700">No message was queued: the patient has no valid mobile number, has asked not to be messaged, or messages are switched off. Tell the patient when to come and what to do beforehand.</p>}
       <p className="mt-2 text-xs text-slate-500">Take an advance now if the patient pays one. On the day, press "Mark arrived" under Today's patients to take the rest.</p>
       <div className="mt-2"><AdvanceCard patientId={patientId} /></div>
@@ -415,7 +417,7 @@ function LaunchCard({ g, onLaunched }: { g: Pending; onLaunched: (g: Pending, r:
   const ids = [...picked];
   const launch = useMutation({
     mutationFn: () => api.post<Launched>("/lims/opd/launch", { encounterId: g.encounterId, consent: true, consentMode: mode, testOrderIds: ids, priority, ...(when ? { scheduledFor: new Date(when).toISOString() } : {}), ...(nurse ? { assignedNurseId: nurse } : {}), ...(instructions.trim() ? { instructions: instructions.trim() } : {}) }, newKey()),
-    onSuccess: (r) => { onLaunched(g, r); refresh(); },
+    onSuccess: (r) => { onLaunched(g, r); refresh(); void notifyBatch(r.batchId, "SCHEDULED"); },
   });
   const decline = useMutation({ mutationFn: (reason: string) => api.post("/lims/opd/decline", { encounterId: g.encounterId, testOrderIds: ids, reason }, newKey()), onSuccess: refresh });
   return (
@@ -472,7 +474,7 @@ function BookForm({ onBooked, startRegistering = false, startTests = [], startPa
   const [instructions, setInstructions] = useState("");
   const book = useMutation({
     mutationFn: () => api.post<Launched>("/lims/opd/book", { patientId: patient!.id, consent: true, consentMode: mode, tests: [...picked].map((serviceId) => ({ serviceId })), priority, ...(when ? { scheduledFor: new Date(when).toISOString() } : {}), ...(nurse ? { assignedNurseId: nurse } : {}), ...(instructions.trim() ? { instructions: instructions.trim() } : {}) }, newKey()),
-    onSuccess: (r) => { onBooked(patient!.name, patient!.mrn, patient!.id, r); setPatient(null); setPicked(new Set()); setAgreed(false); setWhen(""); setNurse(""); setInstructions(""); setPriority("ROUTINE"); setQ(""); refresh(); },
+    onSuccess: (r) => { void notifyBatch(r.batchId, "SCHEDULED"); onBooked(patient!.name, patient!.mrn, patient!.id, r); setPatient(null); setPicked(new Set()); setAgreed(false); setWhen(""); setNurse(""); setInstructions(""); setPriority("ROUTINE"); setQ(""); refresh(); },
   });
   return (
     <Card title="Book tests for a patient" actions={can("PATIENT_CREATE") ? <Button variant="secondary" onClick={() => setRegistering(true)}>Register test for new patient</Button> : undefined}>

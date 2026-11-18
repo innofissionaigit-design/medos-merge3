@@ -13,6 +13,7 @@ import { NAV, visibleNav } from "@/lib/nav";
 import { NotificationBell } from "./notifications";
 import { EmergencyAlertBar } from "./emergency-alert";
 import { IcuAlertBar } from "./icu-alert";
+import { DeliveryToastHost } from "./delivery-toasts";
 import { DeskChooser } from "./reception-desk";
 import { useDebounced } from "./ui";
 
@@ -148,6 +149,7 @@ export function Shell({ children }: { children: ReactNode }) {
           ) : children}
         </main>
       </div>
+      <DeliveryToastHost />
     </div>
   );
 }
