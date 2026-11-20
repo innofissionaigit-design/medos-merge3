@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { makeClinicianWith, makeDoctor, registerPatient, startApp, startVisit, uniqueWord, type TestApp, type TestDoctor, type TestTenant } from "../../test/harness";
 
 type User = { id: string; token: string };
-type Plan = { estimate: { total: string }; id: string; status: string; requestNumber: string; can: Record<string, boolean>; bed: { id: string; code: string } | null; admission: { id: string; admissionNumber: string } | null; nursingAssessment: { status: string } | null; deposit: { held: string; required: string | null; basis: string | null }; claim: { id: string; status: string } | null; close: { reason: string } | null; events: { action: string }[] };
+type Plan = { estimate: { total: string }; id: string; status: string; requestNumber: string; can: Record<string, boolean>; bed: { id: string; code: string } | null; admission: { id: string; admissionNumber: string } | null; nursingAssessment: { status: string; recorded?: { fallRisk: string } } | null; deposit: { held: string; required: string | null; basis: string | null }; claim: { id: string; status: string } | null; close: { reason: string } | null; events: { action: string }[] };
 const key = () => `k-${randomUUID().slice(0, 18)}`;
 const ymd = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10);
 const code = (p: string) => `${p}${uniqueWord(5).toUpperCase()}`;
@@ -121,8 +121,22 @@ describe("planned admission: request, doctor, desk, billing, insurance, deposit,
     // The nursing admission assessment is on the nurses' list and the nurse completes it.
     const task = await t.prisma.nursingTask.findFirst({ where: { admissionId: done.admission!.id, title: "Nursing admission assessment" } });
     assert.equal(task?.status, "PENDING");
-    assert.equal((await t.api("post", `/tasks/${task!.id}/complete`, nurse.token).send({ note: "Assessed: stable, fasting since midnight" })).status, 200);
-    assert.equal((await get(plan.id)).nursingAssessment?.status, "DONE");
+    const aUrl = `/admissions/${done.admission!.id}/nursing-assessment`;
+    const form = { consciousness: "ALERT", mobility: "INDEPENDENT", painScore: 2, allergyChecked: true, fallRisk: "LOW", pressureRisk: "LOW", nutritionRisk: "MEDIUM", idBandChecked: true, consentChecked: true };
+    assert.equal((await t.api("post", aUrl, desk.token).send(form)).status, 403, "reception cannot document nursing");
+    assert.equal((await t.api("post", aUrl, nurse.token).send({ ...form, painScore: 11 })).status, 400, "pain is 0 to 10");
+    assert.equal((await t.api("post", aUrl, nurse.token).send({ ...form, allergyChecked: false })).status, 400, "allergies must be written");
+    assert.equal((await t.api("post", aUrl, nurse.token).send({ ...form, fallRisk: "HIGH" })).status, 400, "a high risk needs a note");
+    const saved = await t.api("post", aUrl, nurse.token).send(form);
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.equal((await t.api("post", aUrl, nurse.token).send(form)).status, 409, "recorded once");
+    assert.equal((await t.api("get", aUrl, nurse.token)).body.data.nutritionRisk, "MEDIUM");
+    const after = (await get(plan.id)).nursingAssessment;
+    assert.equal(after?.status, "DONE", "recording the assessment closes the nursing task");
+    assert.equal(after?.recorded?.fallRisk, "LOW");
+    assert.equal((await t.prisma.nursingTask.findFirstOrThrow({ where: { id: task!.id } })).status, "DONE");
+    assert.ok((await t.prisma.auditEvent.findFirst({ where: { tenantId: a.tenantId, action: "NURSING_ADMISSION_ASSESSMENT_RECORDED", entityId: saved.body.data.id } })), "audited");
+    await assert.rejects(t.prisma.nursingAdmissionAssessment.update({ where: { id: saved.body.data.id }, data: { painScore: 9 } }), "the record cannot be edited");
     // It is final.
     assert.equal((await step(plan.id, "cancel", desk.token, { reason: "Changed our minds" })).status, 409);
     assert.equal((await step(plan.id, "admit", desk.token)).status, 409);

@@ -150,3 +150,57 @@ model IntakeOutput {
   @@unique([tenantId, id])
   @@index([tenantId, admissionId, recordedAt])
 }
+
+// ───────────────────────── Nursing admission assessment (docs/planned-admission.md) ─────────────────────────
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum Consciousness {
+  ALERT
+  DROWSY
+  CONFUSED
+  UNRESPONSIVE
+}
+
+enum MobilityLevel {
+  INDEPENDENT
+  NEEDS_HELP
+  BEDBOUND
+}
+
+/// The nurse's structured assessment when a patient is admitted: one per admission, never edited or deleted (later findings go in nursing notes). Saving it closes the "Nursing admission assessment" task.
+model NursingAdmissionAssessment {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String        @db.Uuid
+  facilityId       String        @db.Uuid
+  patientId        String        @db.Uuid
+  admissionId      String        @db.Uuid
+  taskId           String?       @db.Uuid
+  assessedById     String        @db.Uuid
+  assessedAt       DateTime      @default(now()) @db.Timestamptz(3)
+  consciousness    Consciousness
+  mobility         MobilityLevel
+  /// Pain on the 0 to 10 scale.
+  painScore        Int
+  allergyChecked   Boolean
+  allergyNote      String?
+  fallRisk         RiskLevel
+  pressureRisk     RiskLevel
+  nutritionRisk    RiskLevel
+  dietNote         String?
+  idBandChecked    Boolean
+  consentChecked   Boolean
+  belongingsNote   String?
+  note             String?
+
+  patient   Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
+
+  @@unique([tenantId, admissionId])
+  @@unique([tenantId, id])
+  @@index([tenantId, facilityId, assessedAt])
+}

@@ -5,6 +5,18 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LabStaffDashboard } from "@/components/lab-staff-dashboard";
 import { LabWorkTiles } from "@/components/lab-work-tiles";
+import { AdmissionDeskDashboard } from "@/components/admission-desk-dashboard";
+import { BedManagerDashboard } from "@/components/bed-manager-dashboard";
+import { NurseDashboard } from "@/components/nurse-dashboard";
+import { TpaDashboard } from "@/components/tpa-dashboard";
+import { LabTechDashboard } from "@/components/lab-tech-dashboard";
+import { GoToPanel } from "@/components/go-to";
+import { ErDashboard, ErNurseDashboard } from "@/components/er-nurse-dashboard";
+import { WardCoordinatorDashboard } from "@/components/ward-coordinator-dashboard";
+import { AdminDashboard } from "@/components/admin-dashboard";
+import { MrdDashboard } from "@/components/mrd-dashboard";
+import { RmoDashboard } from "@/components/rmo-dashboard";
+import { RadiographerDashboard } from "@/components/radiographer-dashboard";
 import { ReceptionDashboard } from "@/components/reception-dashboard";
 import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -47,6 +59,19 @@ export default function Dashboard() {
   const { can } = useMe();
   const labFloor = can("LIMS_COLLECT", "LIMS_ISSUE", "LAB_VERIFY", "RAD_REPORT") && !can("LIMS_MANAGE");
   if (me.roles.includes("RECEPTIONIST")) return <ReceptionDashboard desk={activeDesk} />;
+  if (me.roles.includes("NURSE") && can("NURSING_READ")) return <NurseDashboard />;
+  if (me.roles.includes("RADIOGRAPHER") && can("RAD_READ")) return <RadiographerDashboard />;
+  if (me.roles.includes("LAB_TECHNICIAN") && can("LAB_READ")) return <LabTechDashboard />;
+  if (me.roles.includes("RMO") && can("ADMISSION_READ")) return <RmoDashboard />;
+  if (me.roles.includes("EMERGENCY_NURSE") && can("ER_READ")) return <ErNurseDashboard />;
+  if (me.roles.includes("EMERGENCY_DOCTOR") && can("ER_READ")) return <ErDashboard as="DOCTOR" />;
+  if (me.roles.includes("EMERGENCY_RECEPTIONIST") && can("ER_READ")) return <ErDashboard as="DESK" />;
+  if (me.roles.includes("WARD_COORDINATOR") && can("WARD_BOARD_READ")) return <WardCoordinatorDashboard />;
+  if (me.roles.includes("ADMINISTRATOR") || me.roles.includes("MANAGER")) return <AdminDashboard />;
+  if (me.roles.includes("MEDICAL_RECORDS") && can("MRD_RECORD_COMPLETE")) return <MrdDashboard />;
+  if (me.roles.includes("CLAIMS_OFFICER") && can("CLAIM_READ")) return <TpaDashboard />;
+  if (me.roles.includes("BED_MANAGER") && can("PLANNED_BED")) return <BedManagerDashboard />;
+  if (me.roles.includes("ADMISSION_DESK") && can("PLANNED_DESK")) return <AdmissionDeskDashboard />;
   return labFloor ? <LabStaffDashboard /> : <GeneralDashboard />;
 }
 
@@ -107,10 +132,7 @@ function GeneralDashboard() {
           </Table>
         </Card>
       )}
-      <Card title="Go to" className="mt-4">
-        {nav.length === 0 ? <Spinner /> : <div className="flex flex-wrap gap-2">{nav.map((n) => <Link key={n.href} href={n.href} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-brand-50">{t(n.label)}</Link>)}</div>}
-        <p className="mt-3 text-xs text-slate-500">{t("Tip: press")} <kbd className="rounded border px-1">/</kbd> {t("anywhere to search for a patient.")}</p>
-      </Card>
+      <GoToPanel items={nav} />
     </>
   );
 }

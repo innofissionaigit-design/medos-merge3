@@ -6,6 +6,7 @@ import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { admissionScope } from "../../common/data-scope";
 import { linkedIdsByPatient } from "../patients/patient-links";
+import { NURSING_ASSESSMENT_TITLE } from "../planned/planned.domain";
 import { dateOnly, formatHm, zonedToUtc } from "../../common/time";
 
 const uuid = z.string().uuid();
@@ -18,6 +19,19 @@ export const taskSchema = z.object({
 }).strict();
 export const taskCloseSchema = z.object({ note: z.string().trim().min(3).max(300).optional() }).strict();
 export const taskCancelSchema = z.object({ reason: z.string().trim().min(3).max(240) }).strict();
+const longText = z.string().trim().min(2).max(300);
+/** The nurse's admission assessment (docs/planned-admission.md). "allergyChecked" means: asked, and no allergy reported; otherwise the allergies are written. A high risk or strong pain needs a note on what was done. */
+export const assessmentSchema = z.object({
+  consciousness: z.enum(["ALERT", "DROWSY", "CONFUSED", "UNRESPONSIVE"]), mobility: z.enum(["INDEPENDENT", "NEEDS_HELP", "BEDBOUND"]),
+  painScore: z.number().int().min(0).max(10),
+  allergyChecked: z.boolean(), allergyNote: longText.optional(),
+  fallRisk: z.enum(["LOW", "MEDIUM", "HIGH"]), pressureRisk: z.enum(["LOW", "MEDIUM", "HIGH"]), nutritionRisk: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  dietNote: longText.optional(), idBandChecked: z.boolean(), consentChecked: z.boolean(), belongingsNote: longText.optional(), note: z.string().trim().min(3).max(600).optional(),
+}).strict().superRefine((v, c) => {
+  if (!v.allergyChecked && !v.allergyNote) c.addIssue({ code: "custom", path: ["allergyNote"], message: "Write the allergies, or tick no known allergies" });
+  const high = v.fallRisk === "HIGH" || v.pressureRisk === "HIGH" || v.nutritionRisk === "HIGH" || v.painScore >= 7;
+  if (high && !v.note) c.addIssue({ code: "custom", path: ["note"], message: "A high risk or pain of 7 or more needs a note on what was done" });
+});
 export const ioSchema = z.object({
   direction: z.enum(["INTAKE", "OUTPUT"]),
   category: z.enum(["ORAL", "IV", "OTHER_INTAKE", "URINE", "DRAIN", "VOMIT", "OTHER_OUTPUT"]),
@@ -129,6 +143,29 @@ export class NursingService {
       await this.audit.record(tx, actorOf(ctx), { action: `NURSING_TASK_${status}`, entityType: "NursingTask", entityId: taskId, metadata: { admissionId: t.admissionId } });
       return tx.nursingTask.findFirstOrThrow({ where: { id: taskId, tenantId: ctx.tenantId } });
     });
+  }
+
+  /** Records the admission assessment once for the admission and closes the "Nursing admission assessment" task in the same transaction. */
+  async recordAssessment(ctx: RequestContext, admissionId: string, input: z.infer<typeof assessmentSchema>) {
+    return this.prisma.$transaction(async (tx) => {
+      const adm = await this.admission(tx, ctx, admissionId, true);
+      if (await tx.nursingAdmissionAssessment.findFirst({ where: { tenantId: ctx.tenantId, admissionId }, select: { id: true } })) throw new DomainError("ASSESSMENT_ALREADY_RECORDED", "The admission assessment is already recorded. Add a nursing note for anything new.", 409);
+      const task = await tx.nursingTask.findFirst({ where: { tenantId: ctx.tenantId, admissionId, title: NURSING_ASSESSMENT_TITLE, status: "PENDING" }, select: { id: true } });
+      const a = await tx.nursingAdmissionAssessment.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, patientId: adm.patientId, admissionId, taskId: task?.id ?? null, assessedById: ctx.userId, ...input, allergyNote: input.allergyNote ?? null, dietNote: input.dietNote ?? null, belongingsNote: input.belongingsNote ?? null, note: input.note ?? null } });
+      if (task) await tx.nursingTask.updateMany({ where: { id: task.id, tenantId: ctx.tenantId, status: "PENDING" }, data: { status: "DONE", completedById: ctx.userId, completedAt: new Date(), closeNote: "Admission assessment recorded" } });
+      await this.audit.record(tx, actorOf(ctx), { action: "NURSING_ADMISSION_ASSESSMENT_RECORDED", entityType: "NursingAdmissionAssessment", entityId: a.id, metadata: { admissionId, fallRisk: a.fallRisk, pressureRisk: a.pressureRisk, nutritionRisk: a.nutritionRisk, painScore: a.painScore } });
+      return this.assessmentView(tx, ctx, a);
+    });
+  }
+
+  async getAssessment(ctx: RequestContext, admissionId: string) {
+    await this.admission(this.prisma, ctx, admissionId, false);
+    const a = await this.prisma.nursingAdmissionAssessment.findFirst({ where: { tenantId: ctx.tenantId, admissionId } });
+    return a ? this.assessmentView(this.prisma, ctx, a) : null;
+  }
+
+  private async assessmentView(db: Db, ctx: RequestContext, a: { assessedById: string }) {
+    return { ...a, assessedByName: (await this.names(db, ctx, [a.assessedById])).get(a.assessedById) ?? null };
   }
 
   async listTasks(ctx: RequestContext, admissionId: string) {

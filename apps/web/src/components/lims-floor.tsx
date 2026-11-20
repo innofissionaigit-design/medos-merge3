@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import clsx from "clsx";
 import { notifyBatch } from "@/components/delivery-toasts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, newKey, printUrl } from "@/lib/api";
@@ -158,10 +159,44 @@ function useLinkedTab<T extends string>(allowed: readonly T[], set: (t: T) => vo
   }, []);
 }
 
+/** The five stages a request passes through on the technician's desk, what each one means in plain words, and what to show when none is waiting. */
 const TECH_TABS = [
-  { id: "accept", label: "To accept", status: "COLLECTED" }, { id: "work", label: "In progress", status: "IN_PROCESS" }, { id: "review", label: "With the specialist", status: "PENDING_REVIEW" },
-  { id: "issue", label: "Ready to issue", status: "PASSED" }, { id: "coming", label: "Coming up", status: "PENDING_COLLECTION" },
+  { id: "accept", label: "To accept", status: "COLLECTED", sub: "Arrived, waiting for you", tone: "bg-brand-500", icon: "inbox", empty: "Nothing is waiting to be accepted. New samples and scan requests appear here as soon as they reach the department." },
+  { id: "work", label: "In progress", status: "IN_PROCESS", sub: "Being worked on", tone: "bg-amber-400", icon: "flask", empty: "Nothing is in progress. Accept a request from the first stage to start work on it." },
+  { id: "review", label: "With the specialist", status: "PENDING_REVIEW", sub: "Waiting for a sign-off", tone: "bg-violet-500", icon: "eye", empty: "Nothing is waiting for the specialist's sign-off." },
+  { id: "issue", label: "Ready to issue", status: "PASSED", sub: "Passed, ready to hand over", tone: "bg-emerald-500", icon: "check", empty: "No report is ready to issue. Reports the specialist has passed appear here." },
+  { id: "coming", label: "Coming up", status: "PENDING_COLLECTION", sub: "Not collected yet", tone: "bg-slate-400", icon: "clock", empty: "Nothing is coming up. Requests whose sample or scan is still to be taken appear here." },
 ] as const;
+type TechTab = (typeof TECH_TABS)[number];
+
+function StageIcon({ name }: { name: TechTab["icon"] | "shield" }) {
+  const d: Record<string, ReactNode> = {
+    inbox: <path d="M4 13l2.5-7h11L20 13M4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5M4 13h4.500l1 2h5l1-2H20" />,
+    flask: <path d="M9 3h6M10 3v6l-5 9a1.500 1.500 0 0 0 1.300 2.200h11.400A1.500 1.500 0 0 0 19 18l-5-9V3M8 14h8" />,
+    eye: <><path d="M2.500 12S6 5.500 12 5.500 21.500 12 21.500 12 18 18.500 12 18.500 2.500 12 2.500 12z" /><circle cx="12" cy="12" r="2.800" /></>,
+    check: <path d="m5 12.500 4.500 4.500L19 7.500" />,
+    clock: <><circle cx="12" cy="12" r="8.500" /><path d="M12 7.500V12l3 2" /></>,
+    shield: <path d="M12 3 5 6v5c0 4.500 3 8 7 10 4-2 7-5.500 7-10V6zM9 12l2 2 4-4" />,
+  };
+  return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{d[name]}</svg>;
+}
+
+/** One stage of the desk as a card: how many are waiting there, and a click to see them. */
+function StageCard({ tab, active, onSelect }: { tab: TechTab; active: boolean; onSelect: () => void }) {
+  const q = useRequests({ status: tab.status }, { every: 15_000 });
+  const n = q.data?.total;
+  return (
+    <button type="button" onClick={onSelect} aria-pressed={active} className={clsx("group relative overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500", active ? "border-brand-500 ring-2 ring-brand-500/30" : "border-slate-200")}>
+      <span className={clsx("absolute inset-x-0 top-0 h-1", tab.tone)} aria-hidden />
+      <span className="flex items-center justify-between gap-2 text-slate-500">
+        <span className="text-xs font-medium uppercase tracking-wide">{tab.label}</span>
+        <span className={clsx("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", active ? "bg-brand-50 text-brand-700" : "bg-slate-50 group-hover:bg-slate-100")}><StageIcon name={tab.icon} /></span>
+      </span>
+      <span className="mt-2 block text-3xl font-semibold tracking-tight text-slate-900">{n ?? <span className="text-slate-400">…</span>}</span>
+      <span className="mt-0.5 block text-xs text-slate-500">{tab.sub}</span>
+    </button>
+  );
+}
 
 /** The technician's desk: what has arrived, what they are working on, what has been passed and waits to be issued. */
 export function TechDesk() {
@@ -172,16 +207,26 @@ export function TechDesk() {
   const active = TECH_TABS.find((t) => t.id === tab);
   const list = useRequests(active ? { status: active.status } : {}, { enabled: !!active, every: 15_000 });
   const mine = useRequests({ mine: "true", status: "COLLECTED,IN_PROCESS,PENDING_REVIEW,PASSED" }, { every: 30_000 });
+  const mineN = mine.data?.items.length ?? 0;
   return (
     <>
-      {(mine.data?.items.length ?? 0) > 0 && <Notice>{mine.data!.items.length} request(s) are assigned to you.</Notice>}
-      <Tabs tabs={[...TECH_TABS.map((t) => ({ id: t.id, label: t.label })), ...(can("LIMS_QC") ? [{ id: "qc" as const, label: "Quality control" }] : [])]} value={tab} onChange={setTab} />
-      {tab === "qc" ? <QcPanel /> : (
-        <Card title={active?.label ?? ""}>
-          <RequestTable rows={list.data?.items} empty="Nothing here." columns={["patient", "test", "status", "due", "who", "origin"]} onOpen={setOpen}
-            actions={(r) => <Button variant="secondary" onClick={() => setOpen(r)}>{r.status === "COLLECTED" ? (r.department === "RADIOLOGY" ? "Do the scan" : "Accept") : r.status === "IN_PROCESS" ? "Open" : r.status === "PASSED" ? "Issue" : "View"}</Button>} />
-        </Card>
+      {mineN > 0 && <div className="mb-4 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-900" role="status"><b>{mineN === 1 ? "1 request is assigned to you." : `${mineN} requests are assigned to you.`}</b></div>}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {TECH_TABS.map((t) => <StageCard key={t.id} tab={t} active={tab === t.id} onSelect={() => setTab(t.id)} />)}
+      </div>
+      {can("LIMS_QC") && (
+        <div className="mt-3">
+          <button type="button" aria-pressed={tab === "qc"} onClick={() => setTab("qc")} className={clsx("inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ring-1 transition", tab === "qc" ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50")}><StageIcon name="shield" />Quality control</button>
+        </div>
       )}
+      <div className="mt-4">
+        {tab === "qc" ? <QcPanel /> : (
+          <Card title={`${active?.label ?? ""}${list.data ? ` · ${list.data.total}` : ""}`}>
+            <RequestTable rows={list.data?.items} empty={active?.empty ?? "Nothing here."} columns={["patient", "test", "status", "due", "who", "origin"]} onOpen={setOpen}
+              actions={(r) => <Button variant="secondary" onClick={() => setOpen(r)}>{r.status === "COLLECTED" ? (r.department === "RADIOLOGY" ? "Do the scan" : "Accept") : r.status === "IN_PROCESS" ? "Open" : r.status === "PASSED" ? "Issue" : "View"}</Button>} />
+          </Card>
+        )}
+      </div>
       {open && (active?.id === "coming" ? <DetailModal id={open.id} onClose={() => setOpen(null)} /> : <TechModal req={open} onClose={() => setOpen(null)} />)}
     </>
   );

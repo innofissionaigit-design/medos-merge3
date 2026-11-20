@@ -9,7 +9,7 @@ import { ClaimModal } from "@/components/claims";
 import { BillPreviewCard, DischargeFlowCard } from "@/components/discharge-flow";
 import { CancelAdmission, DoseReasonModal, TasksCard, VitalsCard, WaiveButton } from "@/components/ipd-extras";
 import { todayIn, useAvailableBeds } from "@/components/pickers";
-import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, PageHeader, Select, Spinner, StatusBadge, Table, Tabs, Td, Textarea } from "@/components/ui";
+import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Modal, Notice, Select, Spinner, StatusBadge, Table, Tabs, Td, Textarea } from "@/components/ui";
 import { MedicationOrders } from "@/components/medication-orders";
 import { ProceduresCard as ProcedureRecordsCard, RoundNotesCard } from "@/components/rounds";
 import { WardStoreCard } from "@/components/ward-store";
@@ -19,6 +19,7 @@ import { VisitRadiology } from "@/components/radiology";
 import { api, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { PrintLink } from "@/components/print-link";
+import { AdmissionHeader } from "@/components/admission-header";
 
 interface Admission {
   id: string; admissionNumber: string; status: string; patientId: string; encounterId: string; patientName: string; mrn: string | null; consultantName: string; reason: string | null; admittedAt: string; dischargedAt: string | null; lengthOfStayDays: number;
@@ -139,13 +140,29 @@ function Nursing({ adm }: { adm: Admission }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Medication chart" actions={canDoc ? <Button variant="secondary" loading={gen.isPending} onClick={() => gen.mutate()}>Generate next 24 h</Button> : undefined}>
+        <ErrorNote error={reasonFor ? null : (give.error ?? gen.error)} />
         <Table head={["Due", "Medicine", "Status", ""]} {...(mar.data?.length === 0 ? { empty: "No scheduled doses. Doses appear once the doctor has signed a prescription and the schedule is generated." } : {})}>
           {mar.data?.map((m) => (
             <tr key={m.id}><Td>{dateTime(m.scheduledAt)}</Td><Td>{m.drug} {m.strength}<div className="text-xs text-slate-500">{m.dosage} · {m.route} · {m.frequency}{m.overdue ? " · overdue" : ""}</div></Td><Td><StatusBadge value={m.status} /></Td>
-              <Td>{m.status === "DUE" && open && can("NURSING_MEDICATION_ADMINISTER") && <div className="flex flex-wrap gap-1"><Button onClick={() => give.mutate({ id: m.id, status: "GIVEN" })}>Given</Button><Button variant="ghost" onClick={() => setReasonFor({ id: m.id, status: "HELD" })}>Hold</Button><Button variant="ghost" onClick={() => setReasonFor({ id: m.id, status: "REFUSED" })}>Refused</Button><Button variant="ghost" onClick={() => setReasonFor({ id: m.id, status: "MISSED" })}>Missed</Button></div>}</Td></tr>
+              <Td>{m.status === "DUE" && open && can("NURSING_MEDICATION_ADMINISTER") && (() => {
+                // The same rules the server keeps: a dose can be given from 2 hours before it is due, and can be marked missed only once it is due.
+                const dueAt = new Date(m.scheduledAt).getTime();
+                const minutes = (dueAt - Date.now()) / 60_000;
+                const tooEarly = minutes > 120;
+                const notDue = minutes > 0;
+                const opens = dateTime(new Date(dueAt - 120 * 60_000).toISOString());
+                return (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button disabled={tooEarly} {...(tooEarly ? { title: `Can be given from ${opens}` } : {})} onClick={() => give.mutate({ id: m.id, status: "GIVEN" })}>Given</Button>
+                    <Button variant="ghost" onClick={() => setReasonFor({ id: m.id, status: "HELD" })}>Hold</Button>
+                    <Button variant="ghost" onClick={() => setReasonFor({ id: m.id, status: "REFUSED" })}>Refused</Button>
+                    <Button variant="ghost" disabled={notDue} {...(notDue ? { title: "Not yet due" } : {})} onClick={() => setReasonFor({ id: m.id, status: "MISSED" })}>Missed</Button>
+                    {tooEarly && <span className="basis-full text-xs text-slate-500">{`Can be given from ${opens}`}</span>}
+                  </div>
+                );
+              })()}</Td></tr>
           ))}
         </Table>
-        <ErrorNote error={reasonFor ? null : (give.error ?? gen.error)} />
       </Card>
       {reasonFor && <DoseReasonModal status={reasonFor.status} onClose={() => setReasonFor(null)} error={give.error} busy={give.isPending} onSubmit={(remarks) => give.mutate({ id: reasonFor.id, status: reasonFor.status, remarks })} />}
       <div className="space-y-4">
@@ -732,7 +749,7 @@ function DischargePanel({ adm, refresh }: { adm: Admission; refresh: () => void 
 
 export default function AdmissionPage() {
   const { id } = useParams<{ id: string }>();
-  const { dateTime, can, money } = useMe();
+  const { can } = useMe();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"overview" | "orders" | "rounds" | "nursing" | "tests" | "discharge">("overview");
   const adm = useQuery({ queryKey: ["admission", id], queryFn: () => api.get<Admission>(`/admissions/${id}`) });
@@ -742,15 +759,7 @@ export default function AdmissionPage() {
   const a = adm.data;
   return (
     <Gate anyOf={["ADMISSION_READ"]} feature="IPD_ENABLED">
-      <PageHeader
-        title={a.patientName} subtitle={`${a.admissionNumber} · MRN ${a.mrn ?? "—"} · admitted ${dateTime(a.admittedAt)} · ${a.lengthOfStayDays} day(s) · ${a.consultantName}${a.bed ? ` · ${a.bed.ward} ${a.bed.code}` : ""}`}
-        actions={<><StatusBadge value={a.status} /><Link href={`/patients/${a.patientId}`} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50">Patient record</Link>
-          {a.status !== "CANCELLED" && <PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`admission-forms/${a.id}`)}>Print admission form</PrintLink>}
-          {a.status !== "CANCELLED" && <a download className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?format=pdf&download=1`}>PDF</a>}
-          {a.status !== "CANCELLED" && <><PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=bn`}>বাংলা</PrintLink><PrintLink className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`${printUrl(`admission-forms/${a.id}`)}?lang=hi`}>हिन्दी</PrintLink></>}</>}
-      />
-      {a.reason && <div className="mb-3"><KV label="Reason for admission">{a.reason}</KV></div>}
-      {a.planned && <div className="mb-3"><Notice tone="info"><span>{`Planned admission ${a.planned.requestNumber}: estimate ${money(a.planned.estimate)}, deposit held ${money(a.planned.depositHeld)}. `}<Link className="text-brand-700 hover:underline" href={`/planned/${a.planned.id}`}>Open the request</Link>{". The deposit is set against the final bill from the cashier (advance payments)."}</span></Notice></div>}
+      <AdmissionHeader a={a} />
       <Tabs tabs={[{ id: "overview", label: "Beds and charges" }, { id: "orders", label: "Medication orders" }, { id: "rounds", label: "Rounds and procedures" }, { id: "nursing", label: "Nursing and medication" }, ...(can("LIMS_READ") ? [{ id: "tests" as const, label: "Lab and imaging" }] : []), { id: "discharge", label: "Discharge" }]} value={tab} onChange={setTab} />
       {tab === "overview" && <Overview adm={a} refresh={refresh} />}
       {tab === "orders" && <MedicationOrders encounterId={a.encounterId} open={a.status === "ADMITTED"} cacheKey={a.id} />}

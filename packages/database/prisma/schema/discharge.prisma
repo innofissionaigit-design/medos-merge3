@@ -109,7 +109,7 @@ model DischargeClearance {
 }
 
 /// Bed turnover after a discharge (docs/discharge-stages.md): the bed is vacated, housekeeping starts cleaning, and marks it ready for the next patient.
-/// One per discharged admission. Each time is set once, in order, and never changed (database trigger).
+/// One for every bed an admission leaves: the bed it is moved out of, and the bed it goes home from. Each time is set once, in order, and never changed (database trigger).
 model BedTurnover {
   id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String    @db.Uuid
@@ -128,8 +128,8 @@ model BedTurnover {
   admission Admission @relation(fields: [tenantId, facilityId, admissionId], references: [tenantId, facilityId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
-  @@unique([admissionId])
-  @@unique([tenantId, facilityId, admissionId])
+  @@unique([admissionId, bedId, vacatedAt])
+  @@index([tenantId, facilityId, admissionId])
   @@index([tenantId, facilityId, readyAt])
   @@index([tenantId, bedId])
 }

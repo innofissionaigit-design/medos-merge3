@@ -7,6 +7,7 @@ import type { RequestContext } from "../../common/request-context";
 import { localDateStr } from "../../common/time";
 import { fmt } from "../billing/billing.domain";
 import { NotificationsService } from "../notifications/notifications.service";
+import { SettingsService } from "../settings/settings.service";
 import { isOpen, nextStatus, NURSING_ASSESSMENT_TITLE, suggestedDeposit, WAITING_FOR, type PlannedStatus, type PlannedStep } from "./planned.domain";
 
 const nameOf = (p: { firstName: string; lastName: string | null }) => [p.firstName, p.lastName].filter(Boolean).join(" ");
@@ -48,7 +49,7 @@ export function toRow(r: RowShape) {
  */
 @Injectable()
 export class PlannedCore {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly notifications: NotificationsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly notifications: NotificationsService, private readonly settings: SettingsService) {}
 
   async today(db: Db, ctx: RequestContext): Promise<string> {
     const f = await db.facility.findFirstOrThrow({ where: { id: ctx.facilityId, tenantId: ctx.tenantId }, select: { timezone: true } });
@@ -140,6 +141,7 @@ export class PlannedCore {
     const userIds = [...new Set([...p.events.map((e) => e.actorId), ...(p.consentById ? [p.consentById] : [])])];
     const users = new Map((await db.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: userIds } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
     const policy = p.policyId ? await db.patientPolicy.findFirst({ where: { id: p.policyId, tenantId: ctx.tenantId }, select: { id: true, policyNumber: true, validTo: true, insurer: { select: { name: true } } } }) : null;
+    const assessment = p.admissionId ? await db.nursingAdmissionAssessment.findFirst({ where: { tenantId: ctx.tenantId, admissionId: p.admissionId }, select: { id: true, assessedAt: true, fallRisk: true, pressureRisk: true, nutritionRisk: true, painScore: true } }) : null;
     const task = p.admissionId ? await db.nursingTask.findFirst({ where: { tenantId: ctx.tenantId, admissionId: p.admissionId, title: NURSING_ASSESSMENT_TITLE }, select: { id: true, status: true, completedAt: true, closeNote: true } }) : null;
 
     const lines = p.estimateLines.map((l) => ({ lineNo: l.lineNo, description: l.description, quantity: l.quantity.toString(), unitPrice: fmt(l.unitPrice), amount: fmt(new Decimal(l.quantity.toString()).times(l.unitPrice.toString()).toDecimalPlaces(2)) }));
@@ -172,9 +174,11 @@ export class PlannedCore {
         suggested: fmt(suggestedDeposit(new Decimal(p.estimateTotal.toString()), approved)),
         items: p.deposits.map((d) => ({ id: d.id, receiptNumber: d.receiptNumber, amount: fmt(d.amount), receivedAt: d.receivedAt })),
       },
+      /** Beds of this ward are for emergency patients; the bed screen does not offer them. */
+      emergencyWardCode: String((await this.settings.get(db, ctx.tenantId, ctx.facilityId, "EMERGENCY_WARD_CODE")) ?? ""),
       bed: p.bed ? { id: p.bed.id, code: p.bed.code, ward: p.bed.ward.name, room: p.bed.room.name, dailyRate: fmt(p.bed.dailyRate), allocatedAt: p.bedAllocatedAt } : null,
       admission: p.admission ? { id: p.admission.id, admissionNumber: p.admission.admissionNumber, admittedAt: p.admission.admittedAt, status: p.admission.status } : null,
-      nursingAssessment: task ? { status: task.status, completedAt: task.completedAt, note: task.closeNote } : null,
+      nursingAssessment: task ? { status: task.status, completedAt: task.completedAt, note: task.closeNote, ...(assessment ? { recorded: assessment } : {}) } : null,
       close: p.closeReason ? { reason: p.closeReason, note: p.closeNote, at: p.closedAt } : null,
       events: p.events.map((e) => ({ at: e.createdAt, action: e.action, from: e.fromStatus, to: e.toStatus, note: e.note, by: users.get(e.actorId) ?? null })),
       can: this.can(ctx, status, { consultantUserId: p.consultant.userId, estimateTotal: new Decimal(p.estimateTotal.toString()), payer: p.payer, claimStatus: p.claim?.status ?? null, hasBed: !!p.bedId }),

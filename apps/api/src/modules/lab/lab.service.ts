@@ -257,7 +257,7 @@ export class LabService {
   async result(ctx: RequestContext, testOrderId: string, opts: { scoped?: boolean } = {}) {
     const o = await this.prisma.testOrder.findFirst({
       where: { id: testOrderId, tenantId: ctx.tenantId, facilityId: ctx.facilityId, category: "LABORATORY", AND: [IN_LAB_ORDER], ...(opts.scoped ? { encounter: { AND: [visitScope(ctx)] } } : {}) },
-      select: { id: true, name: true, limsRequest: { select: { status: true } }, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
+      select: { id: true, name: true, limsRequest: { select: { id: true, status: true } }, patient: { select: { id: true, firstName: true, lastName: true, gender: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }, encounter: { select: { id: true, encounterNumber: true } } },
     });
     if (!o) throw new DomainError("NOT_FOUND", "Resource not found", 404);
     const r = await this.prisma.labResult.findFirst({ where: { tenantId: ctx.tenantId, testOrderId }, include: { versions: { orderBy: { version: "desc" } } } });
@@ -269,6 +269,7 @@ export class LabService {
     return {
       testOrderId: o.id, test: o.name, patient: { id: o.patient.id, name: [o.patient.firstName, o.patient.lastName].filter(Boolean).join(" "), gender, mrn: o.patient.identifiers[0]?.value ?? null }, encounterId: o.encounter.id, visitNumber: o.encounter.encounterNumber,
       sample: sample ? { id: sample.id, accessionNumber: sample.accessionNumber, specimen: sample.specimen, status: sample.status, collectedAt: sample.collectedAt, collectedBy: users.get(sample.collectedById) ?? null, rejectReason: sample.rejectReason } : null,
+      limsRequestId: o.limsRequest?.id ?? null, limsStatus: o.limsRequest?.status ?? null,
       resultId: r?.id ?? null, status: r?.status ?? null, version: r?.version ?? null, currentVersion: r?.currentVersion ?? 0, hasCritical: r?.hasCritical ?? false, criticalAcknowledged: !!r?.criticalAckAt,
       parameters: params.map((p) => {
         const { low, high } = rangeFor(p, gender);

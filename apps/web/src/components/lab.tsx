@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, newKey, printUrl } from "@/lib/api";
+import { ApiError, api, newKey, printUrl } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { Badge, Button, Card, ErrorNote, Field, Input, Modal, Notice, Select, Spinner, Table, Td, Textarea, useDebounced } from "./ui";
 import { PrintLink } from "@/components/print-link";
@@ -11,6 +11,8 @@ interface Param { id: string; name: string; unit: string | null; type: string; r
 interface Value { parameterId: string; name: string; unit: string | null; value: string; flag: string; rangeText: string }
 interface ResultView {
   testOrderId: string; test: string; patient: { name: string; gender: string; mrn: string | null };
+  limsRequestId?: string | null;
+  limsStatus?: string | null;
   sample: { id: string; accessionNumber: string; specimen: string; status: string } | null;
   resultId: string | null; status: string | null; version: number | null; currentVersion: number; hasCritical: boolean; criticalAcknowledged: boolean;
   parameters: Param[]; draft: { values: { parameterId: string; value: string }[]; comment: string };
@@ -36,10 +38,13 @@ function ResultModal({ testOrderId, onClose }: { testOrderId: string; onClose: (
   const body = () => Object.entries(current).filter(([, v]) => v.trim() !== "").map(([parameterId, value]) => ({ parameterId, value }));
   const save = useMutation({ mutationFn: () => api.put<{ version: number }>(`/lab/results/${data!.resultId}/draft`, { version: data!.version, values: body() }), onSuccess: refresh });
   const verify = useMutation({
-    mutationFn: async () => { const d = await api.put<{ version: number }>(`/lab/results/${data!.resultId}/draft`, { version: data!.version, values: body() }); return api.post(`/lab/results/${data!.resultId}/verify`, { version: d.version }, newKey()); },
+    mutationFn: async () => { const d = data!.limsStatus === "PENDING_REVIEW" ? { version: data!.version! } : await api.put<{ version: number }>(`/lab/results/${data!.resultId}/draft`, { version: data!.version, values: body() }); return api.post(`/lab/results/${data!.resultId}/verify`, { version: d.version }, newKey()); },
     onSuccess: refresh,
+    onError: refresh,
   });
   const amend = useMutation({ mutationFn: () => api.post(`/lab/results/${data!.resultId}/amend`, { expectedVersion: data!.currentVersion, reason, values: body() }, newKey()), onSuccess: () => { setAmending(false); setReason(""); refresh(); } });
+  const accept = useMutation({ mutationFn: () => api.post(`/lims/requests/${data!.limsRequestId}/accept`, {}, newKey()), onSuccess: refresh });
+  const submit = useMutation({ mutationFn: async () => { await api.put<{ version: number }>(`/lab/results/${data!.resultId}/draft`, { version: data!.version, values: body() }); return api.post(`/lims/requests/${data!.limsRequestId}/submit`, {}, newKey()); }, onSuccess: refresh, onError: refresh });
   const sample = useMutation({ mutationFn: () => api.post(`/lab/orders/${testOrderId}/sample`, {}, newKey()), onSuccess: refresh });
   const reported = data?.status === "VERIFIED";
   const latest = data?.reports[0];
@@ -72,11 +77,19 @@ function ResultModal({ testOrderId, onClose }: { testOrderId: string; onClose: (
               ))}
             </Table>
           ) : null}
-          <ErrorNote error={save.error ?? verify.error ?? amend.error} />
+          {!reported && data.limsStatus === "COLLECTED" && data.limsRequestId && can("LAB_RESULT") && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <p className="mb-2">The sample has reached the laboratory. Check it and accept it before entering results.</p>
+              <Button loading={accept.isPending} onClick={() => accept.mutate()}>Accept sample</Button>
+            </div>
+          )}
+          {!reported && data.limsStatus === "IN_PROCESS" && can("LAB_VERIFY") && <p className="text-sm text-slate-600">This test is not ready for review. The technician must enter the results and click Send for review first.</p>}
+          <ErrorNote error={plain(accept.error ?? submit.error ?? save.error ?? verify.error ?? amend.error)} />
           {data.reports.length > 1 && <p className="text-xs text-slate-500">This report was amended {data.reports.length - 1} time(s); earlier versions are kept. Latest reason: {data.reports[0]?.reason}</p>}
           <div className="flex flex-wrap gap-2">
-            {!reported && data.sample?.status === "COLLECTED" && can("LAB_RESULT") && <Button variant="secondary" loading={save.isPending} onClick={() => save.mutate()}>Save draft</Button>}
-            {!reported && data.sample?.status === "COLLECTED" && can("LAB_VERIFY") && <Button loading={verify.isPending} onClick={() => verify.mutate()}>Verify and release</Button>}
+            {!reported && data.sample?.status === "COLLECTED" && data.limsStatus === "IN_PROCESS" && can("LAB_RESULT") && <Button variant="secondary" loading={save.isPending} onClick={() => save.mutate()}>Save draft</Button>}
+            {!reported && data.limsStatus === "IN_PROCESS" && data.limsRequestId && data.status === "DRAFT" && can("LAB_RESULT") && !can("LAB_VERIFY") && <Button loading={submit.isPending} onClick={() => submit.mutate()}>Send for review</Button>}
+            {!reported && data.sample?.status === "COLLECTED" && can("LAB_VERIFY") && (!data.limsStatus || data.limsStatus === "PENDING_REVIEW") && <Button loading={verify.isPending} onClick={() => verify.mutate()}>Verify and release</Button>}
             {reported && can("LAB_VERIFY") && !amending && <Button variant="secondary" onClick={() => { setAmending(true); setVals(Object.fromEntries(latest!.values.map((v) => [v.parameterId, v.value]))); }}>Amend</Button>}
             {reported && <PrintLink className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`lab-reports/${testOrderId}`)}>Print report</PrintLink>}
             {data.sample && <PrintLink className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" href={printUrl(`lab-labels/${data.sample.id}`)}>Print sample label</PrintLink>}
@@ -92,6 +105,9 @@ function ResultModal({ testOrderId, onClose }: { testOrderId: string; onClose: (
     </Modal>
   );
 }
+
+/** The laboratory's own messages ("Enter a value for Urine routine") read better than the field path behind them. */
+const plain = (e: unknown) => (e instanceof ApiError && e.code === "VALIDATION_FAILED" && e.message !== "Request validation failed" ? new Error(e.message) : e);
 
 export function LabWorklist() {
   const [state, setState] = useState("");

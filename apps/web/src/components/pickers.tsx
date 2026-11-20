@@ -74,8 +74,8 @@ export function useAvailableBeds() {
   return useQuery({
     queryKey: ["beds-available"],
     queryFn: async () => {
-      const b = await api.get<{ wards: { name: string; rooms: { name: string; beds: { id: string; code: string; status: string; dailyRate: string }[] }[] }[] }>("/beds/board");
-      return b.wards.flatMap((w) => w.rooms.flatMap((r) => r.beds.filter((x) => x.status === "AVAILABLE").map((x) => ({ id: x.id, label: `${w.name} · ${r.name} · ${x.code}`, dailyRate: x.dailyRate }))));
+      const b = await api.get<{ wards: { name: string; code: string; rooms: { name: string; beds: { id: string; code: string; status: string; dailyRate: string }[] }[] }[] }>("/beds/board");
+      return b.wards.flatMap((w) => w.rooms.flatMap((r) => r.beds.filter((x) => x.status === "AVAILABLE").map((x) => ({ id: x.id, label: `${w.name} · ${r.name} · ${x.code}`, dailyRate: x.dailyRate, wardCode: w.code, ward: w.name, room: r.name, code: x.code }))));
     },
   });
 }

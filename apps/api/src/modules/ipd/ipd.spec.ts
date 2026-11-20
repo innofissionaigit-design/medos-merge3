@@ -326,6 +326,25 @@ describe("IPD: wards, beds, admission, transfer, charges", () => {
       assert.equal(await t.prisma.auditEvent.count({ where: { tenantId: a.tenantId, action: "BED_TRANSFERRED", entityId: ad.id } }), 2);
     });
 
+    it("a transfer opens a bed turnover for the bed that was left: housekeeping sees it and releases it, and the same admission can leave another bed too", async () => {
+      const bedA = await mkBed();
+      const bedB = await mkBed();
+      const bedC = await mkBed();
+      const p = await registerPatient(t, rec.token);
+      const ad = (await admit(p.id, bedA.id)).body.data;
+      assert.equal((await t.api("post", `/admissions/${ad.id}/transfer`, nurse.token).send({ toBedId: bedB.id, reason: "Move to a quieter room" })).status, 200);
+      assert.equal(await bedStatus(bedA.id), "CLEANING");
+      const left = await t.prisma.bedTurnover.findFirstOrThrow({ where: { admissionId: ad.id, bedId: bedA.id } });
+      assert.equal(left.readyAt, null, "not ready yet");
+      const listed = (await t.api("get", "/bed-turnovers", nurse.token)).body.data as { id: string }[] | { items: { id: string }[] };
+      assert.ok((Array.isArray(listed) ? listed : listed.items).some((r) => r.id === left.id), "housekeeping can see the vacated bed");
+      assert.equal((await t.api("post", `/bed-turnovers/${left.id}/start`, nurse.token).send({})).status, 200);
+      assert.equal((await t.api("post", `/bed-turnovers/${left.id}/ready`, nurse.token).send({})).status, 200);
+      assert.equal(await bedStatus(bedA.id), "AVAILABLE", "marking it ready releases the bed");
+      assert.equal((await t.api("post", `/admissions/${ad.id}/transfer`, nurse.token).send({ toBedId: bedC.id, reason: "Second move" })).status, 200);
+      assert.equal(await t.prisma.bedTurnover.count({ where: { admissionId: ad.id } }), 2, "one turnover for every bed left");
+    });
+
     it("a failed transfer changes nothing; invalid targets are refused", async () => {
       const bedA = await mkBed();
       const busy = await mkBed();

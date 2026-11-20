@@ -337,7 +337,7 @@ export class ReportsService {
         (SELECT i."issuedAt" FROM "Invoice" i WHERE i.id = a."finalInvoiceId" AND i."tenantId" = a."tenantId") AS "billIssuedAt",
         (SELECT max(rc."receivedAt") FROM "Receipt" rc WHERE rc."invoiceId" = a."finalInvoiceId" AND rc."tenantId" = a."tenantId") AS "paidAt",
         (SELECT dep."departedAt" FROM "AdmissionDeparture" dep WHERE dep."admissionId" = a.id AND dep."tenantId" = a."tenantId") AS "departedAt",
-        (SELECT t."readyAt" FROM "BedTurnover" t WHERE t."admissionId" = a.id AND t."tenantId" = a."tenantId") AS "bedReadyAt"
+        (SELECT t."readyAt" FROM "BedTurnover" t WHERE t."admissionId" = a.id AND t."tenantId" = a."tenantId" ORDER BY t."vacatedAt" DESC LIMIT 1) AS "bedReadyAt"
       FROM "Admission" a
       WHERE a."tenantId" = ${ctx.tenantId}::uuid AND a."facilityId" = ${ctx.facilityId}::uuid AND a.status = 'DISCHARGED' AND a."dischargedAt" >= ${r.start} AND a."dischargedAt" < ${r.end} ${admissionScopeSql(ctx)}
       ORDER BY a."dischargedAt" DESC, a.id LIMIT 1000`;

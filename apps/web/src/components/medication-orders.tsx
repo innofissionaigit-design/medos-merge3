@@ -54,7 +54,7 @@ export function MedicationOrders({ encounterId, open, cacheKey }: { encounterId:
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Signed orders">
-        {signedOrders.length === 0 ? <p className="text-sm text-slate-500">No signed medication orders yet.</p> : signedOrders.map((o) => (
+        {signedOrders.length === 0 ? <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600"><p className="font-medium text-slate-800">No signed medication orders yet.</p><p className="mt-1 text-xs text-slate-500">The doctor writes the medicines for this stay and signs the order. Once it is signed, the nurse's medication chart is made from it.</p></div> : signedOrders.map((o) => (
           <div key={o.id} className="mb-3 last:mb-0"><div className="mb-1 text-xs text-slate-500">{o.orderNumber}</div>
             <Table head={["Medicine", "Dose", "Route", "Frequency", "Status", ""]}>
               {o.items.map((i) => (

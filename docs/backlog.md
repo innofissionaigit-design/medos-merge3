@@ -141,6 +141,8 @@ Radiology/PACS/DICOM, pathology, blood bank, dialysis, IVF, dental charting, adv
 
 ## Planned admission follow-ups (docs/planned-admission.md)
 
+- Nursing admission assessment: scored tools (Morse fall scale, Braden, MUST) with hospital-configurable cut-offs, a printed form, and a way to correct a saved assessment by amendment (today it is append-only and corrections go in a nursing note).
+
 - Date-aware bed reservation: hold a bed for the planned day only (today a held bed is reserved at once), a bed waiting list, and an automatic reminder when the day arrives or has passed without the patient.
 - A request that goes to any doctor of a department, the doctor passing a request to a colleague, and the doctor answering from the notification.
 - Package pricing by procedure and insurer tariffs feeding the estimate; posting the estimate as a hospital bill stage; room-rent caps against the insurer policy.

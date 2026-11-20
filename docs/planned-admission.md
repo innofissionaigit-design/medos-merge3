@@ -36,11 +36,15 @@ DESK_REVIEW → TARIFF_PAYER → (PREAUTH) → DEPOSIT → BED_ALLOCATION → RE
 | Deposit | Billing, Manager | Billing sets the deposit and takes it as an ordinary **advance payment** (cash, UPI, card, bank transfer, split) marked as taken for the request; when what was received reaches what was asked, the step clears by itself. A manager may waive it with a written reason. Zero is accepted only when the insurer's approval covers the whole estimate | `PLANNED_BILLING` + `PAYMENT_CREATE`; `PLANNED_APPROVE` |
 | Bed | Bed management | Holds a bed (it shows as **reserved**); may change it while the request is ready | `PLANNED_BED` |
 | On the day | Admission desk | **Admit**: the admission opens on the held bed, and the **nursing admission assessment** appears on the nurses' task list (due in an hour) | `PLANNED_DESK` + `ADMISSION_CREATE` |
-| Nursing | Nurse | Completes the assessment task like any nursing task | `NURSING_DOCUMENT` |
+| Nursing | Nurse | Fills in the **nursing admission assessment** (below), which closes the task | `NURSING_DOCUMENT` |
 
 `PLANNED_READ` (reception, doctor, nurse, cashier, insurance, bed, manager, administrator) lets a person see the queue and a request; it changes nothing. Roles added: **ADMISSION_DESK** (request, desk, bed, patient registration, admissions) and **BED_MANAGER** (bed only). Existing roles gained what their part needs (reception: request and desk; doctor: doctor; cashier: billing; claims officer: insurance; manager and administrator: approve).
 
 The screen shows each person only what they may do now (the server works out the same list). A step out of order, or by someone without the permission, is refused.
+
+## Nursing admission assessment
+
+A structured record, one per admission, on the request page (and saved through `POST /admissions/:id/nursing-assessment`): awareness, movement, pain (0 to 10), allergies (tick *no known allergies* or write them), **fall risk**, **pressure sore risk** and **nutrition risk** (low, medium, high), diet or fasting instruction, belongings, ID band checked, consent form checked, and a note. A **high risk or pain of 7 or more needs a note** on what was done. Saving it closes the "Nursing admission assessment" task in the same transaction. The record is **append-only** (the database refuses edits and deletes); anything new goes in a nursing note. Audit event `NURSING_ADMISSION_ASSESSMENT_RECORDED` (risk levels and pain only, not the free text). Permissions: `NURSING_DOCUMENT` to record, `NURSING_READ` to read. The hospital's own policy decides how the risk levels are scored; the form records the nurse's level, not a scale. Limits: no scored tools (Morse, Braden, MUST) and no edit after saving; both are in `docs/backlog.md`.
 
 ## How it joins the IPD flow
 

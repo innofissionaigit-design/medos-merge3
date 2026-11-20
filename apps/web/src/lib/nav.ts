@@ -97,3 +97,37 @@ export function visibleNav(permissions: ReadonlySet<string>, features: Record<st
 
 /** Where to land after login. */
 export const homeFor = (items: NavItem[]): string => items[0]?.href ?? "/dashboard";
+
+/** The sidebar groups a long menu by the part of the hospital each screen belongs to. A short menu stays a plain list. */
+export const NAV_SECTION: Record<string, string> = {
+  "/dashboard": "Overview", "/overview": "Overview",
+  "/patients": "Front desk and OPD", "/appointments": "Front desk and OPD", "/queue": "Front desk and OPD", "/teleconsult": "Front desk and OPD",
+  "/emergency": "Emergency and critical care", "/icu": "Emergency and critical care",
+  "/planned": "Inpatient", "/ipd": "Inpatient", "/rounds": "Inpatient", "/wards": "Inpatient", "/nursing": "Inpatient", "/discharge-board": "Inpatient", "/housekeeping": "Inpatient", "/aftercare": "Inpatient", "/post-discharge": "Inpatient",
+  "/lims": "Laboratory", "/lis": "Laboratory",
+  "/billing": "Billing and insurance", "/missed-billing": "Billing and insurance", "/claims": "Billing and insurance", "/insurance-money": "Billing and insurance", "/estimate": "Billing and insurance", "/payroll": "Billing and insurance",
+  "/pharmacy": "Pharmacy and stores", "/procurement": "Pharmacy and stores",
+  "/reports": "Management", "/admin": "Management", "/audit": "Management",
+};
+/** Menus with more entries than this are shown in sections. */
+export const GROUP_NAV_ABOVE = 7;
+
+/** Icon names (from the dashboard kit) for each screen. */
+export const NAV_ICON: Record<string, string> = {
+  "/dashboard": "grid", "/overview": "pulse", "/patients": "user", "/appointments": "calendar", "/queue": "hourglass", "/teleconsult": "userPlus",
+  "/emergency": "siren", "/icu": "pulse", "/planned": "calendarPlus", "/ipd": "bed", "/rounds": "clipboard", "/wards": "hospital", "/nursing": "handover", "/discharge-board": "check",
+  "/housekeeping": "list", "/aftercare": "bell", "/post-discharge": "clipboard", "/lims": "flask", "/lis": "tube", "/billing": "receipt", "/missed-billing": "alarm", "/claims": "clipboard",
+  "/insurance-money": "percent", "/estimate": "receipt", "/payroll": "receipt", "/pharmacy": "plus", "/procurement": "download", "/reports": "list", "/admin": "filter", "/audit": "search",
+};
+
+/** One quiet colour per section: the chip behind each icon and the dot beside the section heading. Shared by the side menu and the "Go to" panel. */
+export const SECTION_TONE: Record<string, { chip: string; dot: string }> = {
+  Overview: { chip: "bg-brand-50 text-brand-600", dot: "bg-brand-500" },
+  "Front desk and OPD": { chip: "bg-sky-50 text-sky-600", dot: "bg-sky-500" },
+  "Emergency and critical care": { chip: "bg-rose-50 text-rose-600", dot: "bg-rose-500" },
+  Inpatient: { chip: "bg-violet-50 text-violet-600", dot: "bg-violet-500" },
+  Laboratory: { chip: "bg-emerald-50 text-emerald-600", dot: "bg-emerald-500" },
+  "Billing and insurance": { chip: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
+  "Pharmacy and stores": { chip: "bg-teal-50 text-teal-600", dot: "bg-teal-500" },
+  Management: { chip: "bg-slate-100 text-slate-600", dot: "bg-slate-500" },
+};

@@ -5,6 +5,7 @@ import type { Prisma } from "@medos/database";
 import { z } from "zod";
 import { AuditService, actorOf } from "../../common/audit.service";
 import { IdempotencyService } from "../../common/idempotency.service";
+import { SettingsService } from "../settings/settings.service";
 import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
 import { admissionScope } from "../../common/data-scope";
@@ -52,6 +53,7 @@ export class AdmissionsService {
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly numbering: NumberingService,
     private readonly encounters: EncountersService, private readonly idempotency: IdempotencyService, private readonly registrationFee: RegistrationFeeService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ───── admit ─────
@@ -167,7 +169,10 @@ export class AdmissionsService {
       const now = new Date();
       const closed = await tx.bedAssignment.updateMany({ where: { id: current.id, tenantId: ctx.tenantId, releasedAt: null }, data: { releasedAt: now } });
       if (closed.count !== 1) throw new DomainError("INVALID_STATE", "The admission was changed by someone else", 409);
-      await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: current.bedId } }, data: { status: "CLEANING", version: { increment: 1 } } });
+      // The bed the patient leaves goes the way a discharged patient's bed goes (cleaning, or straight back to available where the hospital skips cleaning), and housekeeping gets its turnover.
+      const afterwards = (await this.settings.get(tx, ctx.tenantId, ctx.facilityId, "BED_AFTER_DISCHARGE")) as "CLEANING" | "AVAILABLE";
+      await tx.bed.update({ where: { tenantId_id: { tenantId: ctx.tenantId, id: current.bedId } }, data: { status: afterwards, version: { increment: 1 } } });
+      await tx.bedTurnover.create({ data: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, bedId: current.bedId, admissionId, vacatedAt: now, autoReady: afterwards === "AVAILABLE", ...(afterwards === "AVAILABLE" ? { cleaningStartedAt: now, readyAt: now } : {}) } });
       await this.openAssignment(tx, ctx, admissionId, target, input.reason, now);
       const from = await tx.bed.findFirstOrThrow({ where: { id: current.bedId, tenantId: ctx.tenantId }, select: { wardId: true } });
       if (from.wardId !== target.wardId) await this.stopEquipment(tx, ctx, admissionId, now);

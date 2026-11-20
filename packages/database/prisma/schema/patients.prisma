@@ -101,6 +101,7 @@ model Patient {
   charges      Charge[]
   nursingNotes NursingNote[]
   nursingTasks NursingTask[]
+  nursingAssessments NursingAdmissionAssessment[]
   consents     PatientConsent[]
   dataRequests PatientDataRequest[]
   administrations MedicationAdministration[]

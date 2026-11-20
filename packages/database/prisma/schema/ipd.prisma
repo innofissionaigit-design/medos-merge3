@@ -112,6 +112,7 @@ model Admission {
   charges     Charge[]
   nursingNotes NursingNote[]
   nursingTasks NursingTask[]
+  nursingAssessments NursingAdmissionAssessment[]
   administrations MedicationAdministration[]
   intakeOutputs IntakeOutput[]
   clearances  DischargeClearance[]
@@ -131,7 +132,7 @@ model Admission {
   finalInvoice   Invoice? @relation("AdmissionFinalInvoice", fields: [finalInvoiceId], references: [id], onDelete: Restrict)
   summaryVerifications DischargeSummaryVerification[]
   departure            AdmissionDeparture?
-  turnover             BedTurnover?
+  turnovers            BedTurnover[]
   recordCompletion     MedicalRecordCompletion?
   recordCodes          MedicalRecordCode[]
   recordFileMoves      MedicalRecordFileMovement[]

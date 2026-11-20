@@ -1,11 +1,12 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CANCEL_REASONS, ReasonSelect } from "@/components/reason-select";
 import { api, newKey } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { Icon, type IconName, PANEL } from "./desk-ui";
-import { Badge, Button, ErrorNote, Input, Notice, Spinner } from "./ui";
+import { Badge, Button, ErrorNote, Input, Spinner } from "./ui";
 
 interface Row { id: string; patient: string; mrn: string | null; doctor: string; scheduledAt: string; status: string; consented: boolean; doctorJoined: boolean; patientJoined: boolean; patientWaiting: boolean; identityChecked: boolean; feeStatus: string; feeDue: string; canJoin: boolean; windowOpensAt: string }
 const TONE: Record<string, "gray" | "blue" | "green" | "red"> = { SCHEDULED: "gray", IN_PROGRESS: "blue", COMPLETED: "green", CANCELLED: "red" };
@@ -41,36 +42,47 @@ export function VideoConsults() {
   const n = (st: string) => all.filter((r) => r.status === st).length;
   const waiting = all.filter((r) => r.patientWaiting && r.status === "SCHEDULED");
   const FILTERS: [string, string][] = [["", "All"], ["SCHEDULED", "Scheduled"], ["IN_PROGRESS", "In progress"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"]];
-  const tiles: { label: string; value: number; tone: string; icon: IconName }[] = [
-    { label: "Scheduled", value: n("SCHEDULED"), tone: "bg-teal-50 text-teal-700", icon: "calendar" },
-    { label: "Patient waiting", value: waiting.length, tone: waiting.length > 0 ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600", icon: "users" },
-    { label: "In progress", value: n("IN_PROGRESS"), tone: "bg-blue-50 text-blue-700", icon: "video" },
-    { label: "Completed", value: n("COMPLETED"), tone: "bg-emerald-50 text-emerald-700", icon: "check" },
+  const tiles: { label: string; sub: string; value: number; filter: string; bar: string; tone: string; icon: IconName }[] = [
+    { label: "Scheduled", sub: "Booked, not started", value: n("SCHEDULED"), filter: "SCHEDULED", bar: "bg-teal-500", tone: "bg-teal-50 text-teal-700", icon: "calendar" },
+    { label: "Patient waiting", sub: "Joined, waiting for the doctor", value: waiting.length, filter: "SCHEDULED", bar: waiting.length > 0 ? "bg-emerald-500" : "bg-slate-300", tone: waiting.length > 0 ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600", icon: "users" },
+    { label: "In progress", sub: "Call is on now", value: n("IN_PROGRESS"), filter: "IN_PROGRESS", bar: "bg-brand-500", tone: "bg-blue-50 text-blue-700", icon: "video" },
+    { label: "Completed", sub: "Call ended", value: n("COMPLETED"), filter: "COMPLETED", bar: "bg-emerald-500", tone: "bg-emerald-50 text-emerald-700", icon: "check" },
   ];
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-        {tiles.map((x) => (
-          <div key={x.label} className={`${PANEL} flex items-center gap-2.5 px-3.5 py-2`}>
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${x.tone}`}><Icon name={x.icon} /></span>
-            <div className="min-w-0">
-              <div className="text-[10.5px] font-medium uppercase leading-tight tracking-wider text-slate-500">{x.label}</div>
-              <div className="text-lg font-semibold tabular-nums leading-tight text-slate-900">{list.data ? x.value : "—"}</div>
-            </div>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map((x) => {
+          const active = statusFilter === x.filter;
+          return (
+            <button key={x.label} type="button" onClick={() => setStatusFilter(active ? "" : x.filter)} aria-pressed={active} className={`group relative overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${active ? "border-brand-500 ring-2 ring-brand-500/30" : "border-slate-200"}`}>
+              <span className={`absolute inset-x-0 top-0 h-1 ${x.bar}`} aria-hidden />
+              <span className="flex items-center justify-between gap-2 text-slate-500">
+                <span className="text-xs font-medium uppercase tracking-wide">{x.label}</span>
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${x.tone}`}><Icon name={x.icon} /></span>
+              </span>
+              <span className="mt-2 block text-3xl font-semibold tracking-tight tabular-nums text-slate-900">{list.data ? x.value : <span className="text-slate-400">…</span>}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">{x.sub}</span>
+            </button>
+          );
+        })}
       </div>
       {waiting.length > 0 && (
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800">
           <Icon name="video" />{waiting.map((r) => r.patient).join(", ")} {waiting.length === 1 ? "is" : "are"} waiting for the call.
         </div>
       )}
-      <details className="rounded-lg border border-slate-100 bg-white px-3.5 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-        <summary className="cursor-pointer select-none font-medium text-slate-700">How video consultations work</summary>
-        <div className="mt-2">
-<Notice>A video consultation is a normal appointment with a link. The doctor can open the call from 15 minutes before the time; the patient joins from the patient app after agreeing to a video consultation. Write the notes and prescription on the visit as usual.</Notice>
-        </div>
-      </details>
+      <div className={`${PANEL} grid gap-3 p-4 sm:grid-cols-3`}>
+        {[
+          ["1", "Book it", "On a booked appointment, press Make video. The appointment becomes a video consultation with a link."],
+          ["2", "Patient agrees and joins", "The patient agrees to a video consultation and joins from the patient app. You see when they are waiting."],
+          ["3", "Doctor starts the call", "The doctor can open the call from 15 minutes before the time. Notes and prescription are written on the visit as usual."],
+        ].map(([n, title, text]) => (
+          <div key={n} className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">{n}</span>
+            <div><div className="text-sm font-semibold text-slate-800">{title}</div><p className="mt-0.5 text-xs leading-relaxed text-slate-500">{text}</p></div>
+          </div>
+        ))}
+      </div>
       <ErrorNote error={join.error ?? end.error ?? cancel.error} />
       <section className={PANEL}>
         <header className="space-y-2.5 border-b border-slate-100 px-4 py-3">
@@ -82,7 +94,11 @@ export function VideoConsults() {
             <div className="ml-auto w-52"><Input aria-label="Search video consultations" placeholder="Patient, ID or doctor" value={find} onChange={(e) => setFind(e.target.value)} /></div>
           </div>
         </header>
-        {list.isLoading ? <div className="p-4"><Spinner /></div> : shown.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{all.length === 0 ? "No video consultations. Open Appointments and press Make video on a booked appointment." : "Nothing matches."}</p> : (
+        {list.isLoading ? <div className="p-4"><Spinner /></div> : shown.length === 0 ? <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500"><Icon name="video" /></span>
+            <p className="max-w-sm text-sm text-slate-600">{all.length === 0 ? "No video consultations yet. Open Appointments and press Make video on a booked appointment." : "Nothing matches this filter."}</p>
+            {all.length === 0 ? <Link href="/appointments" className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700">Open appointments</Link> : <button type="button" className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50" onClick={() => { setStatusFilter(""); setFind(""); }}>Clear the filter</button>}
+          </div> : (
           <div className="overflow-x-auto px-4 pb-1">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2 pr-3 font-medium">When</th><th className="py-2 pr-3 font-medium">Patient</th><th className="py-2 pr-3 font-medium">Doctor</th><th className="py-2 pr-3 font-medium">Status</th><th className="py-2 text-right font-medium">Actions</th></tr></thead>

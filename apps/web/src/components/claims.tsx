@@ -215,12 +215,12 @@ function NewClaim({ onClose, onCreated }: { onClose: () => void; onCreated: (id:
   );
 }
 
-export function ClaimsList() {
+export function ClaimsList({ initialOpen }: { initialOpen?: string | null } = {}) {
   const { can, money } = useMe();
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const term = useDebounced(q.trim(), 250);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null);
   const [adding, setAdding] = useState(false);
   const list = useQuery({ queryKey: ["claims", status, term], queryFn: () => api.get<{ items: Row[] }>("/claims", { ...(status ? { status } : {}), ...(term.length >= 2 ? { q: term } : {}), pageSize: 50 }), refetchInterval: 30_000 });
   const summary = useQuery({ queryKey: ["claims-summary"], queryFn: () => api.get<Summary[]>("/claims/summary") });

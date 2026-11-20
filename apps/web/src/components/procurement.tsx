@@ -35,23 +35,70 @@ function MedPicker({ value, onPick }: { value: Med | null; onPick: (m: Med | nul
 
 // ───────────────────────── stock requirement ─────────────────────────
 
+/** How short a medicine is: at or under half its reorder level is critical, anything up to the reorder level is low. */
+function shortness(n: Need): { tone: "red" | "amber"; label: string } { return n.onHand * 2 <= n.reorderLevel ? { tone: "red", label: "Critical" } : { tone: "amber", label: "Low" }; }
+
 export function RequirementTab({ onIndent }: { onIndent: (lines: { med: Med; qty: string }[]) => void }) {
   const { can } = useMe();
   const q = useQuery({ queryKey: ["procurement-requirement"], queryFn: () => api.get<{ items: Need[]; total: number }>("/procurement/requirement"), refetchInterval: 60_000 });
   const [picked, setPicked] = useState<string[]>([]);
   const items = q.data?.items ?? [];
+  const canIndent = can("STORES_INDENT");
+  const critical = items.filter((i) => shortness(i).tone === "red").length;
+  const covered = items.filter((i) => i.onOrder + i.onIndent > 0).length;
+  const units = items.reduce((n, i) => n + i.suggestedQuantity, 0);
+  const allPicked = items.length > 0 && picked.length === items.length;
+  const toggle = (id: string, on: boolean) => setPicked(on ? [...picked, id] : picked.filter((x) => x !== id));
+  const tiles: { label: string; value: string; sub: string; tone: string }[] = [
+    { label: "Medicines short", value: String(q.data?.total ?? 0), sub: "At or below the reorder level", tone: "bg-amber-500" },
+    { label: "Critical", value: String(critical), sub: "Half the reorder level or less", tone: critical > 0 ? "bg-red-500" : "bg-slate-300" },
+    { label: "Already on order", value: String(covered), sub: "On a purchase order or indent", tone: "bg-brand-500" },
+    { label: "Units to order", value: String(units), sub: "Suggested, to reach twice the level", tone: "bg-emerald-500" },
+  ];
   return (
-    <Card title={`Stock requirement (${q.data?.total ?? 0})`} actions={can("STORES_INDENT") ? <Button disabled={picked.length === 0} onClick={() => onIndent(items.filter((i) => picked.includes(i.medicineId)).map((i) => ({ med: { id: i.medicineId, brandName: i.medicine, genericName: "", strength: null }, qty: String(i.suggestedQuantity) })))}>Raise an indent for the ticked items</Button> : undefined}>
-      <p className="mb-2 text-sm text-slate-600">Medicines whose stock (main store and every location) has fallen to the reorder level, counting what is already on order or on an indent. The suggestion tops the position up to twice the reorder level.</p>
-      {q.isLoading ? <Spinner /> : (
-        <Table head={["", "Medicine", "On hand", "On order", "On indent", "Reorder level", "Suggest ordering"]} {...(items.length === 0 ? { empty: "Nothing is short." } : {})}>
-          {items.map((i) => (
-            <tr key={i.medicineId}><Td><input type="checkbox" aria-label={`Select ${i.medicine}`} checked={picked.includes(i.medicineId)} onChange={(e) => setPicked(e.target.checked ? [...picked, i.medicineId] : picked.filter((x) => x !== i.medicineId))} /></Td>
-              <Td className="font-medium">{i.medicine}</Td><Td>{i.onHand}</Td><Td>{i.onOrder}</Td><Td>{i.onIndent}</Td><Td>{i.reorderLevel}</Td><Td className="font-semibold">{i.suggestedQuantity}</Td></tr>
-          ))}
-        </Table>
-      )}
-    </Card>
+    <>
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <span className={`absolute inset-x-0 top-0 h-1 ${t.tone}`} aria-hidden />
+            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t.label}</span>
+            <span className="mt-2 block text-3xl font-semibold tracking-tight text-slate-900">{q.isLoading ? <span className="text-slate-400">…</span> : t.value}</span>
+            <span className="mt-0.5 block text-xs text-slate-500">{t.sub}</span>
+          </div>
+        ))}
+      </div>
+      <Card title={`Stock requirement (${q.data?.total ?? 0})`} actions={canIndent ? <Button disabled={picked.length === 0} onClick={() => onIndent(items.filter((i) => picked.includes(i.medicineId)).map((i) => ({ med: { id: i.medicineId, brandName: i.medicine, genericName: "", strength: null }, qty: String(i.suggestedQuantity) })))}>{picked.length === 0 ? "Raise an indent" : `Raise an indent for ${picked.length} ${picked.length === 1 ? "item" : "items"}`}</Button> : undefined}>
+        <p className="mb-3 text-sm text-slate-600">Medicines whose stock (main store and every location) has fallen to the reorder level, counting what is already on order or on an indent. The suggestion tops the position up to twice the reorder level.</p>
+        {q.isLoading ? <Spinner /> : (
+          <Table head={[canIndent ? <input key="all" type="checkbox" aria-label="Select all medicines" checked={allPicked} onChange={(e) => setPicked(e.target.checked ? items.map((i) => i.medicineId) : [])} /> : "", "Medicine", "Stock level", "On order", "On indent", "Suggest ordering"]} {...(items.length === 0 ? { empty: "Nothing is short." } : {})}>
+            {items.map((i) => {
+              const sh = shortness(i);
+              const pct = Math.max(4, Math.min(100, Math.round((i.onHand / Math.max(1, i.reorderLevel * 2)) * 100)));
+              const marker = 50;
+              const on = picked.includes(i.medicineId);
+              return (
+                <tr key={i.medicineId} className={on ? "bg-brand-50/50" : "hover:bg-slate-50"}>
+                  <Td><input type="checkbox" aria-label={`Select ${i.medicine}`} checked={on} onChange={(e) => toggle(i.medicineId, e.target.checked)} /></Td>
+                  <Td><span className="font-medium text-slate-900">{i.medicine}</span> <Badge tone={sh.tone}>{sh.label}</Badge></Td>
+                  <Td>
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-2 w-40 rounded-full bg-slate-100" role="img" aria-label={`${i.onHand} on hand, reorder level ${i.reorderLevel}`}>
+                        <span className={`absolute inset-y-0 left-0 rounded-full ${sh.tone === "red" ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                        <span className="absolute -inset-y-0.5 w-0.5 bg-slate-500" style={{ left: `${marker}%` }} title="Reorder level" />
+                      </div>
+                      <span className="whitespace-nowrap text-sm tabular-nums text-slate-700"><b className="text-slate-900">{i.onHand}</b> of {i.reorderLevel}</span>
+                    </div>
+                  </Td>
+                  <Td className="tabular-nums">{i.onOrder > 0 ? i.onOrder : <span className="text-slate-400">—</span>}</Td>
+                  <Td className="tabular-nums">{i.onIndent > 0 ? i.onIndent : <span className="text-slate-400">—</span>}</Td>
+                  <Td><span className="rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold tabular-nums text-emerald-800">{i.suggestedQuantity}</span></Td>
+                </tr>
+              );
+            })}
+          </Table>
+        )}
+      </Card>
+    </>
   );
 }
 

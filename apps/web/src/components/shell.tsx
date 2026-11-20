@@ -9,7 +9,8 @@ import { ageText, type AgeValue } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { needsDesk, useDesk } from "@/lib/desk";
-import { NAV, visibleNav } from "@/lib/nav";
+import { GROUP_NAV_ABOVE, NAV, NAV_ICON, NAV_SECTION, SECTION_TONE, visibleNav, type NavItem } from "@/lib/nav";
+import { Icon as KitIcon, type IconName as KitIconName } from "@/components/dashboard-kit";
 import { NotificationBell } from "./notifications";
 import { EmergencyAlertBar } from "./emergency-alert";
 import { IcuAlertBar } from "./icu-alert";
@@ -67,6 +68,40 @@ function GlobalSearch() {
   );
 }
 
+/** The menu entries in their sections, keeping each person's own order: sections appear where their first entry is. */
+function sections(items: NavItem[]): { title: string; items: NavItem[] }[] {
+  const out: { title: string; items: NavItem[] }[] = [];
+  for (const n of items) {
+    const title = NAV_SECTION[n.href] ?? "More";
+    const g = out.find((x) => x.title === title);
+    if (g) g.items.push(n); else out.push({ title, items: [n] });
+  }
+  // Overview first and Management last; the others keep the order of the person's own first entries.
+  const rank = (t: string) => (t === "Overview" ? 0 : t === "Management" ? 2 : 1);
+  return out.map((g, i) => ({ g, i })).sort((a, b) => rank(a.g.title) - rank(b.g.title) || a.i - b.i).map((x) => x.g);
+}
+
+function NavGlyph({ href, active, section }: { href: string; active: boolean; section: string }) {
+  const name = (NAV_ICON[href] ?? "list") as KitIconName;
+  const tone = (SECTION_TONE[section] ?? SECTION_TONE.Management)!;
+  return (
+    <span className={clsx("flex h-6 w-6 shrink-0 items-center justify-center rounded-md ring-1 ring-inset transition", active ? "bg-brand-600 text-white ring-brand-600 shadow-sm" : `${tone.chip} ring-black/5`)}>
+      <KitIcon name={name} className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+/** Which sections the person has folded away; kept in this browser only, so it is a convenience and never required. */
+function useFolded(): [Set<string>, (title: string) => void] {
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  useEffect(() => { try { const v = localStorage.getItem("medos.nav.folded"); if (v) setFolded(new Set(JSON.parse(v) as string[])); } catch { /* the menu works without it */ } }, []);
+  const toggle = (title: string) => setFolded((cur) => { const n = new Set(cur); if (n.has(title)) n.delete(title); else n.add(title); try { localStorage.setItem("medos.nav.folded", JSON.stringify([...n])); } catch { /* ignore */ } return n; });
+  return [folded, toggle];
+}
+
+const initialsOf = (name: string) => name.replace(/^Dr\.?\s+/i, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+const roleLabel = (r: string | undefined) => (r ? r.toLowerCase().replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "");
+
 export function Shell({ children }: { children: ReactNode }) {
   const { me, features } = useMe();
   const { desk, choose } = useDesk();
@@ -74,31 +109,90 @@ export function Shell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const path = usePathname();
   const [menu, setMenu] = useState(false);
+  const [folded, toggleFold] = useFolded();
   const picksDesk = needsDesk(me.roles, features);
   const activeDesk = picksDesk ? (desk ?? null) : null;
   const nav = visibleNav(new Set(me.permissions), features, me.roles, activeDesk);
   // A screen that belongs to the other desk (for example the ward list at the OPD desk).
   const otherDesk = activeDesk ? NAV.find((n) => n.desk && n.desk !== activeDesk && path.startsWith(n.href)) : undefined;
+  // When the server cannot be reached (it is stopped, restarting or out of disk), a click on Sign out or on a facility switch used to end in an unhandled "Failed to fetch" error.
+  // The person stays where they are and is told what happened; nothing is cleared until the server has answered.
+  const [netError, setNetError] = useState<string | null>(null);
+  const SERVER_DOWN = "The server is not responding, so this could not be done. Check that it is running, then try again.";
   async function logout() {
+    setNetError(null);
+    try {
+      const r = await fetch("/api/session/logout", { method: "POST", credentials: "same-origin", headers: { "x-medos-csrf": "1" } });
+      if (r.status >= 500) throw new Error("server error");
+    } catch {
+      setNetError(SERVER_DOWN);
+      return;
+    }
     choose(null);
-    await fetch("/api/session/logout", { method: "POST", credentials: "same-origin", headers: { "x-medos-csrf": "1" } });
     window.location.assign("/login");
   }
   async function switchFacility(facilityId: string) {
-    await fetch("/api/session/switch", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-medos-csrf": "1" }, body: JSON.stringify({ facilityId }) });
+    setNetError(null);
+    try {
+      const r = await fetch("/api/session/switch", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-medos-csrf": "1" }, body: JSON.stringify({ facilityId }) });
+      if (r.status >= 500) throw new Error("server error");
+    } catch {
+      setNetError(SERVER_DOWN);
+      return;
+    }
     window.location.assign("/dashboard");
   }
+  const problem = netError ? (
+    <div role="alert" className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 bg-red-600 px-4 py-2 text-sm text-white shadow">
+      <span>{t(netError)}</span>
+      <button type="button" className="rounded border border-white/60 px-2 py-0.5 text-xs hover:bg-red-700" onClick={() => setNetError(null)}>{t("Dismiss")}</button>
+    </div>
+  ) : null;
   if (picksDesk && desk === undefined) return <div className="p-6 text-slate-500">{t("Loading…")}</div>;
-  if (picksDesk && desk === null) return <DeskChooser name={me.fullName} onChoose={(d) => { choose(d); router.push("/dashboard"); }} onSignOut={logout} />;
+  if (picksDesk && desk === null) return <>{problem}<DeskChooser name={me.fullName} onChoose={(d) => { choose(d); router.push("/dashboard"); }} onSignOut={logout} /></>;
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
-        <div className="px-4 py-4"><div className="text-lg font-semibold text-brand-700">MedOS</div><div className="truncate text-xs text-slate-500">{me.tenant.name}</div></div>
-        <nav className="flex-1 space-y-0.5 px-2" aria-label="Main">
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href} className={clsx("block rounded-md px-3 py-2 text-sm", path.startsWith(n.href) ? "bg-brand-50 font-medium text-brand-700" : "text-slate-700 hover:bg-slate-100")}>{t(n.label)}</Link>
-          ))}
+      {problem}
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50/70 md:flex">
+        <div className="flex items-center gap-2.5 border-b border-slate-200 bg-white px-4 py-3.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-sm" aria-hidden>M</span>
+          <div className="min-w-0"><div className="text-[15px] font-semibold leading-tight tracking-tight text-slate-900">MedOS</div><div className="truncate text-xs text-slate-500">{me.tenant.name}</div></div>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+          {(nav.length > GROUP_NAV_ABOVE ? sections(nav) : [{ title: "", items: nav }]).map((g, gi) => {
+            const open = !g.title || !folded.has(g.title) || g.items.some((n) => path.startsWith(n.href));
+            return (
+              <div key={g.title || "all"} className={clsx(gi > 0 && "mt-3 border-t border-slate-200/80 pt-3")}>
+                {g.title && (
+                  <button type="button" onClick={() => toggleFold(g.title)} aria-expanded={open} className="group flex w-full items-center gap-1.5 rounded px-2 pb-1 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400 hover:text-slate-600">
+                    <span className={clsx("h-1.5 w-1.5 rounded-full", (SECTION_TONE[g.title] ?? SECTION_TONE.Management)!.dot)} aria-hidden />
+                    <span className="flex-1">{t(g.title)}</span>
+                    <KitIcon name="chevronDown" className={clsx("h-3 w-3 opacity-0 transition group-hover:opacity-100", !open && "-rotate-90 opacity-100")} />
+                  </button>
+                )}
+                {open && (
+                  <div className="space-y-0.5">
+                    {g.items.map((n) => {
+                      const on = path.startsWith(n.href);
+                      const section = NAV_SECTION[n.href] ?? "Management";
+                      return (
+                        <Link key={n.href} href={n.href} aria-current={on ? "page" : undefined} className={clsx("group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition", on ? "bg-white font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200" : "font-medium text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm")}>
+                          {on && <span className="absolute -left-3 top-1.5 h-6 w-[3px] rounded-r-full bg-brand-600" aria-hidden />}
+                          <NavGlyph href={n.href} active={on} section={section} />
+                          <span className="truncate">{t(n.label)}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
+        <div className="flex items-center gap-2.5 border-t border-slate-200 bg-white px-3 py-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700 ring-1 ring-brand-100" aria-hidden>{initialsOf(me.fullName)}</span>
+          <div className="min-w-0"><div className="truncate text-[13px] font-medium leading-tight text-slate-900">{me.fullName}</div><div className="truncate text-xs text-slate-500">{roleLabel(me.roles[0])}</div></div>
+        </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">

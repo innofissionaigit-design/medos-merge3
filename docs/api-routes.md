@@ -399,6 +399,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/appointments/:id/reminders` | APPOINTMENT_READ |  |
 | GET | `/encounters/:id/follow-ups` | any of APPOINTMENT_READ / CONSULTATION_READ |  |
 | POST | `/encounters/:id/follow-ups` | FOLLOWUP_SCHEDULE |  |
+| GET | `/follow-ups/expected` | APPOINTMENT_READ |  |
 
 ## Health
 
@@ -480,6 +481,15 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/integrations/clients/:id/webhook/deliveries/:deliveryId/retry` | ADMIN_INTEGRATIONS |  |
 | POST | `/integrations/clients/:id/webhook/rotate-secret` | ADMIN_INTEGRATIONS |  |
 | POST | `/integrations/clients/:id/webhook/test` | ADMIN_INTEGRATIONS |  |
+
+## InvoiceDelivery
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| POST | `/invoice-deliveries/:id/retry` | INVOICE_READ |  |
+| GET | `/invoice-deliveries/config` | INVOICE_READ |  |
+| GET | `/invoices/:id/deliveries` | INVOICE_READ |  |
+| POST | `/invoices/:id/deliveries` | INVOICE_READ |  |
 
 ## Ipd
 
@@ -628,6 +638,8 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/admissions/:id/mar/unscheduled` | NURSING_MEDICATION_ADMINISTER | NURSING_ENABLED |
 | GET | `/admissions/:id/notes` | NURSING_READ | NURSING_ENABLED |
 | POST | `/admissions/:id/notes` | NURSING_DOCUMENT | NURSING_ENABLED |
+| GET | `/admissions/:id/nursing-assessment` | NURSING_READ | NURSING_ENABLED |
+| POST | `/admissions/:id/nursing-assessment` | NURSING_DOCUMENT | NURSING_ENABLED |
 | GET | `/admissions/:id/tasks` | NURSING_READ | NURSING_ENABLED |
 | POST | `/admissions/:id/tasks` | NURSING_DOCUMENT | NURSING_ENABLED |
 | POST | `/intake-output/:id/enter-in-error` | NURSING_DOCUMENT | NURSING_ENABLED |
@@ -647,6 +659,12 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | PUT | `/ocr/config/` | ADMIN_SETTINGS |  |
 | POST | `/ocr/config/disconnect` | ADMIN_SETTINGS |  |
 | POST | `/ocr/config/test` | ADMIN_SETTINGS |  |
+
+## OpdLedger
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/opd-ledger` | INVOICE_READ |  |
 
 ## Overview
 
@@ -895,6 +913,12 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | POST | `/procurement/stock-requests/:id/issue` | PHARMACY_ADJUST_STOCK | PHARMACY_ENABLED |
 | POST | `/procurement/stock-requests/:id/reject` | PHARMACY_ADJUST_STOCK | PHARMACY_ENABLED |
 
+## PublicBill
+
+| Method | Path | Access | Module flag |
+|---|---|---|---|
+| GET | `/public/bills/:token` | public |  |
+
 ## PublicFeedback
 
 | Method | Path | Access | Module flag |
@@ -970,6 +994,7 @@ All paths are under `/api/v1`. Every route either is public, accepts any signed-
 | GET | `/reports/opd/by-department` | any of REPORT_READ / REPORT_OPD |  |
 | GET | `/reports/opd/by-doctor` | any of REPORT_READ / REPORT_OPD |  |
 | GET | `/reports/opd/daily` | any of REPORT_READ / REPORT_OPD |  |
+| GET | `/reports/opd/visits` | any of REPORT_READ / REPORT_OPD |  |
 | GET | `/reports/outstanding-invoices` | any of REPORT_READ / REPORT_FINANCE |  |
 | GET | `/reports/pharmacy/consumption-cost` | any of REPORT_READ / REPORT_PHARMACY / REPORT_FINANCE | IPD_ENABLED |
 | GET | `/reports/pharmacy/low-stock` | any of REPORT_READ / REPORT_PHARMACY | PHARMACY_ENABLED |

@@ -154,7 +154,7 @@ export class DischargeService {
       db.claim.findFirst({ where: { tenantId: ctx.tenantId, facilityId: ctx.facilityId, encounterId: adm.encounterId, tier: "PRIMARY" }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { claimNumber: true, status: true, approvedAmount: true, preauthApproved: true, settledAmount: true, policy: { select: { insurer: { select: { name: true } } } } } }),
     ]);
     const heldBed = adm.status === "DISCHARGED" ? await db.bedAssignment.findFirst({ where: { tenantId: ctx.tenantId, admissionId: adm.id, releasedAt: null }, select: { bed: { select: { code: true, ward: { select: { name: true } } } } } }) : null;
-    const turnover = await db.bedTurnover.findFirst({ where: { tenantId: ctx.tenantId, admissionId: adm.id }, include: { bed: { select: { code: true, ward: { select: { name: true } } } } } });
+    const turnover = adm.status === "ADMITTED" ? null : await db.bedTurnover.findFirst({ where: { tenantId: ctx.tenantId, admissionId: adm.id }, orderBy: { vacatedAt: "desc" }, include: { bed: { select: { code: true, ward: { select: { name: true } } } } } });
     const byIds = [...new Set([...clearances.map((c) => c.byId), ...(summary ? [summary.authorId, summary.signedById] : []), verification?.verifiedById, departure?.confirmedById, turnover?.cleaningStartedById, turnover?.readyById, recordDone?.completedById, ...fileMoves.map((m) => m.byId)].filter((x): x is string => !!x))];
     const names = new Map((byIds.length ? await db.user.findMany({ where: { tenantId: ctx.tenantId, id: { in: byIds } }, select: { id: true, fullName: true } }) : []).map((u) => [u.id, u.fullName]));
     const steps = STEP_ORDER.map((step) => {

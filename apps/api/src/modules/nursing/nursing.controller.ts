@@ -4,7 +4,7 @@ import { Feature } from "../../common/feature.guard";
 import { Ctx, id, parse, RequirePermissions } from "../../common/http";
 import type { RequestContext } from "../../common/request-context";
 import { administerSchema, dueQuerySchema, generateSchema, MarService, marListSchema, unscheduledSchema } from "./mar.service";
-import { errorReasonSchema, ioSchema, ioTotalsSchema, noteSchema, NursingService, taskCancelSchema, taskCloseSchema, taskSchema, worklistSchema } from "./nursing.service";
+import { assessmentSchema, errorReasonSchema, ioSchema, ioTotalsSchema, noteSchema, NursingService, taskCancelSchema, taskCloseSchema, taskSchema, worklistSchema } from "./nursing.service";
 
 const notesQuery = z.object({ includeErrors: z.enum(["true", "false"]).default("false").transform((v) => v === "true") }).strict();
 
@@ -52,6 +52,18 @@ export class NursingController {
   @Get("admissions/:id/tasks")
   async tasks(@Ctx() ctx: RequestContext, @Param("id") admissionId: string) {
     return { data: await this.nursing.listTasks(ctx, id(admissionId)) };
+  }
+
+  @RequirePermissions("NURSING_READ")
+  @Get("admissions/:id/nursing-assessment")
+  async assessment(@Ctx() ctx: RequestContext, @Param("id") admissionId: string) {
+    return { data: await this.nursing.getAssessment(ctx, id(admissionId)) };
+  }
+
+  @RequirePermissions("NURSING_DOCUMENT")
+  @Post("admissions/:id/nursing-assessment")
+  async recordAssessment(@Ctx() ctx: RequestContext, @Param("id") admissionId: string, @Body() body: unknown) {
+    return { data: await this.nursing.recordAssessment(ctx, id(admissionId), parse(assessmentSchema, body)) };
   }
 
   @RequirePermissions("NURSING_DOCUMENT")

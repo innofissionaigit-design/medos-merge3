@@ -4,10 +4,11 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gate } from "@/components/gate";
+import { AssessmentCard } from "@/components/nursing-assessment";
 import { useAvailableBeds, todayIn } from "@/components/pickers";
-import { CLOSE_LABEL, PlanBadge, SOURCE_LABEL, Stepper, useRefreshPlanned, type Plan } from "@/components/planned";
-import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Notice, PageHeader, Select, Spinner, Textarea } from "@/components/ui";
-import { api, newKey } from "@/lib/api";
+import { CLOSE_LABEL, dayCount, RequestHeader, Stepper, useRefreshPlanned, waitedFor, type Plan } from "@/components/planned";
+import { Badge, Button, Card, ConfirmButton, ErrorNote, Field, Input, KV, Notice, Select, Spinner, Textarea } from "@/components/ui";
+import { api, ApiError, newKey } from "@/lib/api";
 import { useMe } from "@/lib/me";
 
 /** One step of the request: posts to the step's route and puts the new state of the request on the screen. */
@@ -93,6 +94,8 @@ function WaitingStep({ plan }: { plan: Plan }) {
   const [note, setNote] = useState("");
   const [queue, setQueue] = useState(true);
   const m = useStep(plan.id, "patient-ready");
+  const feeBlocked = m.error instanceof ApiError && m.error.code === "CONSULTATION_PAYMENT_REQUIRED";
+  const body = (sendToQueue: boolean) => ({ sendToQueue, ...(note.trim().length >= 3 ? { note: note.trim() } : {}) });
   return (
     <Card title="Waiting for the patient">
       <div className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900"><b>{plan.askMode ? ASK_LABEL[plan.askMode] : "The doctor asked the patient"}.</b> {plan.askNote}</div>
@@ -100,8 +103,19 @@ function WaitingStep({ plan }: { plan: Plan }) {
         <>
           {plan.askMode === "CHAMBER" && <label className="mb-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={queue} onChange={(e) => setQueue(e.target.checked)} /> Put the patient in the doctor's OPD queue now</label>}
           <Field label="Note (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={plan.askMode === "CHAMBER" ? "e.g. Patient is here with the X-rays" : "e.g. Reports handed over"} /></Field>
-          <ErrorNote error={m.error} />
-          <div className="mt-3"><Button loading={m.isPending} onClick={() => m.mutate({ sendToQueue: queue, ...(note.trim().length >= 3 ? { note: note.trim() } : {}) })}>{plan.askMode === "CHAMBER" ? "Patient is here: send to the doctor" : "Reports received: send to the doctor"}</Button></div>
+          {feeBlocked ? (
+            <Notice tone="warn">
+              <div>
+                <p><b>The OPD consultation fee is not paid yet</b>, so the patient cannot join the doctor's queue.</p>
+                <p className="mt-1">{"Either collect the fee first, or send the request to the doctor without the queue (for example when the patient is already booked or the doctor will see the patient directly)."}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Link className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-amber-50" href={`/patients/${plan.patient.id}`}>Collect the fee on the patient's page</Link>
+                  <Button variant="secondary" loading={m.isPending} onClick={() => m.mutate(body(false))}>Send to the doctor without the queue</Button>
+                </div>
+              </div>
+            </Notice>
+          ) : <ErrorNote error={m.error} />}
+          <div className="mt-3"><Button loading={m.isPending} onClick={() => m.mutate(body(queue))}>{plan.askMode === "CHAMBER" ? "Patient is here: send to the doctor" : "Reports received: send to the doctor"}</Button></div>
         </>
       ) : <p className="text-sm text-slate-500">Reception will send the patient or the reports to the doctor.</p>}
     </Card>
@@ -117,21 +131,23 @@ function VerifyStep({ plan }: { plan: Plan }) {
   const wards = useQuery({ queryKey: ["wards"], queryFn: () => api.get<{ id: string; name: string; status: string }[]>("/wards") });
   const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<{ id: string; displayName: string }[]>("/practitioners") });
   const m = useStep(plan.id, "verify");
-  const ok = f.diagnosis.trim().length >= 2 && !!f.proposedDate && Number(f.expectedStayDays) >= 1 && !!f.wardId;
+  const need = { diagnosis: f.diagnosis.trim().length < 2, proposedDate: !f.proposedDate, expectedStayDays: !(Number(f.expectedStayDays) >= 1), wardId: !f.wardId };
+  const ok = !Object.values(need).some(Boolean);
+  const missing = [need.diagnosis && "the diagnosis", need.proposedDate && "the day of admission", need.expectedStayDays && "the expected stay", need.wardId && "the room category"].filter((x): x is string => !!x);
   return (
     <Card title="Verify the admission details">
       <p className="mb-3 text-sm text-slate-600">Check what the doctor has written. You may correct it. Then billing and insurance take over.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Admitting consultant"><Select value={f.consultantId} onChange={(e) => setF({ ...f, consultantId: e.target.value })}>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select></Field>
-        <Field label="Diagnosis"><Input value={f.diagnosis} onChange={(e) => setF({ ...f, diagnosis: e.target.value })} /></Field>
+        <Field label="Diagnosis" error={need.diagnosis ? "Required" : undefined}><Input value={f.diagnosis} onChange={(e) => setF({ ...f, diagnosis: e.target.value })} /></Field>
         <Field label="Planned procedure"><Input value={f.plannedProcedure} onChange={(e) => setF({ ...f, plannedProcedure: e.target.value })} /></Field>
-        <Field label="Proposed day of admission"><Input type="date" min={todayIn(tz)} value={f.proposedDate} onChange={(e) => setF({ ...f, proposedDate: e.target.value })} /></Field>
-        <Field label="Expected length of stay (days)"><Input inputMode="numeric" value={f.expectedStayDays} onChange={(e) => setF({ ...f, expectedStayDays: e.target.value.replace(/\D/g, "") })} /></Field>
-        <Field label="Requested room category (ward)"><Select value={f.wardId} onChange={(e) => setF({ ...f, wardId: e.target.value })}><option value="">Choose…</option>{wards.data?.filter((w) => w.status === "ACTIVE").map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></Field>
+        <Field label="Proposed day of admission" error={need.proposedDate ? "Required" : undefined}><Input type="date" min={todayIn(tz)} value={f.proposedDate} onChange={(e) => setF({ ...f, proposedDate: e.target.value })} /></Field>
+        <Field label="Expected length of stay (days)" error={need.expectedStayDays ? "Required" : undefined}><Input inputMode="numeric" value={f.expectedStayDays} onChange={(e) => setF({ ...f, expectedStayDays: e.target.value.replace(/\D/g, "") })} /></Field>
+        <Field label="Requested room category (ward)" error={need.wardId ? "Required: choose where the patient will stay" : undefined}><Select value={f.wardId} onChange={(e) => setF({ ...f, wardId: e.target.value })}><option value="">Choose…</option>{wards.data?.filter((w) => w.status === "ACTIVE").map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></Field>
         <div className="sm:col-span-2"><Field label="Room note (optional)"><Input value={f.roomNote} onChange={(e) => setF({ ...f, roomNote: e.target.value })} /></Field></div>
       </div>
       <ErrorNote error={m.error} />
-      <div className="mt-3"><Button loading={m.isPending} disabled={!ok} onClick={() => m.mutate({ ...(f.consultantId !== plan.consultant.id ? { consultantId: f.consultantId } : {}), diagnosis: f.diagnosis.trim(), ...(f.plannedProcedure.trim() ? { plannedProcedure: f.plannedProcedure.trim() } : {}), proposedDate: f.proposedDate, expectedStayDays: Number(f.expectedStayDays), wardId: f.wardId, ...(f.roomNote.trim() ? { roomNote: f.roomNote.trim() } : {}) })}>Verified: send to billing and insurance</Button></div>
+      <div className="mt-3 flex flex-wrap items-center gap-3"><Button loading={m.isPending} disabled={!ok} onClick={() => m.mutate({ ...(f.consultantId !== plan.consultant.id ? { consultantId: f.consultantId } : {}), diagnosis: f.diagnosis.trim(), ...(f.plannedProcedure.trim() ? { plannedProcedure: f.plannedProcedure.trim() } : {}), proposedDate: f.proposedDate, expectedStayDays: Number(f.expectedStayDays), wardId: f.wardId, ...(f.roomNote.trim() ? { roomNote: f.roomNote.trim() } : {}) })}>Verified: send to billing and insurance</Button>{missing.length > 0 && <span className="text-xs text-slate-500" aria-live="polite">{`To continue, add ${missing.join(", ")}.`}</span>}</div>
     </Card>
   );
 }
@@ -185,7 +201,7 @@ function PayerCard({ plan }: { plan: Plan }) {
   const done = useStep(plan.id, "tariff-done");
   return (
     <Card title="Payer and insurance" actions={plan.payer ? <Badge tone="blue">{plan.payer === "SELF_PAY" ? "Self-pay" : "Insured"}</Badge> : undefined}>
-      {plan.payer === "INSURED" && plan.policy && <div className="mb-3 space-y-1 text-sm"><KV label="Insurer">{plan.policy.insurer}</KV><KV label="Policy">{`${plan.policy.policyNumber}${plan.policy.validTo ? `, valid to ${date(plan.policy.validTo)}` : ""}`}</KV><KV label="Pre-authorisation">{plan.preauthRequired ? "Needed" : "Not needed"}</KV><KV label="Eligibility check">{plan.eligibilityNote}</KV>{plan.claim && <KV label="Claim"><Link className="text-brand-700 hover:underline" href={`/claims/${plan.claim.id}`}>{plan.claim.claimNumber}</Link> {` (${plan.claim.status.replace(/_/g, " ").toLowerCase()})`}</KV>}</div>}
+      {plan.payer === "INSURED" && plan.policy && <div className="mb-3 space-y-1 text-sm"><KV label="Insurer">{plan.policy.insurer}</KV><KV label="Policy">{`${plan.policy.policyNumber}${plan.policy.validTo ? `, valid to ${date(plan.policy.validTo)}` : ""}`}</KV><KV label="Pre-authorisation">{plan.preauthRequired ? "Needed" : "Not needed"}</KV><KV label="Eligibility check">{plan.eligibilityNote}</KV>{plan.claim && <KV label="Claim"><Link className="text-brand-700 hover:underline" href={`/claims?open=${plan.claim.id}`}>{plan.claim.claimNumber}</Link> {` (${plan.claim.status.replace(/_/g, " ").toLowerCase()})`}</KV>}</div>}
       {plan.payer === "SELF_PAY" && <p className="mb-3 text-sm text-slate-600">The patient will pay.{plan.eligibilityNote ? ` ${plan.eligibilityNote}` : ""}</p>}
       {!plan.payer && !plan.can.payerSelf && !plan.can.payerInsured && <p className="text-sm text-slate-500">The payer is not set yet.</p>}
       {(plan.can.payerSelf || plan.can.payerInsured) && plan.status === "TARIFF_PAYER" && (
@@ -222,7 +238,7 @@ function PreauthStep({ plan }: { plan: Plan }) {
   if (!claim) return <Card title="Insurer's pre-authorisation"><Notice tone="warn">There is no claim for this request. Choose the payer again.</Notice></Card>;
   return (
     <Card title="Insurer's pre-authorisation" actions={<Badge tone="blue">{claim.status.replace(/_/g, " ").toLowerCase()}</Badge>}>
-      <p className="mb-3 text-sm text-slate-600">{`Claim ${claim.claimNumber}. Ask the insurer, then record its answer here. Documents and further steps are on the `}<Link className="text-brand-700 hover:underline" href={`/claims/${claim.id}`}>claim</Link>.</p>
+      <p className="mb-3 text-sm text-slate-600">{`Claim ${claim.claimNumber}. Ask the insurer, then record its answer here. Documents and further steps are on the `}<Link className="text-brand-700 hover:underline" href={`/claims?open=${claim.id}`}>claim</Link>.</p>
       {claim.preauthRequested && <p className="mb-2 text-sm">{`Asked for ${money(claim.preauthRequested)}.`}</p>}
       {plan.can.preauth ? (
         <div className="space-y-3">
@@ -314,8 +330,9 @@ function BedCard({ plan }: { plan: Plan }) {
   const [bedId, setBedId] = useState("");
   const [allWards, setAllWards] = useState(false);
   const all = useAvailableBeds();
-  // The beds of the ward the patient asked for come first; the others are a tick away (the emergency ward's beds are refused by the server).
-  const beds = { data: plan.ward && !allWards ? all.data?.filter((b) => b.label.startsWith(`${plan.ward!.name} · `)) : all.data };
+  // The beds of the ward the patient asked for come first; the others are a tick away (the emergency ward's beds are never offered, and the server refuses them too).
+  const notEmergency = all.data?.filter((b) => !plan.emergencyWardCode || b.wardCode !== plan.emergencyWardCode);
+  const beds = { data: plan.ward && !allWards ? notEmergency?.filter((b) => b.label.startsWith(`${plan.ward!.name} · `)) : notEmergency };
   const m = useStep(plan.id, "bed");
   return (
     <Card title="Bed" actions={plan.bed ? <Badge tone="purple">{`Held: ${plan.bed.code}`}</Badge> : undefined}>
@@ -357,7 +374,7 @@ function DayCard({ plan }: { plan: Plan }) {
           <ErrorNote error={resched.error} />
         </div>
       )}
-      {!plan.can.reschedule && !plan.can.admit && <p className="text-sm text-slate-600">{plan.proposedDate ? `Planned for ${date(plan.proposedDate)}${plan.expectedStayDays ? `, about ${plan.expectedStayDays} days` : ""}.` : "The day is not fixed yet."}</p>}
+      {!plan.can.reschedule && !plan.can.admit && <p className="text-sm text-slate-600">{plan.proposedDate ? `Planned for ${date(plan.proposedDate)}${plan.expectedStayDays ? `, about ${dayCount(plan.expectedStayDays)}` : ""}.` : "The day is not fixed yet."}</p>}
     </Card>
   );
 }
@@ -395,12 +412,14 @@ export default function PlannedDetail() {
   const moneyShown = !["ADVISED", "DOCTOR_REVIEW", "AWAITING_PATIENT", "DESK_REVIEW"].includes(p.status) || p.estimate.lines.length > 0;
   return (
     <Gate anyOf={["PLANNED_READ"]} feature="IPD_ENABLED">
-      <PageHeader
-        title={p.patient.name} subtitle={`MRN ${p.patient.mrn ?? "—"} · ${p.patient.gender.toLowerCase()}${p.patient.mobile ? ` · ${p.patient.mobile}` : ""} · request ${p.requestNumber} · ${SOURCE_LABEL[p.source]}`}
-        actions={<><PlanBadge status={p.status} /><Link className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href="/planned">All requests</Link></>}
-      />
-      <div className="mb-4"><Stepper plan={p} /></div>
-      {!finished && <div className="mb-4"><Notice tone="info">{`Now with: ${p.waitingFor}`}</Notice></div>}
+      <RequestHeader plan={p} />
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-3 py-4 shadow-sm"><Stepper plan={p} /></div>
+      {!finished && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900" role="status">
+          <span><span className="font-semibold">{"Now with: "}</span>{p.waitingFor}</span>
+          <span className="text-xs text-brand-700">{`here for ${waitedFor(p.updatedAt)}`}</span>
+        </div>
+      )}
       {p.status === "CLOSED" && p.close && <div className="mb-4"><Notice tone="warn">{`${CLOSE_LABEL[p.close.reason] ?? p.close.reason}${p.close.note ? `: ${p.close.note}` : ""}`}</Notice></div>}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -411,22 +430,30 @@ export default function PlannedDetail() {
           {p.status === "PREAUTH" && <PreauthStep plan={p} />}
 
           <Card title="Admission details">
-            <div className="grid gap-1 text-sm sm:grid-cols-2">
-              <KV label="Admitting consultant">{`${p.consultant.name}${p.consultant.department ? ` (${p.consultant.department})` : ""}`}</KV>
-              <KV label="Diagnosis">{p.diagnosis ?? "—"}</KV>
-              <KV label="Planned procedure">{p.plannedProcedure ?? "—"}</KV>
-              <KV label="Proposed day">{p.proposedDate ? date(p.proposedDate) : "—"}</KV>
-              <KV label="Expected stay">{p.expectedStayDays ? `${p.expectedStayDays} days` : "—"}</KV>
-              <KV label="Room category">{p.ward?.name ?? "—"}{p.roomNote ? ` (${p.roomNote})` : ""}</KV>
-            </div>
-            <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm"><b>{p.source === "OPD_ADVISED" ? "Doctor's note:" : "What the patient said:"}</b> {p.details}</div>
-            {p.consent && <p className="mt-2 text-sm text-slate-600">{`Patient consent recorded${p.consent.by ? ` by ${p.consent.by}` : ""}, ${dateTime(p.consent.at)}${p.consent.note ? `: ${p.consent.note}` : ""}.`}</p>}
+            {(() => {
+              const empty = <span className="italic text-slate-400">Not decided yet</span>;
+              return (
+                <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <KV label="Admitting consultant">{`${p.consultant.name}${p.consultant.department ? ` (${p.consultant.department})` : ""}`}</KV>
+                  <KV label="Diagnosis">{p.diagnosis ?? empty}</KV>
+                  <KV label="Planned procedure">{p.plannedProcedure ?? empty}</KV>
+                  <KV label="Proposed day">{p.proposedDate ? date(p.proposedDate) : empty}</KV>
+                  <KV label="Expected stay">{p.expectedStayDays ? dayCount(p.expectedStayDays) : empty}</KV>
+                  <KV label="Room category">{p.ward ? `${p.ward.name}${p.roomNote ? ` (${p.roomNote})` : ""}` : empty}</KV>
+                </div>
+              );
+            })()}
+            <figure className="mt-4 rounded-md border-l-4 border-brand-300 bg-slate-50 px-4 py-3">
+              <figcaption className="text-xs font-medium uppercase tracking-wide text-slate-500">{p.source === "OPD_ADVISED" ? "Doctor's note" : "What the patient said"}</figcaption>
+              <blockquote className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{p.details}</blockquote>
+            </figure>
+            {p.consent && <p className="mt-3 text-sm text-slate-600">{`Patient consent recorded${p.consent.by ? ` by ${p.consent.by}` : ""}, ${dateTime(p.consent.at)}${p.consent.note ? `: ${p.consent.note}` : ""}.`}</p>}
             {p.askNote && p.status !== "AWAITING_PATIENT" && <p className="mt-2 text-sm text-slate-600">{`The doctor asked: ${p.askMode ? ASK_LABEL[p.askMode] : ""}. ${p.askNote}`}</p>}
           </Card>
 
           {moneyShown && <EstimateCard key={`${p.estimate.total}-${p.estimate.lines.length}-${p.status}`} plan={p} />}
           {moneyShown && !["PREAUTH"].includes(p.status) && (p.status === "TARIFF_PAYER" || p.payer) && <PayerCard plan={p} />}
-          {["PREAUTH", "DEPOSIT", "BED_ALLOCATION", "READY", "ADMITTED"].includes(p.status) && p.payer === "INSURED" && p.status !== "PREAUTH" && p.claim && <Card title="Insurer's pre-authorisation"><p className="text-sm">{`Claim ${p.claim.claimNumber}: ${p.claim.status.replace(/_/g, " ").toLowerCase()}${p.claim.preauthApproved ? `, approved ${p.claim.preauthApproved}` : ""}. `}<Link className="text-brand-700 hover:underline" href={`/claims/${p.claim.id}`}>Open the claim</Link></p></Card>}
+          {["PREAUTH", "DEPOSIT", "BED_ALLOCATION", "READY", "ADMITTED"].includes(p.status) && p.payer === "INSURED" && p.status !== "PREAUTH" && p.claim && <Card title="Insurer's pre-authorisation"><p className="text-sm">{`Claim ${p.claim.claimNumber}: ${p.claim.status.replace(/_/g, " ").toLowerCase()}${p.claim.preauthApproved ? `, approved ${p.claim.preauthApproved}` : ""}. `}<Link className="text-brand-700 hover:underline" href={`/claims?open=${p.claim.id}`}>Open the claim</Link></p></Card>}
           {["DEPOSIT", "BED_ALLOCATION", "READY", "ADMITTED"].includes(p.status) && <DepositCard key={`${p.deposit.held}-${p.deposit.required}-${p.status}`} plan={p} />}
           {["BED_ALLOCATION", "READY", "ADMITTED"].includes(p.status) && <BedCard plan={p} />}
           {["DESK_REVIEW", "TARIFF_PAYER", "PREAUTH", "DEPOSIT", "BED_ALLOCATION", "READY"].includes(p.status) && <DayCard plan={p} />}
@@ -434,7 +461,7 @@ export default function PlannedDetail() {
           {p.admission && (
             <Card title="Admitted" actions={<Badge tone="green">{p.admission.admissionNumber}</Badge>}>
               <p className="text-sm">{`Admitted on ${dateTime(p.admission.admittedAt)}${p.bed ? ` in bed ${p.bed.code}` : ""}. The stay continues in the ordinary admission: charges, nursing, medicines and discharge.`}</p>
-              <p className="mt-2 text-sm">{`Nursing admission assessment: `}<Badge tone={p.nursingAssessment?.status === "DONE" ? "green" : "amber"}>{p.nursingAssessment?.status === "DONE" ? "done" : "waiting for the nurse"}</Badge>{p.nursingAssessment?.note ? ` ${p.nursingAssessment.note}` : ""}</p>
+              <AssessmentCard admissionId={p.admission.id} planId={p.id} />
               <div className="mt-3"><Link className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700" href={`/ipd/${p.admission.id}`}>Open the admission</Link></div>
             </Card>
           )}

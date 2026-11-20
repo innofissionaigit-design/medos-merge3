@@ -26,6 +26,8 @@ const BED_STYLE: Record<string, { card: string; dot: string }> = {
 };
 const STATUS_FILTERS: [string, string][] = [["", "All"], ["AVAILABLE", "Available"], ["OCCUPIED", "Occupied"], ["CLEANING", "Cleaning"], ["RESERVED", "Reserved"], ["MAINTENANCE", "Maintenance"]];
 
+const REASONS = ["Fever", "Planned surgery", "Chest pain", "Breathlessness", "Accident or injury", "Observation"];
+
 function Admit({ initial, onClose }: { initial: PickedPatient | null; onClose: () => void }) {
   const router = useRouter();
   const { money } = useMe();
@@ -37,15 +39,62 @@ function Admit({ initial, onClose }: { initial: PickedPatient | null; onClose: (
   const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<{ id: string; displayName: string }[]>("/practitioners") });
   const beds = useAvailableBeds();
   const m = useMutation({ mutationFn: () => api.post<{ id: string }>("/admissions", { patientId: patient!.id, consultantId: doc, bedId: bed, ...(reason ? { reason } : {}) }, key), onSuccess: (a) => router.push(`/ipd/${a.id}`) });
+  const byWard = new Map<string, NonNullable<typeof beds.data>>();
+  for (const b of beds.data ?? []) byWard.set(b.ward, [...(byWard.get(b.ward) ?? []), b]);
+  const chosen = beds.data?.find((b) => b.id === bed);
+  const doctor = docs.data?.find((d) => d.id === doc);
+  const Step = ({ n, done, title, hint }: { n: number; done: boolean; title: string; hint?: string }) => (
+    <div className="mb-2 flex items-center gap-2">
+      <span className={clsx("flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold", done ? "bg-emerald-500 text-white" : "bg-brand-600 text-white")}>{done ? "✓" : n}</span>
+      <span className="text-sm font-semibold text-slate-800">{title}</span>
+      {hint && <span className="text-xs text-slate-500">{hint}</span>}
+    </div>
+  );
   return (
     <Modal title="Admit patient" onClose={onClose} wide>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2"><Field as="div" label="Patient"><PatientPicker value={patient} onPick={setPatient} autoFocus={!initial} /></Field></div>
-        <Field label="Consultant"><Select value={doc} onChange={(e) => setDoc(e.target.value)}><option value="">Choose…</option>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select></Field>
-        <Field label="Bed"><Select value={bed} onChange={(e) => setBed(e.target.value)}><option value="">Choose an available bed…</option>{beds.data?.map((b) => <option key={b.id} value={b.id}>{b.label} — {money(b.dailyRate)}/day</option>)}</Select></Field>
-        <div className="sm:col-span-2"><Field label="Reason for admission"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div>
-        <div className="sm:col-span-2"><ErrorNote error={m.error} /></div>
-        <div className="flex justify-end gap-2 sm:col-span-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!patient || !doc || !bed} loading={m.isPending} onClick={() => m.mutate()}>Admit</Button></div>
+      <div className="space-y-5">
+        <section>
+          <Step n={1} done={!!patient} title="Patient" hint="Search by MRN, mobile or name" />
+          <PatientPicker value={patient} onPick={setPatient} autoFocus={!initial} />
+        </section>
+        <section>
+          <Step n={2} done={!!doc} title="Consultant in charge" />
+          <Select value={doc} onChange={(e) => setDoc(e.target.value)}><option value="">Choose a doctor…</option>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}</Select>
+        </section>
+        <section>
+          <Step n={3} done={!!bed} title="Bed" hint={beds.data ? `${beds.data.length} available now` : undefined} />
+          {beds.isLoading ? <Spinner /> : byWard.size === 0 ? (
+            <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-500">No bed is free right now. Release or clean a bed first.</p>
+          ) : (
+            <div className="max-h-56 space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              {[...byWard.entries()].map(([ward, list]) => (
+                <div key={ward}>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{ward} <span className="font-normal normal-case">· {list.length} free</span></p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {list.map((b) => (
+                      <button key={b.id} type="button" onClick={() => setBed(b.id)} aria-pressed={bed === b.id}
+                        className={clsx("rounded-lg border border-l-4 bg-white px-3 py-2 text-left transition hover:shadow-sm", bed === b.id ? "border-brand-600 border-l-brand-600 ring-2 ring-brand-200" : "border-slate-200 border-l-emerald-500")}>
+                        <span className="block text-sm font-semibold text-slate-900">{b.code}</span>
+                        <span className="block truncate text-xs text-slate-500">{b.room}</span>
+                        <span className="block text-xs text-slate-600">{money(b.dailyRate)}/day</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section>
+          <Step n={4} done={!!reason.trim()} title="Reason for admission" hint="Optional" />
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is the patient being admitted?" />
+          <div className="mt-2 flex flex-wrap gap-1.5">{REASONS.map((r) => <button key={r} type="button" onClick={() => setReason(r)} className={clsx("rounded-full border px-2.5 py-0.5 text-xs", reason === r ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-300 text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+        </section>
+        <ErrorNote error={m.error} />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <p className="min-w-0 flex-1 text-sm text-slate-600">{patient && doctor && chosen ? <>Admitting <b className="text-slate-900">{patient.name}</b> under <b className="text-slate-900">{doctor.displayName}</b> to <b className="text-slate-900">{chosen.ward} · {chosen.code}</b></> : "Choose the patient, the consultant and a bed to continue."}</p>
+          <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!patient || !doc || !bed} loading={m.isPending} onClick={() => m.mutate()}>Admit patient</Button></div>
+        </div>
       </div>
     </Modal>
   );

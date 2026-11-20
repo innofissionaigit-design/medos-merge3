@@ -27,13 +27,28 @@ interface Overview {
 const KIND: Record<string, string> = { EMERGENCY: "Emergency", IPD: "Admitted patients", OPD: "Outpatients", PHARMACY: "Pharmacy", OTHER: "Other", REGISTRATION: "Registration" };
 const METHOD: Record<string, string> = { CASH: "Cash", UPI: "UPI", CARD: "Card", BANK_TRANSFER: "Bank transfer", OTHER: "Other" };
 
-function Tile({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "amber" }) {
+function Tile({ label, value, tone, sub }: { label: string; value: string | number; tone?: "red" | "amber"; sub?: string }) {
+  const bar = tone === "red" ? "bg-red-500" : tone === "amber" ? "bg-amber-500" : "bg-slate-300";
   return (
-    <div className={`rounded-md border p-3 ${tone === "red" ? "border-red-300 bg-red-50" : tone === "amber" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
+    <div className={`relative overflow-hidden rounded-xl border bg-white p-3.5 shadow-sm ${tone === "red" ? "border-red-200" : tone === "amber" ? "border-amber-200" : "border-slate-200"}`}>
+      <span className={`absolute inset-x-0 top-0 h-1 ${bar}`} aria-hidden />
+      <div className="text-[11px] font-medium uppercase leading-tight tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${tone === "red" ? "text-red-700" : tone === "amber" ? "text-amber-700" : "text-slate-900"}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
     </div>
   );
+}
+
+/** What the manager should look at first: only conditions that are true right now. */
+function attention(o: Overview): { tone: "red" | "amber"; text: string }[] {
+  const items: { tone: "red" | "amber"; text: string }[] = [];
+  if (o.emergency.beds.withoutBed > 0) items.push({ tone: "red", text: `${o.emergency.beds.withoutBed} emergency ${o.emergency.beds.withoutBed === 1 ? "patient has" : "patients have"} no bed` });
+  if (o.icu.vitalsOverdue > 0) items.push({ tone: "red", text: `ICU vitals running late for ${o.icu.vitalsOverdue} ${o.icu.vitalsOverdue === 1 ? "patient" : "patients"}` });
+  if (o.emergency.notTriaged > 0) items.push({ tone: "amber", text: `${o.emergency.notTriaged} waiting for triage` });
+  if (o.emergency.waitingForDoctor > 0) items.push({ tone: "amber", text: `${o.emergency.waitingForDoctor} not yet seen by a doctor` });
+  if (o.icu.urgentInstructionsOpen > 0) items.push({ tone: "amber", text: `${o.icu.urgentInstructionsOpen} urgent ICU ${o.icu.urgentInstructionsOpen === 1 ? "instruction" : "instructions"} open` });
+  if (o.billing.admittedChargesNotBilled.patients > 0) items.push({ tone: "amber", text: `Charges of ${o.billing.admittedChargesNotBilled.patients} admitted ${o.billing.admittedChargesNotBilled.patients === 1 ? "patient" : "patients"} not yet billed` });
+  return items;
 }
 
 const waited = (m: number): string => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
@@ -45,10 +60,21 @@ export default function OverviewPage() {
   const o = q.data;
   return (
     <Gate anyOf={["OVERVIEW_READ"]}>
-      <PageHeader title="Hospital status" subtitle={o ? `As of ${dateTime(o.asOf)}. This page refreshes by itself and only shows the state; the work is done by the teams.` : "The emergency ward, the ICU and billing at a glance."} />
+      <PageHeader title="Hospital status" actions={<span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />Live · refreshes every 15 seconds</span>} subtitle={o ? `As of ${dateTime(o.asOf)}. This page refreshes by itself and only shows the state; the work is done by the teams.` : "The emergency ward, the ICU and billing at a glance."} />
       {q.isLoading ? <Spinner /> : <ErrorNote error={q.error} />}
       {o && (
         <div className="space-y-4">
+          {(() => {
+            const items = attention(o);
+            return items.length === 0 ? (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" role="status"><span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />Nothing needs attention right now.</div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" role="status" aria-label="Needs attention now">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" /></span>Needs attention now</div>
+                <div className="flex flex-wrap gap-2">{items.map((i) => <span key={i.text} className={`rounded-full px-3 py-1 text-sm font-medium ${i.tone === "red" ? "bg-red-50 text-red-800 ring-1 ring-red-200" : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"}`}>{i.text}</span>)}</div>
+              </div>
+            );
+          })()}
           <Card title="Emergency ward" actions={<Link href="/emergency" className="text-sm text-brand-700 hover:underline">Open the emergency board</Link>}>
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6" data-testid="overview-emergency">
               <Tile label="In the ward now" value={o.emergency.inWard} />
