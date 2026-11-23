@@ -13,6 +13,7 @@ import { patientFormSchema, type PatientForm } from "@/lib/patient-form";
 import { useMe } from "@/lib/me";
 
 type Form = PatientForm;
+const EMPTY_FORM: Form = { gender: "FEMALE", ageMode: "age", firstName: "", lastName: "", mobile: "", age: "", dob: "", email: "", addressLine: "", city: "", postalCode: "" };
 
 interface Candidate { patient: PatientRow; severity: string; reasons: string[]; similarity: number }
 
@@ -26,7 +27,7 @@ export interface ChosenPatient { id: string; mrn: string | null; name: string }
 export function RegisterPatient({ onClose, onRegistered, title = "Register new patient" }: { onClose: () => void; onRegistered?: (p: ChosenPatient) => void; title?: string }) {
   const router = useRouter();
   const { can } = useMe();
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting }, getValues } = useForm<Form>({ resolver: zodResolver(patientFormSchema), mode: "onTouched", defaultValues: { gender: "FEMALE", ageMode: "age", firstName: "", lastName: "", mobile: "", age: "", dob: "", email: "", addressLine: "", city: "", postalCode: "" } });
+  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting, isDirty }, getValues } = useForm<Form>({ resolver: zodResolver(patientFormSchema), mode: "onTouched", defaultValues: EMPTY_FORM });
   const [error, setError] = useState<unknown>(null);
   const [dups, setDups] = useState<Candidate[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,6 +42,8 @@ export function RegisterPatient({ onClose, onRegistered, title = "Register new p
   const problem = feeOn && fee.data && feeChoice ? feeProblem(fee.data, feeChoice) : null;
   const openShift = useMutation({ mutationFn: () => api.post("/shifts/open", { openingCash: "0" }), onSuccess: () => { setError(null); void save(getValues()); } });
   /** Where the patient goes next: back to the caller, or to the patient's record. */
+  /** Clears everything typed (and any message, and a changed fee choice) so the next patient starts from a blank form. */
+  const clearAll = () => { reset(EMPTY_FORM); setError(null); setChoice(null); };
   const finish = (p: ChosenPatient) => (onRegistered ? onRegistered(p) : router.push(`/patients/${p.id}`));
 
   const body = (v: Form, override: boolean) => ({
@@ -100,26 +103,56 @@ export function RegisterPatient({ onClose, onRegistered, title = "Register new p
       </Modal>
     );
   }
+  const GENDERS: [string, string][] = [["MALE", "Male"], ["FEMALE", "Female"], ["OTHER", "Other"], ["UNKNOWN", "Unknown"]];
+  const pill = "block cursor-pointer select-none whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 py-1.5 text-center text-sm font-medium text-slate-600 transition hover:bg-slate-50 peer-checked:border-brand-600 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500";
+  const section = (n: string, title: string, hint?: string) => (
+    <div className="flex items-center gap-2.5 sm:col-span-2">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white" aria-hidden>{n}</span>
+      <span className="text-sm font-semibold text-slate-800">{title}</span>
+      {hint && <span className="text-xs text-slate-500">{hint}</span>}
+      <span className="h-px flex-1 bg-slate-100" aria-hidden />
+    </div>
+  );
   return (
     <Modal title={title} onClose={onClose} wide>
-      <form onSubmit={handleSubmit((v) => save(v))} className="grid grid-cols-1 gap-3 sm:grid-cols-2" noValidate>
-        <Field label="First name" hint="Required" error={errors.firstName?.message}><Input autoFocus autoComplete="off" maxLength={60} {...register("firstName")} /></Field>
-        <Field label="Last name" error={errors.lastName?.message}><Input autoComplete="off" maxLength={60} {...register("lastName")} /></Field>
-        <Field label="Gender" error={errors.gender?.message}><Select {...register("gender")}><option value="FEMALE">Female</option><option value="MALE">Male</option><option value="OTHER">Other</option><option value="UNKNOWN">Unknown</option></Select></Field>
-        <Field label="Mobile" hint="Required: 10-digit Indian number" error={errors.mobile?.message}><Input inputMode="tel" autoComplete="off" maxLength={16} {...register("mobile")} /></Field>
-        <Field label="Email (optional)" hint="Used only if the patient agrees to be emailed" error={errors.email?.message}><Input type="email" autoComplete="off" {...register("email")} /></Field>
+      <form onSubmit={handleSubmit((v) => save(v))} className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2" noValidate>
+        {section("1", "Patient", "Name, gender and age")}
+        <Field label="First name *" error={errors.firstName?.message}><Input autoFocus autoComplete="off" maxLength={60} placeholder="e.g. Anjali" {...register("firstName")} /></Field>
+        <Field label="Last name" error={errors.lastName?.message}><Input autoComplete="off" maxLength={60} placeholder="e.g. Sen" {...register("lastName")} /></Field>
         <div>
-          <div className="mb-1 flex gap-3 text-sm font-medium text-slate-700">
-            <label className="flex items-center gap-1"><input type="radio" value="age" {...register("ageMode")} /> Age</label>
-            <label className="flex items-center gap-1"><input type="radio" value="dob" {...register("ageMode")} /> Date of birth</label>
+          <span className="mb-1 block text-sm font-medium text-slate-700">Gender</span>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Gender">
+            {GENDERS.map(([v, label]) => <label key={v} className="block"><input type="radio" value={v} className="peer sr-only" {...register("gender")} /><span className={pill}>{label}</span></label>)}
+          </div>
+          {errors.gender?.message && <span className="mt-1 block text-xs text-red-600" role="alert">{errors.gender.message}</span>}
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-700">{mode === "age" ? "Age" : "Date of birth"}</span>
+            <div className="inline-flex rounded-md bg-slate-100 p-0.5 text-xs font-medium" role="radiogroup" aria-label="Enter age or date of birth">
+              <label><input type="radio" value="age" className="peer sr-only" {...register("ageMode")} /><span className="block cursor-pointer rounded px-2.5 py-0.5 text-slate-600 peer-checked:bg-white peer-checked:text-brand-700 peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">Age</span></label>
+              <label><input type="radio" value="dob" className="peer sr-only" {...register("ageMode")} /><span className="block cursor-pointer rounded px-2.5 py-0.5 text-slate-600 peer-checked:bg-white peer-checked:text-brand-700 peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">Date of birth</span></label>
+            </div>
           </div>
           {mode === "age" ? <Input inputMode="numeric" placeholder="Years" aria-label="Age in years" maxLength={3} {...register("age")} /> : <Input type="date" aria-label="Date of birth" max={new Date().toLocaleDateString("en-CA")} {...register("dob")} />}
           {(errors.age || errors.dob) && <span className="mt-1 block text-xs text-red-600" role="alert">{errors.age?.message ?? errors.dob?.message}</span>}
         </div>
-        <Field label="Address" error={errors.addressLine?.message}><Input maxLength={200} {...register("addressLine")} /></Field>
+
+        {section("2", "Contact")}
+        <Field label="Mobile *" hint="10-digit Indian number" error={errors.mobile?.message}>
+          <div className="flex">
+            <span className="flex items-center rounded-l-md border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-500" aria-hidden>+91</span>
+            <Input inputMode="tel" autoComplete="off" maxLength={16} className="rounded-l-none" placeholder="98300 00000" {...register("mobile")} />
+          </div>
+        </Field>
+        <Field label="Email (optional)" hint="Used only if the patient agrees to be emailed" error={errors.email?.message}><Input type="email" autoComplete="off" placeholder="name@example.com" {...register("email")} /></Field>
+
+        {section("3", "Address", "Optional")}
+        <div className="sm:col-span-2"><Field label="Address" error={errors.addressLine?.message}><Input maxLength={200} placeholder="House, street, area" {...register("addressLine")} /></Field></div>
         <Field label="City" error={errors.city?.message}><Input maxLength={80} {...register("city")} /></Field>
-        <Field label="PIN code" error={errors.postalCode?.message}><Input inputMode="numeric" maxLength={6} {...register("postalCode")} /></Field>
-        {feeOn && fee.data && feeChoice && <div className="sm:col-span-2"><FeeSection config={fee.data} value={feeChoice} onChange={setChoice} /></div>}
+        <Field label="PIN code" error={errors.postalCode?.message}><Input inputMode="numeric" maxLength={6} placeholder="6 digits" {...register("postalCode")} /></Field>
+
+        {feeOn && fee.data && feeChoice && <><div className="sm:col-span-2">{section("4", "Registration fee")}</div><div className="sm:col-span-2"><FeeSection config={fee.data} value={feeChoice} onChange={setChoice} /></div></>}
         <div className="sm:col-span-2">
           <ErrorNote error={error instanceof ApiError && error.code === "SHIFT_NOT_OPEN" ? null : error} />
           {error instanceof ApiError && error.code === "SHIFT_NOT_OPEN" && (
@@ -127,7 +160,16 @@ export function RegisterPatient({ onClose, onRegistered, title = "Register new p
           )}
           {problem && <p className="text-xs text-slate-500">{problem}</p>}
         </div>
-        <div className="flex justify-end gap-2 sm:col-span-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" loading={isSubmitting || busy} disabled={problem !== null}>{feeOn && feeChoice ? (feeChoice.kind === "PAY" ? "Collect fee and register" : "Register without fee") : "Register"}</Button></div>
+        <div className="-mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-3 sm:col-span-2">
+          <span className="text-xs text-slate-500">* Required. A possible duplicate is checked before the Patient ID is issued.</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={clearAll} disabled={!isDirty && !error && !choice} className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200/60 disabled:cursor-not-allowed disabled:opacity-40">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12a8 8 0 1 0 2.600-5.900M4 4v4.500h4.500" /></svg>Reset
+            </button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={isSubmitting || busy} disabled={problem !== null}>{feeOn && feeChoice ? (feeChoice.kind === "PAY" ? "Collect fee and register" : "Register without fee") : "Register"}</Button>
+          </div>
+        </div>
       </form>
     </Modal>
   );
