@@ -16,7 +16,7 @@ interface Doctor { id: string; displayName: string; specialty?: string | null; d
  */
 export function DoctorPicker({ value, onChange }: { value: string; onChange: (doctorId: string) => void }) {
   const depts = useQuery({ queryKey: ["departments"], queryFn: () => api.get<Dept[]>("/departments") });
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doctor[]>("/practitioners") });
+  const docs = useQuery({ queryKey: ["practitioners", "opd"], queryFn: () => api.get<Doctor[]>("/practitioners", { scope: "opd" }) });
   const [picked, setPicked] = useState<string | null>(null);
   const current = docs.data?.find((d) => d.id === value);
   const deptId = picked ?? current?.departmentId ?? "";

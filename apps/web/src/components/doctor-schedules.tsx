@@ -34,7 +34,7 @@ export function DoctorSchedules({ departmentId = "", doctorId = "", title = "Doc
   const t = useT();
   const { me } = useMe();
   const today = weekdayIn(me.facility?.timezone ?? me.tenant.timezone);
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
+  const docs = useQuery({ queryKey: ["practitioners", "opd"], queryFn: () => api.get<Doc[]>("/practitioners", { scope: "opd" }) });
   const depts = useQuery({ queryKey: ["departments"], queryFn: () => api.get<{ id: string; name: string }[]>("/departments") });
   const shown = filterDoctors(docs.data ?? [], departmentId, doctorId);
   const schedules = useQueries({ queries: shown.map((d) => ({ queryKey: ["schedule", d.id], queryFn: () => api.get<Win[]>(`/practitioners/${d.id}/schedule`) })) });

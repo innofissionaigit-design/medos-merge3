@@ -29,7 +29,7 @@ export default function QueuePage() {
   const [reason, setReason] = useState("");
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: me.facility?.timezone ?? me.tenant.timezone });
   const list = useQuery({ queryKey: ["queue", doctor], queryFn: () => api.get<Entry[]>("/queue", doctor ? { practitionerId: doctor } : undefined), refetchInterval: 15_000 });
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<{ id: string; displayName: string; userId: string | null }[]>("/practitioners") });
+  const docs = useQuery({ queryKey: ["practitioners", "opd"], queryFn: () => api.get<{ id: string; displayName: string; userId: string | null }[]>("/practitioners", { scope: "opd" }) });
   // A doctor opens on their own patients; reception (QUEUE_MANAGE) keeps the all-doctors view. The filter can still be changed.
   const [defaulted, setDefaulted] = useState(false);
   useEffect(() => {

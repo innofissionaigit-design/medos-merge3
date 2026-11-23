@@ -30,7 +30,7 @@ export function FollowUpCard({ encounterId, practitionerId, afterDays, visitStat
   const tz = me.facility?.timezone ?? me.tenant.timezone;
   const today = todayIn(tz);
   const list = useQuery({ queryKey: ["follow-ups", encounterId], queryFn: () => api.get<ApptRow[]>(`/encounters/${encounterId}/follow-ups`) });
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
+  const docs = useQuery({ queryKey: ["practitioners", "opd"], queryFn: () => api.get<Doc[]>("/practitioners", { scope: "opd" }) });
   const [open, setOpen] = useState(false);
   const [doc, setDoc] = useState(practitionerId ?? "");
   const [day, setDay] = useState(addDays(today, afterDays && afterDays > 0 ? afterDays : 7));

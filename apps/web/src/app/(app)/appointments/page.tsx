@@ -194,7 +194,7 @@ export default function AppointmentsPage() {
     setFollowUpsOnly(false);
     setNotice(`${verb}: ${b.patientName} with ${b.practitionerName} on ${dateTime(b.startAt)}.${day !== today ? ` Showing ${day}.` : ""}`);
   };
-  const docs = useQuery({ queryKey: ["practitioners"], queryFn: () => api.get<Doc[]>("/practitioners") });
+  const docs = useQuery({ queryKey: ["practitioners", "opd"], queryFn: () => api.get<Doc[]>("/practitioners", { scope: "opd" }) });
   const list = useQuery({ queryKey: ["appointments", date, doctor, followUpsOnly], queryFn: () => api.page<Appt>("/appointments", { date, ...(doctor ? { practitionerId: doctor } : {}), ...(followUpsOnly ? { type: "FOLLOW_UP" } : {}), pageSize: 100 }) });
   const depts = useQuery({ queryKey: ["departments"], queryFn: () => api.get<{ id: string; name: string }[]>("/departments") });
   // Only departments that have a doctor; the doctor list follows the department, and the day's list follows both.

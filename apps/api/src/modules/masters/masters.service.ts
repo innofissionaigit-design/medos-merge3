@@ -28,7 +28,12 @@ export const updatePractitionerSchema = z.object({ ...practitionerBase, status: 
 export const listMasterSchema = z.object({
   includeInactive: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   departmentId: z.string().uuid().optional(),
+  /** `opd`: only doctors who see outpatients, so a booking list does not offer the emergency, ICU or resident doctors. */
+  scope: z.enum(["opd"]).optional(),
 }).strict();
+
+/** Roles whose doctors work on the wards, in the emergency ward or in the ICU, not in the outpatient clinic. */
+const NON_OPD_ROLES = ["EMERGENCY_DOCTOR", "ICU_DOCTOR", "RMO"];
 
 const DEPT = { id: true, name: true, code: true, status: true } as const;
 const PRAC = { id: true, displayName: true, specialty: true, registrationNo: true, departmentId: true, userId: true, status: true, scheduleSet: true, videoFee: true } as const;
@@ -77,6 +82,7 @@ export class MastersService {
         tenantId: ctx.tenantId, facilityId: ctx.facilityId,
         ...(canSeeInactive ? {} : { status: "ACTIVE" }),
         ...(q.departmentId ? { departmentId: q.departmentId } : {}),
+        ...(q.scope === "opd" ? { NOT: { user: { roles: { some: { role: { name: { in: NON_OPD_ROLES } } } } } } } : {}),
       },
       select: PRAC, orderBy: { displayName: "asc" },
     });
