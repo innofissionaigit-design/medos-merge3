@@ -29,11 +29,11 @@ const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { dateStyle:
 const dayOnly = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { dateStyle: "medium" });
 const FLAG: Record<string, string> = { NORMAL: "bg-emerald-100 text-emerald-800", LOW: "bg-amber-100 text-amber-800", HIGH: "bg-amber-100 text-amber-800", CRITICAL_LOW: "bg-red-100 text-red-800", CRITICAL_HIGH: "bg-red-100 text-red-800" };
 
-const Card = ({ title, children }: { title: string; children: ReactNode }) => <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-2 text-base font-semibold">{title}</h2>{children}</section>;
+const Card = ({ title, children }: { title: string; children: ReactNode }) => <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-3 text-base font-semibold text-slate-900">{title}</h2>{children}</section>;
 const Btn = ({ children, onClick, disabled, kind = "primary" }: { children: ReactNode; onClick?: () => void; disabled?: boolean; kind?: "primary" | "plain" }) => (
-  <button type="button" onClick={onClick} disabled={disabled} className={`min-h-11 rounded-lg px-4 text-sm font-medium disabled:opacity-50 ${kind === "primary" ? "bg-blue-700 text-white" : "border border-slate-300 bg-white text-slate-800"}`}>{children}</button>
+  <button type="button" onClick={onClick} disabled={disabled} className={`min-h-12 rounded-xl px-5 text-sm font-semibold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50 ${kind === "primary" ? "bg-gradient-to-b from-blue-600 to-blue-700 text-white shadow-sm hover:from-blue-700 hover:to-blue-800" : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}>{children}</button>
 );
-const field = "min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base";
+const field = "min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-100";
 
 function SignIn({ onDone }: { onDone: () => void }) {
   const [hospital, setHospital] = useState("");
@@ -46,26 +46,62 @@ function SignIn({ onDone }: { onDone: () => void }) {
   const run = async (fn: () => Promise<void>) => { setBusy(true); setErr(null); try { await fn(); } catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong"); } finally { setBusy(false); } };
   const send = () => run(async () => { await call("POST", "code", { hospitalCode: hospital.trim(), mobile: mobile.replace(/\D/g, "").slice(-10) }); try { localStorage.setItem("medos_patient_hospital", hospital.trim()); } catch { /* ignore */ } setSent(true); });
   const verify = () => run(async () => { await call("POST", "verify", { hospitalCode: hospital.trim(), mobile: mobile.replace(/\D/g, "").slice(-10), code }); onDone(); });
+  const digits = mobile.replace(/\D/g, "").slice(-10);
+  const step = (n: number, label: string) => (
+    <div className="flex items-center gap-2">
+      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${(n === 1 && !sent) || (n === 2 && sent) ? "bg-blue-600 text-white" : n === 1 && sent ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"}`}>{n === 1 && sent ? "✓" : n}</span>
+      <span className={`text-xs font-medium ${(n === 1 && !sent) || (n === 2 && sent) ? "text-slate-900" : "text-slate-500"}`}>{label}</span>
+    </div>
+  );
   return (
-    <main className="mx-auto max-w-md space-y-4 p-4">
-      <h1 className="pt-6 text-2xl font-semibold">Patient app</h1>
-      <p className="text-sm text-slate-600">See your appointments, prescriptions, reports and bills. Sign in with the mobile number you gave the hospital.</p>
-      <Card title="Sign in">
-        <div className="space-y-3">
-          <label className="block text-sm">Hospital code<input className={field} value={hospital} onChange={(e) => setHospital(e.target.value)} autoCapitalize="none" autoComplete="off" /></label>
-          <label className="block text-sm">Mobile number<input className={field} inputMode="numeric" autoComplete="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="10-digit number" /></label>
-          {sent && <label className="block text-sm">The 6-digit code we sent you<input className={field} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} /></label>}
-          {sent && <p className="text-xs text-slate-500">If this number is registered with the hospital, a code is on its way. It works for 5 minutes.</p>}
-          {err && <p role="alert" className="rounded-lg bg-red-50 p-2 text-sm text-red-800">{err}</p>}
-          {!sent ? <Btn disabled={busy || hospital.trim().length < 2 || mobile.replace(/\D/g, "").length < 10} onClick={() => void send()}>Send me a code</Btn>
-            : <div className="flex gap-2"><Btn disabled={busy || code.length !== 6} onClick={() => void verify()}>Sign in</Btn><Btn kind="plain" disabled={busy} onClick={() => void send()}>Send again</Btn></div>}
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-slate-50">
+      <div className="mx-auto max-w-md px-4 pb-10 pt-10">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-lg font-bold text-white shadow-md" aria-hidden>M</span>
+          <div><div className="text-base font-semibold leading-tight text-slate-900">MedOS</div><div className="text-xs text-slate-500">Patient app</div></div>
         </div>
-      </Card>
+        <h1 className="mt-8 text-3xl font-semibold tracking-tight text-slate-900">My health records</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">See your appointments, prescriptions, reports and bills, and join a video consultation. Sign in with the mobile number you gave the hospital.</p>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200/60" aria-label="Sign in">
+          <div className="mb-4 flex items-center justify-between">{step(1, "Your details")}<span className="h-px flex-1 bg-slate-200 mx-3" aria-hidden />{step(2, "Enter the code")}</div>
+          <div className="space-y-4">
+            {!sent ? (
+              <>
+                <label className="block text-sm font-medium text-slate-700">Hospital code
+                  <input className={`${field} mt-1.5`} value={hospital} onChange={(e) => setHospital(e.target.value)} autoCapitalize="none" autoComplete="off" placeholder="e.g. your hospital's code" />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">Mobile number
+                  <div className="mt-1.5 flex">
+                    <span className="flex min-h-12 items-center rounded-l-xl border border-r-0 border-slate-300 bg-slate-50 px-3.5 text-base text-slate-500" aria-hidden>+91</span>
+                    <input className={`${field} rounded-l-none`} inputMode="numeric" autoComplete="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="10-digit number" />
+                  </div>
+                </label>
+              </>
+            ) : (
+              <>
+                <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">If <b>+91 {digits.slice(0, 5)} {digits.slice(5)}</b> is registered with the hospital, a 6-digit code is on its way. It works for 5 minutes.</p>
+                <label className="block text-sm font-medium text-slate-700">The 6-digit code we sent you
+                  <input className={`${field} mt-1.5 text-center text-2xl font-semibold tracking-[0.5em]`} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="••••••" autoFocus />
+                </label>
+              </>
+            )}
+            {err && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{err}</p>}
+            {!sent ? <div className="[&>button]:w-full"><Btn disabled={busy || hospital.trim().length < 2 || digits.length < 10} onClick={() => void send()}>{busy ? "Sending…" : "Send me a code"}</Btn></div>
+              : <div className="grid grid-cols-2 gap-2"><Btn disabled={busy || code.length !== 6} onClick={() => void verify()}>{busy ? "Checking…" : "Sign in"}</Btn><Btn kind="plain" disabled={busy} onClick={() => void send()}>Send again</Btn></div>}
+            {sent && <button type="button" className="w-full text-center text-sm text-slate-500 underline" onClick={() => { setSent(false); setCode(""); setErr(null); }}>Use a different number</button>}
+          </div>
+        </section>
+
+        <ul className="mt-6 grid grid-cols-3 gap-2 text-center text-xs text-slate-600">
+          {[["Visits and prescriptions", "bg-blue-50 text-blue-700"], ["Reports and bills", "bg-emerald-50 text-emerald-700"], ["Video consultations", "bg-violet-50 text-violet-700"]].map(([t, tone]) => <li key={t} className={`rounded-xl px-2 py-3 font-medium ${tone}`}>{t}</li>)}
+        </ul>
+        <p className="mt-6 text-center text-xs text-slate-500">Your records are private. The code works once and only for your number.</p>
+      </div>
     </main>
   );
 }
 
-/** A number can be shared by a family: the code proves the phone, so each person confirms their own date of birth before their records open. */
 function Unlock({ profile, onDone }: { profile: Profile; onDone: () => void }) {
   const [dob, setDob] = useState("");
   const [busy, setBusy] = useState(false);
@@ -226,15 +262,18 @@ export default function PatientApp() {
   if (me === "none") return <SignIn onDone={() => { setMe(null); load(); }} />;
   const current = me.patients.find((p) => p.id === pid);
   return (
-    <main className="mx-auto max-w-md space-y-4 p-4 pb-16">
-      <header className="flex items-start justify-between gap-2 pt-2">
-        <div><div className="text-xs text-slate-500">{me.hospital}</div><h1 className="text-xl font-semibold">{current?.name ?? "Patient"}</h1>{current && !current.locked && <div className="text-xs text-slate-500">{current.mrn}{current.age !== null ? ` · ${current.age} yrs` : ""}</div>}</div>
+    <main className="mx-auto min-h-screen max-w-md space-y-4 bg-slate-50 p-4 pb-16">
+      <header className="flex items-center justify-between gap-3 pt-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-base font-semibold text-white shadow-sm" aria-hidden>{(current?.name ?? "P").split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("")}</span>
+          <div className="min-w-0"><div className="truncate text-xs text-slate-500">{me.hospital}</div><h1 className="truncate text-xl font-semibold text-slate-900">{current?.name ?? "Patient"}</h1>{current && !current.locked && <div className="text-xs text-slate-500">{current.mrn}{current.age !== null ? ` · ${current.age} yrs` : ""}</div>}</div>
+        </div>
         <Btn kind="plain" onClick={() => void signOut()}>Sign out</Btn>
       </header>
       {me.patients.length > 1 && <label className="block text-sm">Showing records of<select className={field} value={pid} onChange={(e) => setPid(e.target.value)}>{me.patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mrn ? ` · ${p.mrn}` : ""}</option>)}</select></label>}
       {current?.locked && <Unlock profile={current} key={`u${current.id}`} onDone={load} />}
-      {!current?.locked && <nav className="grid grid-cols-4 gap-1 rounded-xl bg-slate-200 p-1 text-sm" role="tablist">
-        {([["appointments", "Visits to come"], ["visits", "Prescriptions"], ["reports", "Reports"], ["bills", "Bills"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-11 rounded-lg px-1 ${tab === k ? "bg-white font-medium shadow-sm" : "text-slate-700"}`}>{l}</button>)}
+      {!current?.locked && <nav className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-2xl bg-slate-200/80 p-1 text-[13px] backdrop-blur" role="tablist">
+        {([["appointments", "Visits to come"], ["visits", "Prescriptions"], ["reports", "Reports"], ["bills", "Bills"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-11 rounded-xl px-1 transition ${tab === k ? "bg-white font-semibold text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{l}</button>)}
       </nav>}
       {pid && !current?.locked && tab === "appointments" && <Appointments patientId={pid} key={`a${pid}`} />}
       {pid && !current?.locked && tab === "visits" && <Visits patientId={pid} key={`v${pid}`} />}
