@@ -5,7 +5,7 @@ import { ApiError, api } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { AmendMedicine } from "./prescription-extras";
 import { blankItem, RxRows, toPayload, type RxItem } from "./rx-editor";
-import { Button, Card, ConfirmButton, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, Table, Td } from "./ui";
+import { Button, ConfirmButton, ErrorNote, Field, Input, Notice, Spinner, StatusBadge } from "./ui";
 
 interface OrderRow { id: string; orderNumber: string | null; status: string; signedAt?: string | null; items: (RxItem & { id: string; status: string })[] }
 interface RxWarning { allergen: string; matchedItem: string; severity: string }
@@ -51,17 +51,48 @@ export function MedicationOrders({ encounterId, open, cacheKey }: { encounterId:
   const stop = useMutation({ mutationFn: (v: { id: string; reason: string }) => api.post(`/medication-order-items/${v.id}/stop`, { reason: v.reason }), onSuccess: () => { setStopping(null); setStopReason(""); resync(); } });
   const canWrite = open && can("PRESCRIPTION_CREATE");
   if (rx.isLoading) return <Spinner />;
+  const activeCount = signedOrders.reduce((n, o) => n + o.items.filter((i) => i.status === "ACTIVE").length, 0);
+  const stoppedCount = signedOrders.reduce((n, o) => n + o.items.filter((i) => i.status !== "ACTIVE").length, 0);
+  const CARD = "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_4px_16px_-8px_rgba(16,24,40,0.08)]";
+  const HEAD = "flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3.5";
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Signed orders">
-        {signedOrders.length === 0 ? <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600"><p className="font-medium text-slate-800">No signed medication orders yet.</p><p className="mt-1 text-xs text-slate-500">The doctor writes the medicines for this stay and signs the order. Once it is signed, the nurse's medication chart is made from it.</p></div> : signedOrders.map((o) => (
-          <div key={o.id} className="mb-3 last:mb-0"><div className="mb-1 text-xs text-slate-500">{o.orderNumber}</div>
-            <Table head={["Medicine", "Dose", "Route", "Frequency", "Status", ""]}>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">Medication orders</h2>
+          <p className="text-sm text-slate-500">The doctor signs the medicines for this stay. Once signed, the pharmacy sees them and the nurse's medication chart is made from them.</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-medium">
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-200">{activeCount} active</span>
+          {stoppedCount > 0 && <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600 ring-1 ring-slate-200">{stoppedCount} stopped</span>}
+          {draft && <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800 ring-1 ring-amber-200">Draft saved</span>}
+        </div>
+      </div>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      <section className={CARD} aria-label="Signed orders">
+        <header className={HEAD}><h3 className="text-sm font-semibold text-slate-900">Signed orders</h3><span className="text-xs text-slate-500">{signedOrders.length === 0 ? "None yet" : `${signedOrders.length} ${signedOrders.length === 1 ? "order" : "orders"}`}</span></header>
+        <div className="p-5">
+        {signedOrders.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-10 text-center"><span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-600"><svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M10.5 20.5 3.5 13.5a4.95 4.95 0 0 1 7-7l7 7a4.95 4.95 0 0 1-7 7ZM8.5 8.5l7 7" /></svg></span><p className="text-sm font-semibold text-slate-800">No signed medication orders yet.</p><p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">The doctor writes the medicines for this stay and signs the order. Once it is signed, the nurse's medication chart is made from it.</p></div> : signedOrders.map((o) => (
+          <div key={o.id} className="mb-5 last:mb-0">
+            <div className="mb-2 flex items-center justify-between text-xs"><span className="font-semibold text-slate-700">{o.orderNumber}</span>{o.signedAt && <span className="text-slate-500">Signed {new Date(o.signedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>}</div>
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
               {o.items.map((i) => (
-                <tr key={i.id}><Td>{i.genericName} {i.strength}</Td><Td>{i.dosage}</Td><Td>{i.route}</Td><Td>{i.frequency}</Td><Td><StatusBadge value={i.status} /></Td>
-                  <Td>{i.status === "ACTIVE" && canWrite && can("PRESCRIPTION_SIGN") && <button className="mr-2 text-xs text-slate-500 hover:text-brand-700" onClick={() => setChanging(i)}>change</button>}{i.status === "ACTIVE" && canWrite && <button className="text-xs text-slate-500 hover:text-red-700" onClick={() => { stop.reset(); setStopReason(""); setStopping({ id: i.id, name: [i.genericName, i.strength].filter(Boolean).join(" ") }); }}>stop</button>}</Td></tr>
+                <li key={i.id} className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${i.status === "ACTIVE" ? "" : "bg-slate-50/70"}`}>
+                  <span className={`h-9 w-1 shrink-0 rounded-full ${i.status === "ACTIVE" ? "bg-emerald-500" : "bg-slate-300"}`} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <div className={`truncate text-sm font-semibold ${i.status === "ACTIVE" ? "text-slate-900" : "text-slate-500 line-through"}`}>{i.genericName} {i.strength}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-medium text-slate-600">
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5">{i.dosage}</span><span className="rounded-md bg-slate-100 px-2 py-0.5">{i.route}</span><span className="rounded-md bg-blue-50 px-2 py-0.5 text-blue-700">{i.frequency}</span>
+                    </div>
+                  </div>
+                  <StatusBadge value={i.status} />
+                  <div className="flex items-center gap-1">
+                    {i.status === "ACTIVE" && canWrite && can("PRESCRIPTION_SIGN") && <button className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 hover:text-blue-700" onClick={() => setChanging(i)}>Change</button>}
+                    {i.status === "ACTIVE" && canWrite && <button className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-700" onClick={() => { stop.reset(); setStopReason(""); setStopping({ id: i.id, name: [i.genericName, i.strength].filter(Boolean).join(" ") }); }}>Stop</button>}
+                  </div>
+                </li>
               ))}
-            </Table>
+            </ul>
           </div>
         ))}
         {changing && <AmendMedicine item={changing} onClose={() => setChanging(null)} onDone={() => { setChanging(null); resync(); }} />}
@@ -76,13 +107,16 @@ export function MedicationOrders({ encounterId, open, cacheKey }: { encounterId:
           </div>
         )}
         <ErrorNote error={stop.error} />
-      </Card>
+        </div>
+      </section>
       {canWrite && (
-        <Card title="New order">
+        <section className={CARD} aria-label="New order">
+          <header className={HEAD}><h3 className="text-sm font-semibold text-slate-900">New order</h3><span className="text-xs text-slate-500">Add each medicine, then sign</span></header>
+          <div className="p-5">
           {(rx.data?.allergyWarnings.length ?? 0) > 0 && <div className="mb-3"><Notice tone="warn">Allergy alert: {rx.data!.allergyWarnings.map((w) => `${w.matchedItem} matches ${w.allergen}`).join("; ")}</Notice></div>}
           <RxRows items={items} setItems={setItems} disabled={false} />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => setItems([...items, blankItem()])}>Add medicine</Button>
+          <button type="button" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50/40 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-50" onClick={() => setItems([...items, blankItem()])}>+ Add medicine</button>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-4">
             <Button variant="secondary" loading={save.isPending} disabled={items.length === 0} onClick={() => save.mutate()}>Save draft</Button>
             {can("PRESCRIPTION_SIGN") && !ack && <ConfirmButton variant="primary" label="Sign orders" confirmLabel="Yes, sign" disabled={!items.some((i) => i.genericName.trim())} loading={sign.isPending} onConfirm={() => sign.mutate(false)} />}
           </div>
@@ -94,8 +128,10 @@ export function MedicationOrders({ encounterId, open, cacheKey }: { encounterId:
             </div>
           )}
           <div className="mt-2"><ErrorNote error={save.error ?? (sign.error instanceof ApiError && sign.error.code === "ALLERGY_CONFLICT" ? null : sign.error)} /></div>
-        </Card>
+          </div>
+        </section>
       )}
+      </div>
     </div>
   );
 }

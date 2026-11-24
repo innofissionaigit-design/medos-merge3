@@ -64,26 +64,30 @@ export function RxRows({ items, setItems, disabled }: { items: RxItem[]; setItem
     }
     return next;
   }));
+  const cap = (text: string) => <span aria-hidden className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{text}</span>;
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {items.map((it, i) => (
-        <div key={i} className="grid grid-cols-12 items-start gap-2 rounded-md border border-slate-100 p-2">
-          <div className="col-span-12 sm:col-span-3"><MedicineInput item={it} disabled={disabled} onChange={(p) => patch(i, p)} /></div>
-          <Input className="col-span-4 sm:col-span-2" aria-label="Dose" placeholder="Dose" disabled={disabled} value={it.dosage} onChange={(e) => patch(i, { dosage: e.target.value })} />
-          <Select className="col-span-4 sm:col-span-2" aria-label="Route" disabled={disabled} value={it.route} onChange={(e) => patch(i, { route: e.target.value })}>{ROUTES.map((r) => <option key={r}>{r}</option>)}</Select>
-          <Select className="col-span-4 sm:col-span-2" aria-label="Frequency" disabled={disabled} value={it.frequency} onChange={(e) => patch(i, { frequency: e.target.value })}>{FREQS.map((r) => <option key={r}>{r}</option>)}</Select>
-          <Input className="col-span-3 sm:col-span-1" aria-label="Days" placeholder="Days" inputMode="numeric" disabled={disabled} value={it.durationDays ?? ""} onChange={(e) => patch(i, { durationDays: e.target.value ? Number(e.target.value) : undefined })} />
-          <Input className="col-span-3 sm:col-span-1" aria-label="Quantity" placeholder="Qty" inputMode="numeric" disabled={disabled} value={it.quantity ?? ""} onChange={(e) => patch(i, { quantity: e.target.value ? Number(e.target.value) : undefined })} />
-          {!disabled && <button className="col-span-1 text-slate-500 hover:text-red-700" aria-label="Remove medicine" onClick={() => setItems(items.filter((_, j) => j !== i))}>✕</button>}
+        <div key={i} className="grid grid-cols-12 items-start gap-x-3 gap-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+          <div className="col-span-12 flex items-center justify-between">
+            <span className="flex items-center gap-2 text-xs font-semibold text-slate-600"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[11px] text-white">{i + 1}</span>Medicine {i + 1}</span>
+            {!disabled && <button type="button" className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-700" aria-label="Remove medicine" onClick={() => setItems(items.filter((_, j) => j !== i))}>Remove</button>}
+          </div>
+          <div className="col-span-12 sm:col-span-6">{cap("Medicine")}<MedicineInput item={it} disabled={disabled} onChange={(p) => patch(i, p)} /></div>
+          <div className="col-span-6 sm:col-span-3">{cap("Dose")}<Input aria-label="Dose" placeholder="e.g. 1 tablet" disabled={disabled} value={it.dosage} onChange={(e) => patch(i, { dosage: e.target.value })} /></div>
+          <div className="col-span-6 sm:col-span-3">{cap("Route")}<Select aria-label="Route" disabled={disabled} value={it.route} onChange={(e) => patch(i, { route: e.target.value })}>{ROUTES.map((r) => <option key={r}>{r}</option>)}</Select></div>
+          <div className="col-span-6 sm:col-span-3">{cap("How often")}<Select aria-label="Frequency" disabled={disabled} value={it.frequency} onChange={(e) => patch(i, { frequency: e.target.value })}>{FREQS.map((r) => <option key={r}>{r}</option>)}</Select></div>
+          <div className="col-span-3 sm:col-span-2">{cap("Days")}<Input aria-label="Days" placeholder="Days" inputMode="numeric" disabled={disabled} value={it.durationDays ?? ""} onChange={(e) => patch(i, { durationDays: e.target.value ? Number(e.target.value) : undefined })} /></div>
+          <div className="col-span-3 sm:col-span-2">{cap("Quantity")}<Input aria-label="Quantity" placeholder="Qty" inputMode="numeric" disabled={disabled} value={it.quantity ?? ""} onChange={(e) => patch(i, { quantity: e.target.value ? Number(e.target.value) : undefined })} /></div>
+          <div className="col-span-12 sm:col-span-5">{cap("Food timing")}<Select aria-label="Food timing" disabled={disabled} value={it.foodRelation ?? ""} onChange={(e) => patch(i, { foodRelation: e.target.value || undefined })}>{FOOD_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</Select></div>
+          {it.frequency === "OTHER" && <div className="col-span-12">{cap("Describe how often")}<Input placeholder="Describe the frequency" aria-label="Frequency text" disabled={disabled} value={it.frequencyText ?? ""} onChange={(e) => patch(i, { frequencyText: e.target.value })} /></div>}
+          <div className="col-span-12">{cap("Instructions")}<Input placeholder="Optional, for the nurse and the pharmacist" aria-label="Instructions" disabled={disabled} value={it.instructions ?? ""} onChange={(e) => patch(i, { instructions: e.target.value })} /></div>
           {!disabled && it.genericName.trim() && (it.quantity === undefined
-            ? <p className="col-span-12 text-xs text-amber-800" data-testid="qty-missing">No quantity yet: enter how many the pharmacy should give. It cannot be worked out from this dose or frequency, so the pharmacist would have to guess.</p>
+            ? <p className="col-span-12 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="qty-missing">No quantity yet: enter how many the pharmacy should give. It cannot be worked out from this dose or frequency, so the pharmacist would have to guess.</p>
             : it.qtyAuto ? <p className="col-span-12 text-xs text-slate-500" data-testid="qty-auto">Quantity {it.quantity} is worked out from the dose, how often and the days. Type a different number to change it.</p> : null)}
-          {it.frequency === "OTHER" && <Input className="col-span-12" placeholder="Describe the frequency" aria-label="Frequency text" disabled={disabled} value={it.frequencyText ?? ""} onChange={(e) => patch(i, { frequencyText: e.target.value })} />}
-          <Select className="col-span-12 sm:col-span-3" aria-label="Food timing" disabled={disabled} value={it.foodRelation ?? ""} onChange={(e) => patch(i, { foodRelation: e.target.value || undefined })}>{FOOD_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</Select>
-          <Input className="col-span-12 sm:col-span-9" placeholder="Instructions (optional)" aria-label="Instructions" disabled={disabled} value={it.instructions ?? ""} onChange={(e) => patch(i, { instructions: e.target.value })} />
         </div>
       ))}
-      {items.length === 0 && <p className="text-sm text-slate-500">No medicines prescribed.</p>}
+      {items.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No medicines prescribed.</p>}
     </div>
   );
 }

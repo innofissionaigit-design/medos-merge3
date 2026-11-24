@@ -215,6 +215,13 @@ function NewClaim({ onClose, onCreated }: { onClose: () => void; onCreated: (id:
   );
 }
 
+const CLAIM_FILTERS: [string, string][] = [["", "All"], ["DRAFT", "Draft"], ["PREAUTH_PENDING", "Pre-auth pending"], ["PREAUTH_APPROVED", "Pre-auth approved"], ["SUBMITTED", "Submitted"], ["QUERY", "Query"], ["APPROVED", "Approved"], ["REJECTED", "Rejected"], ["SETTLED", "Settled"], ["CLOSED", "Closed"]];
+const CLAIM_PILL: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-700", PREAUTH_PENDING: "bg-amber-50 text-amber-800 ring-1 ring-amber-200", PREAUTH_APPROVED: "bg-sky-50 text-sky-700 ring-1 ring-sky-200", SUBMITTED: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+  QUERY: "bg-amber-50 text-amber-800 ring-1 ring-amber-200", APPROVED: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200", REJECTED: "bg-rose-50 text-rose-700 ring-1 ring-rose-200", SETTLED: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200", CLOSED: "bg-slate-100 text-slate-600",
+};
+
+/** The claims desk on one screen: totals in a slim strip, filters and search in one row, and one line per claim. */
 export function ClaimsList({ initialOpen }: { initialOpen?: string | null } = {}) {
   const { can, money } = useMe();
   const [status, setStatus] = useState("");
@@ -224,29 +231,64 @@ export function ClaimsList({ initialOpen }: { initialOpen?: string | null } = {}
   const [adding, setAdding] = useState(false);
   const list = useQuery({ queryKey: ["claims", status, term], queryFn: () => api.get<{ items: Row[] }>("/claims", { ...(status ? { status } : {}), ...(term.length >= 2 ? { q: term } : {}), pageSize: 50 }), refetchInterval: 30_000 });
   const summary = useQuery({ queryKey: ["claims-summary"], queryFn: () => api.get<Summary[]>("/claims/summary") });
+  const sum = (f: (s: Summary) => string) => (summary.data ?? []).reduce((n, s) => n + Number(f(s)), 0);
+  const openClaims = (summary.data ?? []).reduce((n, s) => n + s.claims, 0);
+  const CARD = "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_4px_16px_-8px_rgba(16,24,40,0.08)]";
+  const GRID = "md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_auto_auto] md:gap-x-4";
+  const stat = (label: string, value: string, tone: string) => <div className="min-w-0 flex-1 px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</div><div className={`mt-0.5 truncate text-xl font-semibold tabular-nums tracking-tight ${tone}`}>{value}</div></div>;
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {(summary.data?.length ?? 0) > 0 && (
-        <Card title="Owed by insurers">
-          <Table head={["Insurer", "Open claims", "Waiting for a decision", "Approved, to receive"]}>
-            {summary.data?.map((s) => <tr key={s.insurerId}><Td>{s.insurer}</Td><Td>{s.claims}</Td><Td>{money(s.waitingForDecision)}</Td><Td className="font-medium">{money(s.toReceive)}</Td></tr>)}
-          </Table>
-        </Card>
+        <section className={`${CARD} flex flex-wrap divide-x divide-slate-100`} aria-label="Owed by insurers">
+          {stat("Open claims", String(openClaims), "text-slate-900")}
+          {stat("Waiting for a decision", money(String(sum((s) => s.waitingForDecision))), "text-amber-700")}
+          {stat("Approved, to receive", money(String(sum((s) => s.toReceive))), "text-emerald-700")}
+          <details className="group relative min-w-[8rem] px-4 py-3 text-xs">
+            <summary className="cursor-pointer list-none font-medium text-blue-600 [&::-webkit-details-marker]:hidden"><span className="group-open:hidden">By insurer</span><span className="hidden group-open:inline">Hide</span></summary>
+            <div className="absolute right-0 top-full z-10 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+              <Table head={["Insurer", "Open", "Waiting", "To receive"]}>
+                {summary.data?.map((s) => <tr key={s.insurerId}><Td>{s.insurer}</Td><Td>{s.claims}</Td><Td>{money(s.waitingForDecision)}</Td><Td className="font-medium">{money(s.toReceive)}</Td></tr>)}
+              </Table>
+            </div>
+          </details>
+        </section>
       )}
-      <Card title="Claims" actions={can("CLAIM_MANAGE") ? <Button onClick={() => setAdding(true)}>New claim</Button> : undefined}>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Select aria-label="Status" className="w-52" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All claims</option>{["DRAFT", "PREAUTH_PENDING", "PREAUTH_APPROVED", "SUBMITTED", "QUERY", "APPROVED", "REJECTED", "SETTLED", "CLOSED"].map((s) => <option key={s} value={s}>{label(s)}</option>)}</Select>
-          <Input aria-label="Search" className="min-w-60 flex-1" placeholder="Search name, MRN, claim or policy number" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        {list.isLoading ? <Spinner /> : (
-          <Table head={["Claim", "Patient", "Insurer", "Claimed", "To receive", "Status", ""]} {...(list.data?.items.length === 0 ? { empty: "No claims yet." } : {})}>
+      <section className={`${CARD} overflow-hidden`} aria-label="Claims">
+        <header className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100/80 p-1" role="tablist" aria-label="Status">
+            {CLAIM_FILTERS.map(([v, l]) => <button key={v} type="button" role="tab" aria-selected={status === v} onClick={() => setStatus(v)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${status === v ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{l}</button>)}
+          </div>
+          <label className="relative ml-auto block w-full min-w-48 sm:w-64">
+            <span className="sr-only">Search</span>
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400"><svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-4 w-4"><path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" /></svg></span>
+            <input type="search" aria-label="Search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, MRN, claim or policy" className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100" />
+          </label>
+          {can("CLAIM_MANAGE") && <Button className="rounded-xl" onClick={() => setAdding(true)}>New claim</Button>}
+        </header>
+        {list.isLoading ? <div className="p-4"><Spinner /></div> : (list.data?.items.length ?? 0) === 0 ? <p className="px-4 py-10 text-center text-sm text-slate-500">No claims yet.</p> : (
+          <div role="table" aria-label="Claims">
+            <div role="row" className={`hidden border-b border-slate-100 bg-slate-50/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 md:grid ${GRID}`}>
+              <div role="columnheader">Claim and patient</div><div role="columnheader">Insurer</div><div role="columnheader" className="text-right">Claimed / to receive</div><div role="columnheader" className="text-right">Status</div>
+            </div>
             {list.data?.items.map((r) => (
-              <tr key={r.id}><Td>{r.claimNumber}<div className="text-xs text-slate-500">{r.type.toLowerCase()}</div></Td><Td><span className="font-medium">{r.patient}</span> <span className="text-slate-500">· {r.mrn}</span></Td><Td>{r.insurer}<div className="text-xs text-slate-500">{r.policyNumber}</div></Td>
-                <Td>{r.claimedAmount ? money(r.claimedAmount) : "—"}</Td><Td>{r.outstanding ? money(r.outstanding) : "—"}</Td><Td><Badge tone={TONE[r.status] ?? "gray"}>{label(r.status)}</Badge></Td><Td><Button variant="secondary" onClick={() => setOpen(r.id)}>Open</Button></Td></tr>
+              <div key={r.id} role="row" className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-slate-100 px-4 py-2.5 transition last:border-b-0 hover:bg-blue-50/40 ${GRID}`} onClick={() => setOpen(r.id)}>
+                <div role="cell" className="min-w-0 md:order-1">
+                  <div className="flex items-baseline gap-2"><span className="shrink-0 whitespace-nowrap text-sm font-semibold text-slate-900">{r.claimNumber}</span></div>
+                  <div className="truncate text-xs text-slate-600"><span className="font-medium text-slate-800">{r.patient}</span> · {r.mrn}</div>
+                </div>
+                <div role="cell" className="flex items-center justify-end gap-2 md:order-4">
+                  <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${CLAIM_PILL[r.status] ?? "bg-slate-100 text-slate-700"}`}>{label(r.status)}</span>
+                  <Button variant="secondary" onClick={(e) => { e.stopPropagation(); setOpen(r.id); }}>Open</Button>
+                </div>
+                <div className="col-span-2 flex items-start justify-between gap-3 md:contents">
+                  <div role="cell" className="min-w-0 md:order-2"><div className="truncate text-sm text-slate-700">{r.insurer}</div><div className="truncate text-[11px] text-slate-500">{r.policyNumber} · {r.type.toLowerCase()}</div></div>
+                  <div role="cell" className="whitespace-nowrap text-right md:order-3"><div className="text-sm font-medium tabular-nums text-slate-900">{r.claimedAmount ? money(r.claimedAmount) : "—"}</div><div className="text-[11px] tabular-nums text-slate-500">to receive {r.outstanding ? money(r.outstanding) : "—"}</div></div>
+                </div>
+              </div>
             ))}
-          </Table>
+          </div>
         )}
-      </Card>
+      </section>
       {open && <ClaimModal claimId={open} onClose={() => setOpen(null)} />}
       {adding && <NewClaim onClose={() => setAdding(false)} onCreated={(id) => { setAdding(false); setOpen(id); }} />}
     </div>

@@ -10,6 +10,7 @@ import { BedManagerDashboard } from "@/components/bed-manager-dashboard";
 import { NurseDashboard } from "@/components/nurse-dashboard";
 import { TpaDashboard } from "@/components/tpa-dashboard";
 import { LabTechDashboard } from "@/components/lab-tech-dashboard";
+import { HousekeepingDashboard } from "@/components/housekeeping-dashboard";
 import { GoToPanel } from "@/components/go-to";
 import { ErDashboard, ErNurseDashboard } from "@/components/er-nurse-dashboard";
 import { WardCoordinatorDashboard } from "@/components/ward-coordinator-dashboard";
@@ -18,7 +19,7 @@ import { MrdDashboard } from "@/components/mrd-dashboard";
 import { RmoDashboard } from "@/components/rmo-dashboard";
 import { RadiographerDashboard } from "@/components/radiographer-dashboard";
 import { ReceptionDashboard } from "@/components/reception-dashboard";
-import { Badge, Card, PageHeader, Spinner, Table, Td } from "@/components/ui";
+import { Badge, Card, PageHeader, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { localeFor, useI18n, useT } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
@@ -58,6 +59,7 @@ export default function Dashboard() {
   // what each panel shows is still decided by permissions. The LIMS manager keeps the control room as home.
   const { can } = useMe();
   const labFloor = can("LIMS_COLLECT", "LIMS_ISSUE", "LAB_VERIFY", "RAD_REPORT") && !can("LIMS_MANAGE");
+  if (me.roles.includes("HOUSEKEEPING") && can("BED_HOUSEKEEPING", "HOUSEKEEPING_MANAGE")) return <HousekeepingDashboard />;
   if (me.roles.includes("RECEPTIONIST")) return <ReceptionDashboard desk={activeDesk} />;
   if (me.roles.includes("NURSE") && can("NURSING_READ")) return <NurseDashboard />;
   if (me.roles.includes("RADIOGRAPHER") && can("RAD_READ")) return <RadiographerDashboard />;

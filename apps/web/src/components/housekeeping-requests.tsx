@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, newKey } from "@/lib/api";
 import { useMe } from "@/lib/me";
-import { Badge, Button, Card, ErrorNote, Field, Input, Select, Spinner, Table, Td } from "./ui";
+import { Badge, Button, Card, ErrorNote, Field, Input, Select, Spinner } from "./ui";
 
 interface Req {
   id: string; kind: string; priority: "ROUTINE" | "URGENT"; location: string; description: string | null; status: "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELLED";
@@ -44,27 +44,29 @@ export function HousekeepingRequests() {
         </div>
       )}
       <ErrorNote error={create.error ?? start.error ?? finish.error ?? cancel.error} />
-      {list.isLoading ? <Spinner /> : (
-        <Table head={["Job", "Where", "Asked", "Status", ""]} {...(rows.length === 0 ? { empty: "No requests." } : {})}>
+      {list.isLoading ? <Spinner /> : rows.length === 0 ? (
+        <p className="rounded-lg bg-slate-50 px-4 py-5 text-sm text-slate-500">No requests.</p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
           {rows.map((r) => (
-            <tr key={r.id} data-testid="housekeeping-request">
-              <Td><b>{kindLabel(r.kind)}</b> {r.priority === "URGENT" && <Badge tone="red">urgent</Badge>}{r.description && <div className="text-xs text-slate-500">{r.description}</div>}</Td>
-              <Td>{r.location}</Td>
-              <Td>{dateTime(r.requestedAt)}<div className="text-xs text-slate-500">{r.requestedBy}</div></Td>
-              <Td><Badge tone={TONE[r.status]}>{r.status === "IN_PROGRESS" ? "in progress" : r.status.toLowerCase()}</Badge>
+            <li key={r.id} data-testid="housekeeping-request" className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <div className="font-medium text-slate-900">{kindLabel(r.kind)} <span className="font-normal text-slate-500">· {r.location}</span> {r.priority === "URGENT" && <Badge tone="red">urgent</Badge>}</div>
+                {r.description && <div className="text-xs text-slate-600">{r.description}</div>}
+                <div className="text-xs text-slate-500">{dateTime(r.requestedAt)}{r.requestedBy ? ` · ${r.requestedBy}` : ""}</div>
                 {r.status === "DONE" && <div className="text-xs text-slate-500">{r.doneBy}{r.minutesToDone !== null ? ` · ${r.minutesToDone} min` : ""}{r.doneNote ? ` · ${r.doneNote}` : ""}</div>}
                 {r.status === "IN_PROGRESS" && <div className="text-xs text-slate-500">{r.startedBy}</div>}
-                {r.status === "CANCELLED" && <div className="text-xs text-slate-500">{r.cancelReason}</div>}</Td>
-              <Td>
-                <div className="flex flex-wrap gap-1">
-                  {manage && r.status === "OPEN" && <Button variant="secondary" loading={start.isPending && start.variables === r.id} onClick={() => start.mutate(r.id)}>Start</Button>}
-                  {manage && r.status === "IN_PROGRESS" && <Button loading={finish.isPending && finish.variables === r.id} onClick={() => finish.mutate(r.id)}>Done</Button>}
-                  {(r.status === "OPEN" || r.status === "IN_PROGRESS") && (manage || ask) && <Button variant="secondary" onClick={() => { const why = window.prompt("Why is this request being cancelled? (at least 5 characters)"); if (why && why.trim().length >= 5) cancel.mutate({ id: r.id, reason: why.trim() }); }}>Cancel</Button>}
-                </div>
-              </Td>
-            </tr>
+                {r.status === "CANCELLED" && <div className="text-xs text-slate-500">{r.cancelReason}</div>}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={TONE[r.status]}>{r.status === "IN_PROGRESS" ? "in progress" : r.status.toLowerCase()}</Badge>
+                {manage && r.status === "OPEN" && <Button variant="secondary" loading={start.isPending && start.variables === r.id} onClick={() => start.mutate(r.id)}>Start</Button>}
+                {manage && r.status === "IN_PROGRESS" && <Button loading={finish.isPending && finish.variables === r.id} onClick={() => finish.mutate(r.id)}>Done</Button>}
+                {(r.status === "OPEN" || r.status === "IN_PROGRESS") && (manage || ask) && <Button variant="secondary" onClick={() => { const why = window.prompt("Why is this request being cancelled? (at least 5 characters)"); if (why && why.trim().length >= 5) cancel.mutate({ id: r.id, reason: why.trim() }); }}>Cancel</Button>}
+              </div>
+            </li>
           ))}
-        </Table>
+        </ul>
       )}
     </Card>
   );
