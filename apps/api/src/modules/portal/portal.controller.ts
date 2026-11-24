@@ -3,7 +3,7 @@ import { Ctx, id, parse, Public, RateLimit, RequirePermissions } from "../../com
 import type { RequestContext } from "../../common/request-context";
 import { patientJoinSchema, TelemedicineService } from "../telemedicine/telemedicine.service";
 import {
-  handleRequestSchema, listRequestsSchema, otpRequestSchema, otpVerifySchema, patientQuerySchema, PortalAuthService, PortalGuard, type PortalRequest, PortalService, requestSchema, unlockSchema,
+  handleRequestSchema, listRequestsSchema, onlinePaySchema, otpRequestSchema, otpVerifySchema, paidRequestSchema, passwordLoginSchema, patientQuerySchema, registerSchema, PortalAuthService, PortalGuard, type PortalRequest, PortalService, requestFeeQuerySchema, requestSchema, setPasswordSchema, videoFeePaySchema, unlockSchema,
 } from "./portal.service";
 
 /** The patient app's sign-in (docs/patient-app.md). Public: it is how a patient gets a session. */
@@ -22,6 +22,18 @@ export class PortalAuthController {
   @Post("verify")
   @HttpCode(200)
   async verify(@Body() body: unknown) { return { data: await this.auth.verifyCode(parse(otpVerifySchema, body)) }; }
+
+  @Public()
+  @RateLimit({ limit: 10, windowMs: 60_000 })
+  @Post("register")
+  @HttpCode(200)
+  async register(@Body() body: unknown) { return { data: await this.auth.register(parse(registerSchema, body)) }; }
+
+  @Public()
+  @RateLimit({ limit: 10, windowMs: 60_000 })
+  @Post("login")
+  @HttpCode(200)
+  async login(@Body() body: unknown) { return { data: await this.auth.passwordLogin(parse(passwordLoginSchema, body)) }; }
 }
 
 /** What a signed-in patient sees. Public to the staff login (it has its own guard that accepts a patient session and nothing else). */
@@ -43,6 +55,16 @@ export class PortalController {
   @Post("unlock")
   @HttpCode(200)
   async unlock(@Req() req: PortalRequest, @Body() body: unknown) { return { data: await this.auth.unlock(this.session(req), parse(unlockSchema, body)) }; }
+
+  @Public()
+  @Get("password")
+  async passwordStatus(@Req() req: PortalRequest) { return { data: await this.auth.passwordStatus(this.session(req)) }; }
+
+  @Public()
+  @RateLimit({ limit: 10, windowMs: 60_000, by: "session" })
+  @Post("password")
+  @HttpCode(200)
+  async setPassword(@Req() req: PortalRequest, @Body() body: unknown) { return { data: await this.auth.setPassword(this.session(req), parse(setPasswordSchema, body)) }; }
 
   @Public()
   @Post("logout")
@@ -81,9 +103,37 @@ export class PortalController {
   @Get("bills")
   async bills(@Req() req: PortalRequest, @Query() query: unknown) { return { data: await this.portal.bills(this.session(req), parse(patientQuerySchema, query).patientId) }; }
 
+  /** Whether the patient can pay online, and by which methods. Off until a gateway (or the local test checkout) is connected. */
+  @Public()
+  @Get("payments/options")
+  async paymentOptions() { return { data: this.portal.paymentOptions() }; }
+
+  /** Pays a bill of the patient's own by UPI or card. */
+  /** Pays the video consultation fee of the patient's own appointment by UPI or card. */
+  @Public()
+  @Post("payments/video-fee")
+  @HttpCode(200)
+  async payVideoFee(@Req() req: PortalRequest, @Body() body: unknown) { return { data: await this.portal.payVideoFee(this.session(req), parse(videoFeePaySchema, body)) }; }
+
+  @Public()
+  @Post("payments/online")
+  @HttpCode(200)
+  async payOnline(@Req() req: PortalRequest, @Body() body: unknown) { return { data: await this.portal.payOnline(this.session(req), parse(onlinePaySchema, body)) }; }
+
   @Public()
   @Get("appointment-requests")
   async requests(@Req() req: PortalRequest, @Query() query: unknown) { return { data: await this.portal.requests(this.session(req), parse(patientQuerySchema, query).patientId) }; }
+
+  @Public()
+  @Get("appointment-requests/fee")
+  async requestFee(@Req() req: PortalRequest, @Query() query: unknown) { return { data: await this.portal.requestFee(this.session(req), parse(requestFeeQuerySchema, query)) }; }
+
+  /** Asks for an appointment and pays the booking fee online in the same step. */
+  @Public()
+  @RateLimit({ limit: 10, windowMs: 60_000, by: "session" })
+  @Post("appointment-requests/paid")
+  @HttpCode(200)
+  async paidRequest(@Req() req: PortalRequest, @Body() body: unknown) { return { data: await this.portal.createPaidRequest(this.session(req), parse(paidRequestSchema, body)) }; }
 
   @Public()
   @Post("appointment-requests")

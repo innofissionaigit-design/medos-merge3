@@ -11,7 +11,7 @@ import { PatientPicker, todayIn, type PickedPatient } from "@/components/pickers
 import { FeeLine, SkipFeeModal, TakeFeeModal, type FeeInfo } from "@/components/booking-fee-extras";
 import { DuplicateBookingNotice, isDuplicateBooking } from "@/components/booking-guard";
 import { GiveBackDeposit } from "@/components/advance-extras";
-import { AppointmentRequestsCard } from "@/components/appointment-requests";
+import { AppointmentRequestsCard, type RequestRow } from "@/components/appointment-requests";
 import { ExpectedFollowUpsCard } from "@/components/expected-follow-ups";
 import { DoctorSchedules, filterDoctors } from "@/components/doctor-schedules";
 import { MakeVideoButton } from "@/components/telemedicine";
@@ -25,7 +25,10 @@ interface Appt extends FeeInfo { practitionerId: string; id: string; startAt: st
 interface Slot { startAt: string; endAt: string; available: boolean }
 interface Doc { id: string; displayName: string; departmentId?: string | null; userId?: string | null }
 
-interface Booked { startAt: string; patientName: string; practitionerName: string }
+interface Booked { id?: string; startAt: string; patientName: string; practitionerName: string }
+/** A patient-app request being turned into an appointment: the Book window opens with who, with whom and when already filled in. */
+interface BookFrom { request: RequestRow; patient: PickedPatient; day: string }
+const PARTS: [string, string][] = [["MORNING", "Morning"], ["AFTERNOON", "Afternoon"], ["EVENING", "Evening"]];
 
 /** The UTC moment of a wall-clock time ("2026-11-05", "09:40") in a time zone. */
 function zonedToIso(day: string, hm: string, tz: string): string {
@@ -38,12 +41,14 @@ function zonedToIso(day: string, hm: string, tz: string): string {
   return new Date(guess - (shown - guess)).toISOString();
 }
 
-function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; onBooked: (b: Booked) => void }) {
+function Book({ date, from, onClose, onBooked }: { date: string; from?: BookFrom; onClose: () => void; onBooked: (b: Booked) => void }) {
   const qc = useQueryClient();
-  const [patient, setPatient] = useState<PickedPatient | null>(null);
-  const [doc, setDoc] = useState("");
-  const [day, setDay] = useState(date);
+  const [patient, setPatient] = useState<PickedPatient | null>(from?.patient ?? null);
+  const [doc, setDoc] = useState(from?.request.practitionerId ?? "");
+  const [day, setDay] = useState(from && from.day >= date ? from.day : date);
   const [slot, setSlot] = useState("");
+  // The part of the day the patient asked for: its free times are shown first, with a switch to see every time.
+  const [part, setPart] = useState<string>(from && from.request.timeOfDay !== "ANY" ? from.request.timeOfDay : "ALL");
   const slots = useQuery({ queryKey: ["slots", doc, day], queryFn: () => api.get<Slot[]>(`/practitioners/${doc}/availability`, { date: day }), enabled: !!doc });
   const { dateTime, can, me } = useMe();
   // An exception: a time outside the doctor's free times, for people who hold APPOINTMENT_OVERBOOK. It needs a reason and is audited.
@@ -52,6 +57,7 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
   const [exMinutes, setExMinutes] = useState("15");
   const [exReason, setExReason] = useState("");
   const tz = me.facility?.timezone ?? me.tenant.timezone;
+  const partOf = (iso: string) => { const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hourCycle: "h23" }).format(new Date(iso))); return h < 12 ? "MORNING" : h < 17 ? "AFTERNOON" : "EVENING"; };
   // One key for one exact request: if the answer is lost and the button is pressed again, the first booking is returned instead of a second attempt failing as "already booked".
   const keys = useRef(new Map<string, string>());
   const book = useMutation({
@@ -87,13 +93,23 @@ function Book({ date, onClose, onBooked }: { date: string; onClose: () => void; 
         )}
         <div className={exception ? "hidden" : "sm:col-span-2"}>
           <div className="mb-1 flex items-center justify-between text-sm font-medium text-slate-700"><span>Time</span>{slots.data && slots.data.length > 0 && <span className="text-xs font-normal text-slate-500">{slots.data.filter((x) => x.available).length} free · {slots.data.filter((x) => !x.available).length} taken</span>}</div>
+          {from && <p className="mb-2 rounded-lg bg-blue-50 p-2 text-xs text-blue-900">{from.request.patient} asked for <b>{from.request.preferredDate}</b>, <b>{from.request.timeOfDay === "ANY" ? "any time" : from.request.timeOfDay.toLowerCase()}</b>{from.request.doctor ? <>, with <b>{from.request.doctor}</b></> : null}. Reason: {from.request.reason}.</p>}
+          {doc && slots.data && slots.data.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5" role="group" aria-label="Part of the day">
+              {([["ALL", "All times"], ...PARTS] as [string, string][]).map(([v, label]) => {
+                const n = slots.data!.filter((x) => x.available && (v === "ALL" || partOf(x.startAt) === v)).length;
+                return <button key={v} type="button" aria-pressed={part === v} onClick={() => setPart(v)} className={`rounded-full border px-3 py-1 text-xs font-medium ${part === v ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}>{label} <span className="tabular-nums">{n}</span></button>;
+              })}
+            </div>
+          )}
           {!doc ? <p className="text-sm text-slate-500">Choose a doctor to see free times.</p> : slots.isLoading ? <Spinner /> : slots.data?.length === 0 ? <p className="text-sm text-slate-500">This doctor does not see patients on that day.</p> : (
             <div className="flex flex-wrap gap-1.5">
-              {slots.data?.map((s) => (
+              {slots.data?.filter((s) => part === "ALL" || partOf(s.startAt) === part).map((s) => (
                 <button key={s.startAt} disabled={!s.available} onClick={() => setSlot(s.startAt)} className={`rounded border px-2 py-1 text-sm ${slot === s.startAt ? "border-brand-600 bg-brand-600 text-white" : s.available ? "border-slate-300 hover:bg-brand-50" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500 line-through"}`}>
                   {dateTime(s.startAt).split(", ").pop()}
                 </button>
               ))}
+              {part !== "ALL" && slots.data?.every((s) => !s.available || partOf(s.startAt) !== part) && <p className="w-full text-sm text-amber-800">No free time in the {part.toLowerCase()} on this day. Choose All times, or another day.</p>}
             </div>
           )}
         </div>
@@ -175,6 +191,7 @@ export default function AppointmentsPage() {
   const [doctor, setDoctor] = useState("");
   const [dept, setDept] = useState("");
   const [modal, setModal] = useState<"book" | "walkin" | null>(null);
+  const [bookFrom, setBookFrom] = useState<BookFrom | null>(null);
   const [cancel, setCancel] = useState<Appt | null>(null);
   const [moving, setMoving] = useState<Appt | null>(null);
   const [reason, setReason] = useState("");
@@ -279,7 +296,7 @@ export default function AppointmentsPage() {
             </Field></div>
           </div>
         </section>
-        <AppointmentRequestsCard />
+        <AppointmentRequestsCard onBook={(r) => { setBookFrom({ request: r, patient: { id: r.patientId, name: r.patient, mrn: r.mrn }, day: r.preferredDate }); setModal("book"); }} />
         <ExpectedFollowUpsCard />
         <ErrorNote error={act.error} />
         {notice && <div className="mb-3"><Notice tone="success"><span className="mr-3">{notice}</span><button className="text-sm underline" onClick={() => setNotice(null)}>Dismiss</button></Notice></div>}
@@ -336,7 +353,17 @@ export default function AppointmentsPage() {
         </section>
         <DoctorSchedules departmentId={dept} doctorId={doctorMode && mine ? mine.id : doctor} title={doctorMode ? "My weekly schedule" : "Doctors' weekly schedules"} />
       </div>
-      {modal === "book" && <Book date={today} onClose={() => setModal(null)} onBooked={(b) => showDay(b, "Booked")} />}
+      {modal === "book" && <Book date={today} {...(bookFrom ? { from: bookFrom } : {})} onClose={() => { setModal(null); setBookFrom(null); }} onBooked={(b) => {
+        showDay(b, "Booked");
+        // A patient-app request is answered in the same step, so the patient sees the time in the app.
+        if (bookFrom) {
+          const req = bookFrom.request;
+          const answer = () => api.post(`/appointment-requests/${req.id}/answer`, { decision: "BOOKED", note: `${req.mode === "VIDEO" ? "Video consultation booked" : "Booked"} for ${dateTime(b.startAt)} with ${b.practitionerName}`, ...(b.id ? { appointmentId: b.id } : {}) }).then(() => qc.invalidateQueries({ queryKey: ["appointment-requests"] }));
+          // A video request becomes a video consultation in the same step, so the doctor finds it on the Video consultations page.
+          if (req.mode === "VIDEO" && b.id && can("TELE_MANAGE")) void api.post("/teleconsults", { appointmentId: b.id }).then(() => qc.invalidateQueries({ queryKey: ["teleconsults"] })).catch(() => undefined).then(answer);
+          else void answer();
+        }
+      }} />}
       {modal === "walkin" && <WalkIn onClose={() => setModal(null)} />}
       {moving && <Reschedule appt={moving} today={today} onClose={() => setMoving(null)} onMoved={(b) => showDay(b, "Moved")} />}
       {givingBack && <GiveBackDeposit depositId={givingBack} onClose={() => setGivingBack(null)} onDone={() => { setGivingBack(null); void refresh(); }} />}

@@ -3,7 +3,7 @@ import { clearPatientSession, csrfOk, forbidden, patientProofs, patientToken, PO
 
 /** Same-origin gateway for the patient app: attaches the patient's session token from the cookie. Sign-in routes are not reachable through it. */
 const SEGMENT = /^[A-Za-z0-9_.~-]{1,100}$/;
-const ALLOWED = new Set(["me", "doctors", "appointments", "visits", "reports", "bills", "appointment-requests", "teleconsults"]);
+const ALLOWED = new Set(["me", "doctors", "appointments", "visits", "reports", "bills", "appointment-requests", "teleconsults", "payments", "password"]);
 
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }): Promise<Response> {
   const { path } = await ctx.params;

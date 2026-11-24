@@ -33,7 +33,7 @@ export const listMasterSchema = z.object({
 }).strict();
 
 /** Roles whose doctors work on the wards, in the emergency ward or in the ICU, not in the outpatient clinic. */
-const NON_OPD_ROLES = ["EMERGENCY_DOCTOR", "ICU_DOCTOR", "RMO"];
+export const NON_OPD_ROLES = ["EMERGENCY_DOCTOR", "ICU_DOCTOR", "RMO"];
 
 const DEPT = { id: true, name: true, code: true, status: true } as const;
 const PRAC = { id: true, displayName: true, specialty: true, registrationNo: true, departmentId: true, userId: true, status: true, scheduleSet: true, videoFee: true } as const;

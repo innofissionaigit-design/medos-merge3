@@ -38,6 +38,24 @@ model PatientSession {
   @@index([tenantId, mobile])
 }
 
+/// A patient's own password for the patient app. The mobile number is the username. Set only from a session opened with a code, so the phone is already proven.
+model PatientCredential {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  mobile         String
+  /// What the patient types to sign in; lower case, unique in the hospital.
+  username       String
+  passwordHash   String
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([tenantId, mobile])
+  @@unique([tenantId, username])
+  @@unique([tenantId, id])
+}
+
 model AppointmentRequest {
   id             String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String                   @db.Uuid
@@ -48,11 +66,17 @@ model AppointmentRequest {
   /// MORNING, AFTERNOON, EVENING or ANY.
   timeOfDay      String
   reason         String
+  /// IN_PERSON or VIDEO (a video consultation is paid for in the app when the request is sent).
+  mode           String                   @default("IN_PERSON")
   status         AppointmentRequestStatus @default(PENDING)
   handledById    String?                  @db.Uuid
   handledAt      DateTime?                @db.Timestamptz(3)
   handleNote     String?
   appointmentId  String?                  @db.Uuid
+  /// Paid online with the request (patient app): the amount, the receipt number and the advance that holds the money.
+  feeAmount        Decimal?               @db.Decimal(12, 2)
+  feeReceiptNumber String?
+  feeDepositId     String?                @unique @db.Uuid
   createdAt      DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime                 @updatedAt @db.Timestamptz(3)
 
