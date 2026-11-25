@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useMe } from "@/lib/me";
 import { Badge, Button, Card, ConfirmButton, ErrorNote, Input, Notice, Select, Spinner } from "./ui";
 
 interface Ward { id: string; name: string; code: string; status: "ACTIVE" | "INACTIVE" }
@@ -12,34 +11,57 @@ interface Bed { id: string; wardId: string; roomId: string; code: string; status
 const KEYS = [["wards-admin"], ["rooms-admin"], ["beds-admin"], ["board"]] as const;
 
 /** A name that is saved only when it has really changed. */
-function NameEdit({ value, label, onSave, busy }: { value: string; label: string; onSave: (v: string) => void; busy: boolean }) {
+function NameEdit({ value, label, onSave, busy, className = "w-44" }: { value: string; label: string; onSave: (v: string) => void; busy: boolean; className?: string }) {
   const [v, setV] = useState(value);
   const changed = v.trim() !== value && v.trim().length >= 1;
   return (
     <span className="inline-flex items-center gap-1">
-      <Input aria-label={label} className="w-44" value={v} onChange={(e) => setV(e.target.value)} />
+      <Input aria-label={label} className={className} value={v} onChange={(e) => setV(e.target.value)} />
       {changed && <Button variant="secondary" loading={busy} onClick={() => onSave(v.trim())}>Save</Button>}
     </span>
   );
 }
 
+/** A bed's daily rate, saved only when it has really changed. */
 function RateEdit({ value, label, onSave, busy }: { value: string; label: string; onSave: (v: string) => void; busy: boolean }) {
   const [v, setV] = useState(value);
   const changed = v.trim() !== value && /^\d+(\.\d{1,2})?$/.test(v.trim());
   return (
     <span className="inline-flex items-center gap-1">
-      <Input aria-label={label} inputMode="decimal" className="w-24" value={v} onChange={(e) => setV(e.target.value)} />
+      <span className="relative">
+        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400" aria-hidden>₹</span>
+        <Input aria-label={label} inputMode="decimal" className="w-28 pl-6" value={v} onChange={(e) => setV(e.target.value)} />
+      </span>
       {changed && <Button variant="secondary" loading={busy} onClick={() => onSave(v.trim())}>Save rate</Button>}
     </span>
+  );
+}
+
+/** What a bed looks like in each state: its tile, and the dot and label of its status. */
+const BED_LOOK: Record<string, { label: string; tile: string; dot: string }> = {
+  AVAILABLE: { label: "Free", tile: "border-emerald-200 bg-emerald-50/40", dot: "bg-emerald-500" },
+  OCCUPIED: { label: "Occupied", tile: "border-slate-300 bg-slate-50", dot: "bg-slate-500" },
+  RESERVED: { label: "Held", tile: "border-purple-200 bg-purple-50/40", dot: "bg-purple-500" },
+  CLEANING: { label: "Cleaning", tile: "border-amber-200 bg-amber-50/40", dot: "bg-amber-400" },
+  MAINTENANCE: { label: "Repair", tile: "border-rose-200 bg-rose-50/40", dot: "bg-rose-400" },
+};
+
+function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <span className={`absolute inset-x-0 top-0 h-1 ${tone}`} aria-hidden />
+      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div>
+    </div>
   );
 }
 
 /**
  * Wards, rooms and beds of this facility, switched-off ones included, so an administrator can rename them, change a bed's daily rate, switch things off and back on,
  * and put a bed in or out of maintenance. Occupied beds can't be retired and a ward or room with patients can't be switched off: the server explains why.
+ * Each ward is a card, each room a section of it, and each bed a small tile in the colour of its state.
  */
 export function WardStructure() {
-  const { money } = useMe();
   const qc = useQueryClient();
   const wards = useQuery({ queryKey: ["wards-admin"], queryFn: () => api.get<Ward[]>("/wards", { includeInactive: "true" }) });
   const rooms = useQuery({ queryKey: ["rooms-admin"], queryFn: () => api.get<Room[]>("/rooms", { includeInactive: "true" }) });
@@ -52,71 +74,94 @@ export function WardStructure() {
 
   if (wards.isLoading || rooms.isLoading || beds.isLoading) return <Card title="Wards, rooms and beds"><Spinner /></Card>;
   const manual = (b: Bed) => (b.status === "OCCUPIED" ? [] : ["AVAILABLE", "CLEANING", "MAINTENANCE"].filter((s) => s !== b.status));
+  const live = (beds.data ?? []).filter((b) => b.active === "ACTIVE");
+  const count = (st: string) => live.filter((b) => b.status === st).length;
 
   return (
-    <Card title="Wards, rooms and beds">
-      <p className="mb-3 text-xs text-slate-500">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat label="Wards" value={(wards.data ?? []).filter((w) => w.status === "ACTIVE").length} tone="bg-brand-500" />
+        <Stat label="Rooms" value={(rooms.data ?? []).filter((r) => r.status === "ACTIVE").length} tone="bg-sky-500" />
+        <Stat label="Beds" value={live.length} tone="bg-violet-500" />
+        <Stat label="In use" value={count("OCCUPIED")} tone="bg-slate-500" />
+        <Stat label="Free" value={count("AVAILABLE")} tone="bg-emerald-500" />
+      </div>
+      <p className="text-xs text-slate-500">
         A bed can be used only while its ward and room are switched on. Switching off keeps the history. A bed with a patient can't be retired and a ward or room with patients in it can't be switched off.
       </p>
-      <div className="space-y-4">
-        {wards.data?.map((w) => (
-          <div key={w.id} className="rounded border border-slate-200 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <NameEdit value={w.name} label={`Ward name ${w.code}`} busy={busyPath === `/wards/${w.id}`} onSave={(name) => patch.mutate({ path: `/wards/${w.id}`, body: { name } })} />
+      {wards.data?.map((w) => {
+        const wardRooms = rooms.data?.filter((r) => r.wardId === w.id) ?? [];
+        const wardBeds = beds.data?.filter((b) => b.wardId === w.id && b.active === "ACTIVE") ?? [];
+        return (
+          <section key={w.id} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${w.status === "INACTIVE" ? "border-slate-200 opacity-80" : "border-slate-200"}`}>
+            <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
+              <NameEdit className="w-56 font-semibold" value={w.name} label={`Ward name ${w.code}`} busy={busyPath === `/wards/${w.id}`} onSave={(name) => patch.mutate({ path: `/wards/${w.id}`, body: { name } })} />
               <Badge>{w.code}</Badge>
               {w.status === "INACTIVE" && <Badge tone="red">Switched off</Badge>}
+              <span className="text-xs text-slate-500">{wardRooms.length} room{wardRooms.length === 1 ? "" : "s"} · {wardBeds.length} bed{wardBeds.length === 1 ? "" : "s"} · {wardBeds.filter((b) => b.status === "OCCUPIED").length} in use</span>
               <span className="ml-auto">
                 {w.status === "ACTIVE"
                   ? <ConfirmButton label={switchLabel(true)} confirmLabel="Switch ward off" onConfirm={() => patch.mutate({ path: `/wards/${w.id}`, body: { status: "INACTIVE" } })} />
                   : <Button variant="secondary" onClick={() => patch.mutate({ path: `/wards/${w.id}`, body: { status: "ACTIVE" } })}>{switchLabel(false)}</Button>}
               </span>
-            </div>
-            <div className="mt-2 space-y-2 pl-4">
-              {rooms.data?.filter((r) => r.wardId === w.id).map((r) => (
-                <div key={r.id}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <NameEdit value={r.name} label={`Room name ${r.code}`} busy={busyPath === `/rooms/${r.id}`} onSave={(name) => patch.mutate({ path: `/rooms/${r.id}`, body: { name } })} />
-                    <Badge>{r.code}</Badge>
-                    {r.status === "INACTIVE" && <Badge tone="red">Switched off</Badge>}
-                    <span className="ml-auto">
-                      {r.status === "ACTIVE"
-                        ? <ConfirmButton label={switchLabel(true)} confirmLabel="Switch room off" onConfirm={() => patch.mutate({ path: `/rooms/${r.id}`, body: { status: "INACTIVE" } })} />
-                        : <Button variant="secondary" onClick={() => patch.mutate({ path: `/rooms/${r.id}`, body: { status: "ACTIVE" } })}>{switchLabel(false)}</Button>}
-                    </span>
+            </header>
+            <div className="divide-y divide-slate-100">
+              {wardRooms.map((r) => {
+                const roomBeds = beds.data?.filter((b) => b.roomId === r.id) ?? [];
+                return (
+                  <div key={r.id} className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <NameEdit value={r.name} label={`Room name ${r.code}`} busy={busyPath === `/rooms/${r.id}`} onSave={(name) => patch.mutate({ path: `/rooms/${r.id}`, body: { name } })} />
+                      <Badge>{r.code}</Badge>
+                      {r.status === "INACTIVE" && <Badge tone="red">Switched off</Badge>}
+                      <span className="ml-auto">
+                        {r.status === "ACTIVE"
+                          ? <ConfirmButton label={switchLabel(true)} confirmLabel="Switch room off" onConfirm={() => patch.mutate({ path: `/rooms/${r.id}`, body: { status: "INACTIVE" } })} />
+                          : <Button variant="secondary" onClick={() => patch.mutate({ path: `/rooms/${r.id}`, body: { status: "ACTIVE" } })}>{switchLabel(false)}</Button>}
+                      </span>
+                    </div>
+                    {roomBeds.length === 0 ? <p className="mt-2 text-xs text-slate-500">No beds yet.</p> : (
+                      <ul className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(14.5rem,1fr))] gap-2">
+                        {roomBeds.map((b) => {
+                          const retired = b.active === "INACTIVE";
+                          const look = BED_LOOK[b.status] ?? { label: b.status.toLowerCase(), tile: "border-slate-200 bg-white", dot: "bg-slate-400" };
+                          return (
+                            <li key={b.id} className={`rounded-lg border p-3 ${retired ? "border-slate-200 bg-slate-50 opacity-70" : look.tile}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <b className="text-sm text-slate-900">{b.code}</b>
+                                {retired ? <Badge tone="red">Retired</Badge> : <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600"><span className={`h-2 w-2 rounded-full ${look.dot}`} aria-hidden />{look.label}</span>}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                                <RateEdit value={b.dailyRate} label={`Daily rate ${b.code}`} busy={busyPath === `/beds/${b.id}`} onSave={(dailyRate) => patch.mutate({ path: `/beds/${b.id}`, body: { dailyRate } })} />
+                                <span className="whitespace-nowrap">a day</span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                {retired ? <span /> : b.status === "OCCUPIED"
+                                  ? <span className="text-xs text-slate-500">Has a patient</span>
+                                  : <Select aria-label={`Status of bed ${b.code}`} className="w-36" value={b.status} onChange={(e) => status.mutate({ id: b.id, status: e.target.value })}>
+                                    <option value={b.status}>{b.status.charAt(0) + b.status.slice(1).toLowerCase()}</option>
+                                    {manual(b).map((st) => <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>)}
+                                  </Select>}
+                                {b.active === "ACTIVE"
+                                  ? b.status === "OCCUPIED" || b.status === "RESERVED" ? null : <ConfirmButton label="Retire" confirmLabel="Retire bed" onConfirm={() => patch.mutate({ path: `/beds/${b.id}`, body: { active: "INACTIVE" } })} />
+                                  : <Button variant="secondary" onClick={() => patch.mutate({ path: `/beds/${b.id}`, body: { active: "ACTIVE" } })}>Bring back</Button>}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </div>
-                  <ul className="mt-1 space-y-1 pl-4">
-                    {beds.data?.filter((b) => b.roomId === r.id).map((b) => (
-                      <li key={b.id} className="flex flex-wrap items-center gap-2 text-sm">
-                        <b className="w-20">{b.code}</b>
-                        <RateEdit value={b.dailyRate} label={`Daily rate ${b.code}`} busy={busyPath === `/beds/${b.id}`} onSave={(dailyRate) => patch.mutate({ path: `/beds/${b.id}`, body: { dailyRate } })} />
-                        <span className="text-xs text-slate-500">{money(b.dailyRate)} a day</span>
-                        {b.active === "INACTIVE"
-                          ? <Badge tone="red">Retired</Badge>
-                          : b.status === "OCCUPIED"
-                            ? <Badge tone="blue">Occupied</Badge>
-                            : <Select aria-label={`Status of bed ${b.code}`} className="w-40" value={b.status} onChange={(e) => status.mutate({ id: b.id, status: e.target.value })}>
-                              <option value={b.status}>{b.status.charAt(0) + b.status.slice(1).toLowerCase()}</option>
-                              {manual(b).map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-                            </Select>}
-                        <span className="ml-auto">
-                          {b.active === "ACTIVE"
-                            ? b.status === "OCCUPIED" || b.status === "RESERVED" ? null : <ConfirmButton label="Retire" confirmLabel="Retire bed" onConfirm={() => patch.mutate({ path: `/beds/${b.id}`, body: { active: "INACTIVE" } })} />
-                            : <Button variant="secondary" onClick={() => patch.mutate({ path: `/beds/${b.id}`, body: { active: "ACTIVE" } })}>Bring back</Button>}
-                        </span>
-                      </li>
-                    ))}
-                    {beds.data?.filter((b) => b.roomId === r.id).length === 0 && <li className="text-xs text-slate-500">No beds yet.</li>}
-                  </ul>
-                </div>
-              ))}
-              {rooms.data?.filter((r) => r.wardId === w.id).length === 0 && <p className="text-xs text-slate-500">No rooms yet.</p>}
+                );
+              })}
+              {wardRooms.length === 0 && <p className="px-4 py-3 text-xs text-slate-500">No rooms yet.</p>}
             </div>
-          </div>
-        ))}
-        {wards.data?.length === 0 && <Notice>No wards yet. Add one above.</Notice>}
-      </div>
-      <div className="mt-3 space-y-2"><ErrorNote error={patch.error} /><ErrorNote error={status.error} /></div>
-    </Card>
+          </section>
+        );
+      })}
+      {wards.data?.length === 0 && <Notice>No wards yet. Add one above.</Notice>}
+      <div className="space-y-2"><ErrorNote error={patch.error} /><ErrorNote error={status.error} /></div>
+    </div>
   );
 }
 

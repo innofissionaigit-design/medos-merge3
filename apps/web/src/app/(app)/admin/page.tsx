@@ -87,10 +87,34 @@ function Wards() {
   return (
     <div className="space-y-4">
       <Card title="Add ward, room or bed">
-        <div className="space-y-3">
-          <form className="grid grid-cols-4 gap-2" onSubmit={(e) => { e.preventDefault(); addWard.mutate(); }}><Input placeholder="Ward name" aria-label="Ward name" value={ward.name} onChange={(e) => setWard({ ...ward, name: e.target.value })} /><Input placeholder="Code" aria-label="Ward code" value={ward.code} onChange={(e) => setWard({ ...ward, code: e.target.value })} /><Button type="submit" loading={addWard.isPending} disabled={!ward.name || !ward.code}>Add ward</Button><ErrorNote error={addWard.error} /></form>
-          <form className="grid grid-cols-4 gap-2" onSubmit={(e) => { e.preventDefault(); addRoom.mutate(); }}><Select aria-label="Ward" value={room.wardId} onChange={(e) => setRoom({ ...room, wardId: e.target.value })}><option value="">Ward…</option>{board.data?.wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select><Input placeholder="Room name" aria-label="Room name" value={room.name} onChange={(e) => setRoom({ ...room, name: e.target.value })} /><Input placeholder="Code" aria-label="Room code" value={room.code} onChange={(e) => setRoom({ ...room, code: e.target.value })} /><Button type="submit" loading={addRoom.isPending} disabled={!room.wardId || !room.name || !room.code}>Add room</Button><div className="col-span-4"><ErrorNote error={addRoom.error} /></div></form>
-          <form className="grid grid-cols-4 gap-2" onSubmit={(e) => { e.preventDefault(); addBed.mutate(); }}><Select aria-label="Room" value={bed.roomId} onChange={(e) => setBed({ ...bed, roomId: e.target.value })}><option value="">Room…</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</Select><Input placeholder="Bed code" aria-label="Bed code" value={bed.code} onChange={(e) => setBed({ ...bed, code: e.target.value })} /><Input placeholder="Daily rate" aria-label="Daily rate" inputMode="decimal" value={bed.dailyRate} onChange={(e) => setBed({ ...bed, dailyRate: e.target.value })} /><Button type="submit" loading={addBed.isPending} disabled={!bed.roomId || !bed.code || !bed.dailyRate}>Add bed</Button><div className="col-span-4"><ErrorNote error={addBed.error} /></div></form>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <form className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3" onSubmit={(e) => { e.preventDefault(); addWard.mutate(); }}>
+            <h3 className="text-sm font-semibold text-slate-900">New ward</h3>
+            <Field label="Ward name"><Input placeholder="For example: General Ward" aria-label="Ward name" value={ward.name} onChange={(e) => setWard({ ...ward, name: e.target.value })} /></Field>
+            <Field label="Code"><Input placeholder="For example: GW" aria-label="Ward code" value={ward.code} onChange={(e) => setWard({ ...ward, code: e.target.value })} /></Field>
+            <ErrorNote error={addWard.error} />
+            <Button type="submit" className="w-full" loading={addWard.isPending} disabled={!ward.name || !ward.code}>Add ward</Button>
+          </form>
+          <form className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3" onSubmit={(e) => { e.preventDefault(); addRoom.mutate(); }}>
+            <h3 className="text-sm font-semibold text-slate-900">New room</h3>
+            <Field label="In which ward"><Select aria-label="Ward" value={room.wardId} onChange={(e) => setRoom({ ...room, wardId: e.target.value })}><option value="">Ward…</option>{board.data?.wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Room name"><Input placeholder="Room 1" aria-label="Room name" value={room.name} onChange={(e) => setRoom({ ...room, name: e.target.value })} /></Field>
+              <Field label="Code"><Input placeholder="GW-1" aria-label="Room code" value={room.code} onChange={(e) => setRoom({ ...room, code: e.target.value })} /></Field>
+            </div>
+            <ErrorNote error={addRoom.error} />
+            <Button type="submit" className="w-full" loading={addRoom.isPending} disabled={!room.wardId || !room.name || !room.code}>Add room</Button>
+          </form>
+          <form className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3" onSubmit={(e) => { e.preventDefault(); addBed.mutate(); }}>
+            <h3 className="text-sm font-semibold text-slate-900">New bed</h3>
+            <Field label="In which room"><Select aria-label="Room" value={bed.roomId} onChange={(e) => setBed({ ...bed, roomId: e.target.value })}><option value="">Room…</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</Select></Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Bed code"><Input placeholder="B1" aria-label="Bed code" value={bed.code} onChange={(e) => setBed({ ...bed, code: e.target.value })} /></Field>
+              <Field label="Daily rate"><Input placeholder="0.00" aria-label="Daily rate" inputMode="decimal" value={bed.dailyRate} onChange={(e) => setBed({ ...bed, dailyRate: e.target.value })} /></Field>
+            </div>
+            <ErrorNote error={addBed.error} />
+            <Button type="submit" className="w-full" loading={addBed.isPending} disabled={!bed.roomId || !bed.code || !bed.dailyRate}>Add bed</Button>
+          </form>
         </div>
       </Card>
       <WardStructure />
