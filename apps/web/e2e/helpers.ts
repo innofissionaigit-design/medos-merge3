@@ -39,6 +39,7 @@ export async function registerPatient(page: Page): Promise<{ first: string; last
   await dialog.getByLabel("First name").fill(first);
   await dialog.getByLabel("Last name").fill(last);
   await dialog.getByLabel("Mobile").fill(mobile());
+  await dialog.getByText("Female", { exact: true }).click();
   await dialog.getByLabel("Age in years").fill("37");
   await dialog.getByRole("button", { name: "Register", exact: true }).click();
   await expect(page.getByRole("heading", { name: `${first} ${last}` })).toBeVisible();

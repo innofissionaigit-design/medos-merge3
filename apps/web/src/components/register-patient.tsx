@@ -13,7 +13,8 @@ import { patientFormSchema, type PatientForm } from "@/lib/patient-form";
 import { useMe } from "@/lib/me";
 
 type Form = PatientForm;
-const EMPTY_FORM: Form = { gender: "FEMALE", ageMode: "age", firstName: "", lastName: "", mobile: "", age: "", dob: "", email: "", addressLine: "", city: "", postalCode: "" };
+// No gender is pre-selected: a desk in a hurry must choose one, so a wrong default never reaches the record (the form check says "Choose the gender").
+const EMPTY_FORM: Form = { gender: "" as unknown as Form["gender"], ageMode: "age", firstName: "", lastName: "", mobile: "", age: "", dob: "", email: "", addressLine: "", city: "", postalCode: "" };
 
 interface Candidate { patient: PatientRow; severity: string; reasons: string[]; similarity: number }
 

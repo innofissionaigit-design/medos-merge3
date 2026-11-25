@@ -108,6 +108,7 @@ test("registering a patient who looks like an existing one shows the possible du
   await dialog.getByLabel("First name").fill(p.first);
   await dialog.getByLabel("Last name").fill(p.last);
   await dialog.getByLabel("Mobile").fill(mobile());
+  await dialog.getByText("Female", { exact: true }).click();
   await dialog.getByLabel("Age in years").fill("37");
   await dialog.getByRole("button", { name: "Register", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "This patient may already be registered" })).toBeVisible();
