@@ -155,14 +155,37 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   );
 }
 
+/** A switcher between the sections of a page: a soft track with the open section raised as a white pill. It wraps onto a second line on a narrow screen instead of running off it. */
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (t: T) => void }) {
   const tr = useT();
   return (
-    <div className="mb-3 flex gap-1 border-b border-slate-200" role="tablist">
-      {tabs.map((t) => (
-        <button key={t.id} role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)} className={clsx("-mb-px border-b-2 px-3 py-2 text-sm font-medium", value === t.id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800")}>{tr(t.label)}</button>
-      ))}
+    <div className="mb-4 flex max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1" role="tablist">
+      {tabs.map((t) => {
+        const on = value === t.id;
+        return (
+          <button key={t.id} role="tab" aria-selected={on} onClick={() => onChange(t.id)} className={clsx("whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500", on ? "bg-white text-brand-700 shadow-sm ring-1 ring-slate-200" : "text-slate-600 hover:bg-white/70 hover:text-slate-900")}>{tr(t.label)}</button>
+        );
+      })}
     </div>
+  );
+}
+
+/** Previous and next for a long list: "26–50 of 63". Shows nothing when everything fits on one page. */
+export function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
+  const t = useT();
+  if (total <= pageSize) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
+  const last = Math.ceil(total / pageSize);
+  return (
+    <nav className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600" aria-label="Pages">
+      <span>{from}–{to} {t("of")} {total}</span>
+      <span className="flex items-center gap-1.5">
+        <Button variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</Button>
+        <span className="px-1 text-xs text-slate-500">{page} / {last}</span>
+        <Button variant="secondary" disabled={page >= last} onClick={() => onPage(page + 1)}>Next</Button>
+      </span>
+    </nav>
   );
 }
 

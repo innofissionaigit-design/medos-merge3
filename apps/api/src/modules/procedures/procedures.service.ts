@@ -5,6 +5,7 @@ import { AuditService, actorOf } from "../../common/audit.service";
 import { admissionScope } from "../../common/data-scope";
 import { PrismaService, type Db } from "../../common/prisma.service";
 import type { RequestContext } from "../../common/request-context";
+import { endOfLocalDay, localDateStr, startOfLocalDay } from "../../common/time";
 import { fmt } from "../billing/billing.domain";
 import { chargeAmounts } from "../ipd/charges.service";
 
@@ -18,6 +19,11 @@ export const addItemSchema = z.object({ kind: z.enum(["IMPLANT", "CONSUMABLE"]),
   .refine((v) => v.kind !== "IMPLANT" || !!v.serialNo, { message: "An implant needs its serial or lot number", path: ["serialNo"] });
 export const removeItemSchema = z.object({ reason }).strict();
 export const cancelProcedureSchema = z.object({ reason }).strict();
+
+export const theatreBoardSchema = z.object({
+  view: z.enum(["OPEN", "TODAY", "DONE", "CANCELLED", "ALL"]).default("OPEN"),
+  page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25),
+}).strict();
 
 const KIND_LABEL = { IMPLANT: "Implant", CONSUMABLE: "Consumable" } as const;
 
@@ -77,6 +83,65 @@ export class ProceduresService {
       cancelReason: p.cancelReason, cancelledByName: p.cancelledById ? users.get(p.cancelledById) ?? null : null,
       items: p.items.map((i) => ({ id: i.id, kind: i.kind, name: i.name, quantity: i.quantity, serialNo: i.serialNo, amount: amount(i.chargeId), recordedAt: i.recordedAt, removed: !!i.removedAt, removeReason: i.removeReason })),
     }));
+  }
+
+  /**
+   * The operation theatre board: every procedure of the hospital in one list, not one admission at a time. "OPEN" is the coordinator's work (planned, or performed
+   * and not yet finalised), "TODAY" what is scheduled for today in hospital time. A doctor sees only their own patients' procedures, like everywhere else. Read only.
+   */
+  async board(ctx: RequestContext, q: z.infer<typeof theatreBoardSchema>) {
+    const facility = await this.prisma.facility.findFirst({ where: { id: ctx.facilityId, tenantId: ctx.tenantId }, select: { timezone: true } });
+    const tz = facility?.timezone ?? "Asia/Kolkata";
+    const now = new Date();
+    const today = localDateStr(now, tz);
+    const dayStart = startOfLocalDay(today, tz);
+    const dayEnd = endOfLocalDay(today, tz);
+    const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
+    const base = { tenantId: ctx.tenantId, facilityId: ctx.facilityId, admission: admissionScope(ctx) };
+    const byView = {
+      OPEN: { status: { in: ["PLANNED", "PERFORMED"] as ("PLANNED" | "PERFORMED")[] } },
+      TODAY: { scheduledAt: { gte: dayStart, lt: dayEnd }, status: { not: "CANCELLED" as const } },
+      DONE: { status: "FINALISED" as const },
+      CANCELLED: { status: "CANCELLED" as const },
+      ALL: {},
+    }[q.view];
+    const where = { ...base, ...byView };
+    const [total, planned, performed, todayCount, finalisedWeek, rows] = await Promise.all([
+      this.prisma.procedure.count({ where }),
+      this.prisma.procedure.count({ where: { ...base, status: "PLANNED" } }),
+      this.prisma.procedure.count({ where: { ...base, status: "PERFORMED" } }),
+      this.prisma.procedure.count({ where: { ...base, scheduledAt: { gte: dayStart, lt: dayEnd }, status: { not: "CANCELLED" } } }),
+      this.prisma.procedure.count({ where: { ...base, status: "FINALISED", finalisedAt: { gte: weekAgo } } }),
+      this.prisma.procedure.findMany({
+        where, skip: (q.page - 1) * q.pageSize, take: q.pageSize,
+        orderBy: q.view === "DONE" ? [{ finalisedAt: "desc" }] : q.view === "CANCELLED" ? [{ cancelledAt: "desc" }] : [{ scheduledAt: { sort: "asc", nulls: "last" } }, { plannedAt: "asc" }],
+        select: { id: true, name: true, status: true, scheduledAt: true, surgeonId: true, notes: true, performedAt: true, finalisedAt: true, cancelledAt: true, cancelReason: true, admissionId: true, patientId: true, items: { where: { removedAt: null }, select: { id: true } } },
+      }),
+    ]);
+    const admissionIds = [...new Set(rows.map((r) => r.admissionId))];
+    const patientIds = [...new Set(rows.map((r) => r.patientId))];
+    const surgeonIds = [...new Set(rows.map((r) => r.surgeonId).filter((x): x is string => !!x))];
+    const [admissions, beds, people, surgeons] = await Promise.all([
+      admissionIds.length ? this.prisma.admission.findMany({ where: { tenantId: ctx.tenantId, id: { in: admissionIds } }, select: { id: true, admissionNumber: true, status: true } }) : [],
+      admissionIds.length ? this.prisma.bedAssignment.findMany({ where: { tenantId: ctx.tenantId, admissionId: { in: admissionIds }, releasedAt: null }, select: { admissionId: true, bed: { select: { code: true, ward: { select: { name: true } } } } } }) : [],
+      patientIds.length ? this.prisma.patient.findMany({ where: { tenantId: ctx.tenantId, id: { in: patientIds } }, select: { id: true, firstName: true, lastName: true, identifiers: { where: { type: "MRN" }, select: { value: true } } } }) : [],
+      surgeonIds.length ? this.prisma.practitioner.findMany({ where: { tenantId: ctx.tenantId, id: { in: surgeonIds } }, select: { id: true, displayName: true } }) : [],
+    ]);
+    const adm = new Map(admissions.map((a) => [a.id, a]));
+    const bed = new Map(beds.map((b) => [b.admissionId, b.bed]));
+    const person = new Map(people.map((p) => [p.id, { id: p.id, name: [p.firstName, p.lastName].filter(Boolean).join(" "), mrn: p.identifiers[0]?.value ?? null }]));
+    const surgeon = new Map(surgeons.map((s) => [s.id, s.displayName]));
+    return {
+      summary: { planned, performed, today: todayCount, finalisedWeek },
+      total,
+      rows: rows.map((r) => ({
+        id: r.id, name: r.name, status: r.status, scheduledAt: r.scheduledAt, overdue: r.status === "PLANNED" && r.scheduledAt !== null && r.scheduledAt < now,
+        surgeonName: r.surgeonId ? surgeon.get(r.surgeonId) ?? null : null, notes: r.notes, items: r.items.length,
+        performedAt: r.performedAt, finalisedAt: r.finalisedAt, cancelledAt: r.cancelledAt, cancelReason: r.cancelReason,
+        patient: person.get(r.patientId) ?? { id: r.patientId, name: "Unknown", mrn: null },
+        admission: { id: r.admissionId, number: adm.get(r.admissionId)?.admissionNumber ?? null, open: adm.get(r.admissionId)?.status === "ADMITTED", bed: bed.get(r.admissionId)?.code ?? null, ward: bed.get(r.admissionId)?.ward.name ?? null },
+      })),
+    };
   }
 
   // ───── plan, perform ─────

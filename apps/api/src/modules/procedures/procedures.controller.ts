@@ -1,13 +1,20 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from "@nestjs/common";
 import { Feature } from "../../common/feature.guard";
 import { Ctx, id, parse, RequirePermissions } from "../../common/http";
 import type { RequestContext } from "../../common/request-context";
-import { addItemSchema, cancelProcedureSchema, performProcedureSchema, planProcedureSchema, ProceduresService, removeItemSchema } from "./procedures.service";
+import { addItemSchema, cancelProcedureSchema, performProcedureSchema, planProcedureSchema, ProceduresService, removeItemSchema, theatreBoardSchema } from "./procedures.service";
 
 @Feature("IPD_ENABLED")
 @Controller()
 export class ProceduresController {
   constructor(private readonly procedures: ProceduresService) {}
+
+  /** The operation theatre board: all procedures in one list (the doctor sees only their own patients'). Read only. */
+  @RequirePermissions("THEATRE_READ")
+  @Get("procedures")
+  async board(@Ctx() ctx: RequestContext, @Query() query: unknown) {
+    return { data: await this.procedures.board(ctx, parse(theatreBoardSchema, query)) };
+  }
 
   @RequirePermissions("PROCEDURE_READ")
   @Get("admissions/:id/procedures")

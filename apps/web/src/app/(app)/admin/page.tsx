@@ -17,11 +17,13 @@ import { PrescriptionUploadSettings } from "@/components/ocr-admin";
 import { RegistrationFeeSettings } from "@/components/registration-fee";
 import { Gate } from "@/components/gate";
 import { EmailAdmin } from "@/components/email-admin";
-import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, Select, Spinner, StatusBadge, Table, Tabs, Td } from "@/components/ui";
+import { PatientAppAdmin } from "@/components/patient-app-admin";
+import { SectionNav } from "@/components/section-nav";
+import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, Select, Spinner, StatusBadge, Table, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/me";
 
-type Tab = "users" | "prices" | "wards" | "doctors" | "settings" | "privacy" | "import" | "integrations" | "earnings" | "abdm" | "ai" | "email";
+type Tab = "users" | "prices" | "wards" | "doctors" | "settings" | "privacy" | "import" | "integrations" | "earnings" | "abdm" | "ai" | "email" | "patientapp";
 
 interface User { id: string; username: string; fullName: string; status: string; locked?: boolean; roles: { id: string; name: string }[]; departments?: { id: string; name: string }[] }
 interface Role { id: string; name: string }
@@ -186,21 +188,32 @@ function Settings() {
   );
 }
 
+/** The sections of Administration, grouped by what the administrator is doing. */
+const GROUPS: { title: string; ids: Tab[] }[] = [
+  { title: "People and access", ids: ["users", "patientapp", "privacy"] },
+  { title: "Hospital setup", ids: ["prices", "wards", "doctors", "earnings", "settings"] },
+  { title: "Connections and data", ids: ["import", "integrations", "abdm", "ai", "email"] },
+];
+
 export default function AdminPage() {
   const { can } = useMe();
   const tabs: { id: Tab; label: string; perm: string }[] = [
     { id: "users", label: "Staff", perm: "ADMIN_USERS" }, { id: "prices", label: "Price list", perm: "ADMIN_MASTERS" }, { id: "wards", label: "Wards and beds", perm: "ADMIN_MASTERS" },
     { id: "doctors", label: "Doctors and departments", perm: "ADMIN_MASTERS" }, { id: "settings", label: "Settings", perm: "ADMIN_SETTINGS" },
     { id: "privacy", label: "Privacy", perm: "PRIVACY_MANAGE" }, { id: "import", label: "Data import", perm: "DATA_IMPORT" }, { id: "integrations", label: "Integrations", perm: "ADMIN_INTEGRATIONS" },
-    { id: "earnings", label: "Earnings split", perm: "EARNINGS_CONFIGURE" }, { id: "abdm", label: "ABDM", perm: "ADMIN_SETTINGS" }, { id: "ai", label: "AI assistant", perm: "AI_CONFIGURE" }, { id: "email", label: "Email", perm: "EMAIL_MANAGE" },
+    { id: "earnings", label: "Earnings split", perm: "EARNINGS_CONFIGURE" }, { id: "abdm", label: "ABDM", perm: "ADMIN_SETTINGS" }, { id: "ai", label: "AI assistant", perm: "AI_CONFIGURE" }, { id: "email", label: "Email", perm: "EMAIL_MANAGE" }, { id: "patientapp", label: "Patient app", perm: "ADMIN_USERS" },
   ];
   const allowed = tabs.filter((t) => can(t.perm));
   const [tab, setTab] = useState<Tab>(allowed[0]?.id ?? "users");
   return (
     <Gate anyOf={["ADMIN_USERS", "ADMIN_MASTERS", "ADMIN_SETTINGS", "PRIVACY_MANAGE", "DATA_IMPORT", "ADMIN_INTEGRATIONS", "EARNINGS_CONFIGURE", "AI_CONFIGURE", "EMAIL_MANAGE"]}>
       <PageHeader title="Administration" />
-      <Tabs tabs={allowed} value={tab} onChange={setTab} />
-      {tab === "users" && <Users />}{tab === "prices" && <PriceList />}{tab === "wards" && <Wards />}{tab === "doctors" && <Doctors />}{tab === "settings" && <Settings />}{tab === "privacy" && <PrivacyRequests />}{tab === "import" && <DataImport />}{tab === "integrations" && <IntegrationsAdmin />}{tab === "earnings" && <EarningsAdmin />}{tab === "abdm" && <AbdmAdmin />}{tab === "ai" && <AiAdmin />}{tab === "email" && <EmailAdmin />}
+      <div className="grid gap-4 lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:items-start">
+        <SectionNav groups={GROUPS.map((g) => ({ title: g.title, items: g.ids.flatMap((id) => allowed.filter((t) => t.id === id)) }))} value={tab} onChange={setTab} />
+        <div className="min-w-0">
+      {tab === "users" && <Users />}{tab === "prices" && <PriceList />}{tab === "wards" && <Wards />}{tab === "doctors" && <Doctors />}{tab === "settings" && <Settings />}{tab === "privacy" && <PrivacyRequests />}{tab === "import" && <DataImport />}{tab === "integrations" && <IntegrationsAdmin />}{tab === "earnings" && <EarningsAdmin />}{tab === "abdm" && <AbdmAdmin />}{tab === "ai" && <AiAdmin />}{tab === "email" && <EmailAdmin />}{tab === "patientapp" && <PatientAppAdmin />}
+        </div>
+      </div>
     </Gate>
   );
 }

@@ -11,6 +11,7 @@ This is a deliberately small record, not a theatre management system: it has no 
 | Doctor, RMO | plan a procedure; cancel a planned one | `PROCEDURE_PLAN` |
 | **OT / procedure coordinator** (`OT_COORDINATOR`) | mark a procedure performed, record and remove implants and consumables, finalise | `PROCEDURE_MANAGE` (also holds `PROCEDURE_PLAN`, `PROCEDURE_READ`) |
 | Nurse, doctor, RMO, coordinator | see the procedures of an admission | `PROCEDURE_READ` |
+| Administrator, manager, RMO, coordinator | see the **operation theatre board** (all procedures in one list, and the theatre rooms), read only | `THEATRE_READ` |
 
 A doctor sees only their own patients' procedures (the usual data scope); the RMO and the coordinator see the whole ward.
 
@@ -23,6 +24,14 @@ A doctor sees only their own patients' procedures (the usual data scope); the RM
 
 `GET /admissions/:id/procedures` lists them with their items, amounts and who did each step.
 
+## The operation theatre board
+**Operation theatre** in the menu (`/theatre`, permission `THEATRE_READ`, read only) shows every procedure of the hospital in one list instead of one admission at a time.
+- Four counts: **Planned** (not yet performed), **To finalise** (performed, record still open), **Today** (scheduled for today in hospital time) and **Finalised** in the last 7 days.
+- **Theatre rooms**: each bed of the operation-theatre ward (code `OT`) as a tile: free, in use, cleaning, held or under repair.
+- A list with the tabs **To do** (planned, or performed and not finalised; the coordinator's work), **Today**, **Finalised**, **Cancelled** and **All**. Each row shows the time (and *late* when a planned time has passed), the procedure, its status, the patient, the surgeon, the bed and the admission number, with a link to the admission where the coordinator performs and finalises. The list is paged.
+- `GET /procedures?view=OPEN|TODAY|DONE|CANCELLED|ALL&page=&pageSize=` returns the counts, the total and the rows. It is limited like everything else to the signed-in hospital and facility, and a clinician who holds the permission sees only their own patients' procedures (the doctor role does not hold it). It never changes anything: performing, recording items, finalising and cancelling stay on the admission and keep their own permissions.
+- The OT / procedure coordinator's menu now starts at this page.
+
 ## Rules
 - Charges are posted to the admission only while it is current and its **final bill has not been issued**; after that the record takes no changes. An item already on a bill cannot be removed here: billing raises a credit note.
 - Two people performing or finalising the same procedure at the same moment cannot both succeed (the row is locked); the charge is posted once.
@@ -34,4 +43,4 @@ A doctor sees only their own patients' procedures (the usual data scope); the RM
 Tables `Procedure` and `ProcedureItem` (migration `20261109190000_procedures`), the new `OT_PROCEDURE` discharge step, the `OT_COORDINATOR` role and the three permissions. The demo seed adds the user `otcoord1`, three procedures, two implants and two consumables to the price list.
 
 ## Not built (backlog)
-Theatre bookings and a theatre calendar, anaesthesia record, operation notes and consent, instrument and swab counts, drawing implants and consumables from the **OT stock location** (today they are billed from the price list), implant stickers and registers, and a surgeon's share of the procedure fee.
+Theatre bookings and a day-by-room calendar (the board lists procedures and shows which rooms are free, but does not book a room or a time slot), anaesthesia record, operation notes and consent, instrument and swab counts, drawing implants and consumables from the **OT stock location** (today they are billed from the price list), implant stickers and registers, and a surgeon's share of the procedure fee.

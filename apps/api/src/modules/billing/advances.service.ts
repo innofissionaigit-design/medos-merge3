@@ -211,6 +211,13 @@ export class AdvancesService {
 
   // ───── internals ─────
 
+  /** What is left to give back of each advance (received, minus what paid bills, plus what came back, minus what was refunded), by advance id. */
+  async balances(ctx: RequestContext, ids: string[]): Promise<Map<string, Decimal>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.rows(this.prisma, ctx, ids);
+    return new Map(rows.map((r) => [r.id, balanceOf(r)]));
+  }
+
   private async rows(db: Db, ctx: RequestContext, ids: string[]): Promise<DepositRow[]> {
     const [deps, uses, returns, refunds] = await Promise.all([
       db.advanceDeposit.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, amount: true } }),

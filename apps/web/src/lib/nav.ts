@@ -42,6 +42,7 @@ export const NAV: NavItem[] = [
   { href: "/ipd", label: "Admissions", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/discharge-board", label: "Going home", anyOf: ["ADMISSION_READ"], hideWith: ["ICU_DOCTOR", "ICU_NURSE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/nursing", label: "Nursing", anyOf: ["NURSING_READ"], hideWith: ["ICU_DOCTOR"], feature: "NURSING_ENABLED", desk: "IPD" },
+  { href: "/theatre", label: "Operation theatre", anyOf: ["THEATRE_READ"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/housekeeping", label: "Housekeeping", anyOf: ["BED_HOUSEKEEPING", "HOUSEKEEPING_REQUEST", "HOUSEKEEPING_MANAGE"], feature: "IPD_ENABLED", desk: "IPD" },
   { href: "/aftercare", label: "After discharge", anyOf: ["AFTERCARE_MANAGE", "COMPLAINT_READ", "COMPLAINT_MANAGE"], desk: "IPD" },
   { href: "/post-discharge", label: "Post-discharge", anyOf: ["MRD_RECORD_COMPLETE", "CLAIM_READ", "REPORT_FINANCE", "MRD_RETENTION"], feature: "IPD_ENABLED", desk: "IPD" },
@@ -67,7 +68,7 @@ const ROLE_ORDER: Record<string, string[]> = {
   PAYROLL_OFFICER: ["/payroll", "/patients", "/dashboard"],
   CLAIMS_OFFICER: ["/claims", "/planned", "/billing", "/ipd", "/patients", "/dashboard"],
   RMO: ["/ipd", "/patients", "/nursing", "/dashboard"],
-  OT_COORDINATOR: ["/ipd", "/patients", "/dashboard"],
+  OT_COORDINATOR: ["/theatre", "/ipd", "/patients", "/dashboard"],
   PATIENT_TRANSPORT: ["/ipd", "/dashboard"],
   HOUSEKEEPING: ["/housekeeping", "/dashboard"],
   CARE_COORDINATOR: ["/aftercare", "/patients", "/appointments", "/dashboard"],
@@ -103,7 +104,7 @@ export const NAV_SECTION: Record<string, string> = {
   "/dashboard": "Overview", "/overview": "Overview",
   "/patients": "Front desk and OPD", "/appointments": "Front desk and OPD", "/queue": "Front desk and OPD", "/teleconsult": "Front desk and OPD",
   "/emergency": "Emergency and critical care", "/icu": "Emergency and critical care",
-  "/planned": "Inpatient", "/ipd": "Inpatient", "/rounds": "Inpatient", "/wards": "Inpatient", "/nursing": "Inpatient", "/discharge-board": "Inpatient", "/housekeeping": "Inpatient", "/aftercare": "Inpatient", "/post-discharge": "Inpatient",
+  "/planned": "Inpatient", "/ipd": "Inpatient", "/rounds": "Inpatient", "/wards": "Inpatient", "/nursing": "Inpatient", "/discharge-board": "Inpatient", "/housekeeping": "Inpatient", "/theatre": "Inpatient", "/aftercare": "Inpatient", "/post-discharge": "Inpatient",
   "/lims": "Laboratory", "/lis": "Laboratory",
   "/billing": "Billing and insurance", "/missed-billing": "Billing and insurance", "/claims": "Billing and insurance", "/insurance-money": "Billing and insurance", "/estimate": "Billing and insurance", "/payroll": "Billing and insurance",
   "/pharmacy": "Pharmacy and stores", "/procurement": "Pharmacy and stores",
@@ -116,7 +117,7 @@ export const GROUP_NAV_ABOVE = 7;
 export const NAV_ICON: Record<string, string> = {
   "/dashboard": "grid", "/overview": "pulse", "/patients": "user", "/appointments": "calendar", "/queue": "hourglass", "/teleconsult": "userPlus",
   "/emergency": "siren", "/icu": "pulse", "/planned": "calendarPlus", "/ipd": "bed", "/rounds": "clipboard", "/wards": "hospital", "/nursing": "handover", "/discharge-board": "check",
-  "/housekeeping": "list", "/aftercare": "bell", "/post-discharge": "clipboard", "/lims": "flask", "/lis": "tube", "/billing": "receipt", "/missed-billing": "alarm", "/claims": "clipboard",
+  "/housekeeping": "list", "/theatre": "hospital", "/aftercare": "bell", "/post-discharge": "clipboard", "/lims": "flask", "/lis": "tube", "/billing": "receipt", "/missed-billing": "alarm", "/claims": "clipboard",
   "/insurance-money": "percent", "/estimate": "receipt", "/payroll": "receipt", "/pharmacy": "plus", "/procurement": "download", "/reports": "list", "/admin": "filter", "/audit": "search",
 };
 

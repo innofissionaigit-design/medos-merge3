@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, newKey } from "@/lib/api";
 import { ageText, type AgeValue } from "@/lib/format";
@@ -98,37 +98,56 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
   const newOk = (nameUnknown || p.firstName.trim().length > 0) && p.age !== "" && Number(p.age) >= 0 && Number(p.age) <= 130;
   const ready = (picked || created.current || (isNew && newOk)) && doctor && complaint.trim().length >= 3;
 
+  const freeBeds = wardBeds.data?.ER.filter((b) => b.free) ?? [];
   return (
     <Modal title="Register an emergency arrival" onClose={onClose} wide>
-      <div className="space-y-4">
-        {!isNew ? (
-          <div className="space-y-2">
-            <Field label="Patient" as="div"><PatientPicker value={picked} onPick={setPicked} autoFocus /></Field>
-            {!picked && <p className="text-sm text-slate-600">Not in the system? <button type="button" className="font-medium text-brand-700 hover:underline" onClick={() => setIsNew(true)}>Register a new patient quickly</button></p>}
-          </div>
-        ) : (
-          <div className="space-y-2 rounded-md border border-slate-200 p-3">
-            <div className="flex items-center justify-between"><p className="text-sm font-medium">New patient</p><button type="button" className="text-xs text-brand-700 hover:underline" onClick={() => { setIsNew(false); submit.reset(); }}>Search for an existing patient instead</button></div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={nameUnknown} onChange={(e) => setNameUnknown(e.target.checked)} /> The name is not known (unconscious, or nobody is with the patient). Fix it later on the patient record.</label>
-            <div className="grid gap-2 sm:grid-cols-4">
-              {!nameUnknown && <><Field label="First name"><Input value={p.firstName} onChange={(e) => setP({ ...p, firstName: e.target.value })} autoFocus /></Field><Field label="Last name"><Input value={p.lastName} onChange={(e) => setP({ ...p, lastName: e.target.value })} /></Field></>}
-              <Field label="Sex"><Select value={p.gender} onChange={(e) => setP({ ...p, gender: e.target.value })}><option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option><option value="UNKNOWN">Not known</option></Select></Field>
-              <Field label="Age (years, approximate)"><Input inputMode="numeric" value={p.age} onChange={(e) => setP({ ...p, age: e.target.value.replace(/\D/g, "").slice(0, 3) })} /></Field>
-              <Field label="Mobile (optional)"><Input inputMode="tel" value={p.mobile} onChange={(e) => setP({ ...p, mobile: e.target.value })} /></Field>
-              <Field label="Relative's name (optional)"><Input value={p.relativeName} onChange={(e) => setP({ ...p, relativeName: e.target.value })} /></Field>
-              <Field label="Relative's mobile (optional)"><Input inputMode="tel" value={p.relativeMobile} onChange={(e) => setP({ ...p, relativeMobile: e.target.value })} /></Field>
+      <div className="space-y-5">
+        <ArrivalSection step={1} title="Who is the patient?">
+          {!isNew ? (
+            <div className="space-y-2">
+              <Field label="Patient" as="div"><PatientPicker value={picked} onPick={setPicked} autoFocus /></Field>
+              {!picked && <p className="text-sm text-slate-600">Not in the system? <button type="button" className="font-medium text-brand-700 hover:underline" onClick={() => setIsNew(true)}>Register a new patient quickly</button></p>}
             </div>
+          ) : (
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              <div className="flex items-center justify-between"><p className="text-sm font-medium text-slate-800">New patient</p><button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => { setIsNew(false); submit.reset(); }}>Search for an existing patient instead</button></div>
+              <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" className="mt-0.5" checked={nameUnknown} onChange={(e) => setNameUnknown(e.target.checked)} /> <span>The name is not known (unconscious, or nobody is with the patient). Fix it later on the patient record.</span></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {!nameUnknown && <><Field label="First name"><Input value={p.firstName} onChange={(e) => setP({ ...p, firstName: e.target.value })} autoFocus /></Field><Field label="Last name"><Input value={p.lastName} onChange={(e) => setP({ ...p, lastName: e.target.value })} /></Field></>}
+                <Field label="Sex"><Select value={p.gender} onChange={(e) => setP({ ...p, gender: e.target.value })}><option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option><option value="UNKNOWN">Not known</option></Select></Field>
+                <Field label="Age (years, approximate)"><Input inputMode="numeric" value={p.age} onChange={(e) => setP({ ...p, age: e.target.value.replace(/\D/g, "").slice(0, 3) })} /></Field>
+                <Field label="Mobile (optional)"><Input inputMode="tel" value={p.mobile} onChange={(e) => setP({ ...p, mobile: e.target.value })} /></Field>
+                <Field label="Relative's name (optional)"><Input value={p.relativeName} onChange={(e) => setP({ ...p, relativeName: e.target.value })} /></Field>
+                <Field label="Relative's mobile (optional)"><Input inputMode="tel" value={p.relativeMobile} onChange={(e) => setP({ ...p, relativeMobile: e.target.value })} /></Field>
+              </div>
+            </div>
+          )}
+        </ArrivalSection>
+
+        <ArrivalSection step={2} title="What happened?">
+          <div className="space-y-3">
+            <Field label="What is wrong? (chief complaint)"><Textarea rows={2} value={complaint} onChange={(e) => setComplaint(e.target.value)} placeholder="For example: road accident, bleeding from the head" /></Field>
+            <div>
+              <span className="mb-1 block text-sm font-medium text-slate-700">How did the patient come?</span>
+              <div role="radiogroup" aria-label="How did the patient come?" className="flex flex-wrap gap-1.5">
+                {ARRIVAL.map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={mode === v} onClick={() => setMode(v)} className={`rounded-full border px-3 py-1 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${mode === v ? "border-brand-600 bg-brand-50 font-medium text-brand-700" : "border-slate-300 bg-white text-slate-600 hover:border-slate-400"}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <Field label="Brought by (optional)"><Input value={broughtBy} onChange={(e) => setBroughtBy(e.target.value)} placeholder="Name or relation" /></Field>
           </div>
-        )}
-        <Field label="What is wrong? (chief complaint)"><Textarea rows={2} value={complaint} onChange={(e) => setComplaint(e.target.value)} placeholder="For example: road accident, bleeding from the head" /></Field>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Field label="Doctor to call"><Select value={doctor} onChange={(e) => setDoctorId(e.target.value)}>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.name}{d.department ? ` — ${d.department}` : ""} ({d.activeCases} now)</option>)}</Select></Field>
-          <Field label="How did the patient come?"><Select value={mode} onChange={(e) => setMode(e.target.value)}>{ARRIVAL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
-          <Field label="Brought by (optional)"><Input value={broughtBy} onChange={(e) => setBroughtBy(e.target.value)} placeholder="Name or relation" /></Field>
-          <Field label="Emergency bed"><Select aria-label="Emergency bed" value={bedId} onChange={(e) => setBedId(e.target.value)}><option value="">First free bed ({wardBeds.data?.ER.filter((b) => b.free).length ?? 0} free)</option>{wardBeds.data?.ER.filter((b) => b.free).map((b) => <option key={b.id} value={b.id}>{b.code}</option>)}</Select></Field>
-        </div>
+        </ArrivalSection>
+
+        <ArrivalSection step={3} title="Who sees the patient, and where?">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Doctor to call"><Select value={doctor} onChange={(e) => setDoctorId(e.target.value)}>{docs.data?.map((d) => <option key={d.id} value={d.id}>{d.name}{d.department ? ` — ${d.department}` : ""} ({d.activeCases} now)</option>)}</Select></Field>
+            <Field label="Emergency bed"><Select aria-label="Emergency bed" value={bedId} onChange={(e) => setBedId(e.target.value)}><option value="">First free bed ({freeBeds.length} free)</option>{freeBeds.map((b) => <option key={b.id} value={b.id}>{b.code}</option>)}</Select></Field>
+          </div>
+        </ArrivalSection>
+
         {duplicates ? (
-          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
             <p className="font-medium text-amber-900">A patient like this is already registered. Is it the same person?</p>
             <ul className="space-y-1">{duplicates.map((d) => (
               <li key={d.patient.id} className="flex flex-wrap items-center justify-between gap-2"><span>{[d.patient.firstName, d.patient.lastName].filter(Boolean).join(" ")} · {d.patient.mrn} · {d.patient.gender.toLowerCase()}{d.patient.mobile ? ` · ${d.patient.mobile}` : ""}</span>
@@ -137,10 +156,23 @@ export function RegisterArrival({ onClose }: { onClose: () => void }) {
             <Button variant="ghost" loading={submit.isPending} onClick={() => submit.mutate("Emergency: confirmed a different person")}>A different person: register as new</Button>
           </div>
         ) : <ErrorNote error={submit.error} />}
-        <p className="text-xs text-slate-500">The doctor and every emergency nurse are alerted at once, and the emergency bill is opened for the patient.</p>
-        <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!ready} loading={submit.isPending} onClick={() => submit.mutate(undefined)}>Register and call the doctor</Button></div>
+
+        <div className="-mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+          <p className="max-w-sm text-xs text-slate-500">The doctor and every emergency nurse are alerted at once, and the emergency bill is opened for the patient.</p>
+          <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!ready} loading={submit.isPending} onClick={() => submit.mutate(undefined)}>Register and call the doctor</Button></div>
+        </div>
       </div>
     </Modal>
+  );
+}
+
+/** One numbered block of the arrival form, so the desk reads it top to bottom: who, what happened, who sees them. */
+function ArrivalSection({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex gap-3">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white" aria-hidden>{step}</span>
+      <div className="min-w-0 flex-1 space-y-2"><h3 className="text-sm font-semibold text-slate-900">{title}</h3>{children}</div>
+    </section>
   );
 }
 
