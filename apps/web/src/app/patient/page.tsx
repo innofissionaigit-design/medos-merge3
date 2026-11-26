@@ -37,49 +37,92 @@ const field = "min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3.
 
 const GENDERS = [["MALE", "Male"], ["FEMALE", "Female"], ["OTHER", "Other"]] as const;
 
+const NAME = /^\p{L}[\p{L}\p{M} .'’-]*$/u;
+const USERNAME = /^[a-z0-9][a-z0-9._@+-]{3,63}$/;
+/** Today in the phone's own time zone, and the earliest birth date accepted (120 years ago). */
+const localDay = (yearsAgo = 0) => { const d = new Date(); return `${d.getFullYear() - yearsAgo}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const mobileDigits = (v: string) => { const d = v.replace(/\D/g, ""); return d.length === 12 && d.startsWith("91") ? d.slice(2) : d.length === 11 && d.startsWith("0") ? d.slice(1) : d; };
+
+function Row({ label, error, hint, children }: { label: string; error?: string | undefined; hint?: string; children: ReactNode }) {
+  return (
+    <label className="block text-sm font-medium text-slate-700">{label}
+      <div className="mt-1.5">{children}</div>
+      {error ? <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{error}</span> : hint ? <span className="mt-1 block text-xs font-normal text-slate-500">{hint}</span> : null}
+    </label>
+  );
+}
+const Part = ({ title, children }: { title: string; children: ReactNode }) => <fieldset className="space-y-4"><legend className="mb-3 w-full border-b border-slate-200 pb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</legend>{children}</fieldset>;
+
 /** A new patient registers from the app: details, a username and a password, and they are signed in. The hospital's front desk sees them as a new patient. */
 function Register({ hospital, setHospital, onDone }: { hospital: string; setHospital: (v: string) => void; onDone: () => void }) {
   const [f, setF] = useState({ firstName: "", lastName: "", gender: "" as "" | "MALE" | "FEMALE" | "OTHER", dateOfBirth: "", mobile: "", username: "", password: "", again: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const digits = f.mobile.replace(/\D/g, "").slice(-10);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [tried, setTried] = useState(false);
+  const [show, setShow] = useState(false);
+  const set = (k: keyof typeof f, v: string) => { setF((x) => ({ ...x, [k]: v })); setErr(null); };
+  const touch = (k: string) => () => setTouched((x) => ({ ...x, [k]: true }));
+  const digits = mobileDigits(f.mobile);
   const username = f.username.trim().toLowerCase();
-  const complete = hospital.trim().length >= 2 && f.firstName.trim() && f.lastName.trim() && f.gender && f.dateOfBirth && digits.length === 10 && username.length >= 4 && f.password.length >= 8;
+  const name = (v: string, which: string) => (!v.trim() ? `Enter your ${which} name` : !NAME.test(v.trim()) ? "Use letters only" : v.trim().length > 60 ? "Use 60 letters or fewer" : undefined);
+  const checks = [["At least 8 characters", f.password.length >= 8], ["A letter", /[A-Za-z]/.test(f.password)], ["A number", /\d/.test(f.password)]] as const;
+  const errors: Record<string, string | undefined> = {
+    hospital: hospital.trim().length < 2 ? "Enter your hospital's code" : undefined,
+    firstName: name(f.firstName, "first"),
+    lastName: name(f.lastName, "last"),
+    gender: f.gender ? undefined : "Choose your gender",
+    dateOfBirth: !f.dateOfBirth ? "Enter your date of birth" : f.dateOfBirth > localDay() ? "Date of birth cannot be in the future" : f.dateOfBirth < localDay(120) ? "Check the year of birth" : undefined,
+    mobile: !f.mobile.trim() ? "Enter your mobile number" : !/^[6-9]\d{9}$/.test(digits) ? "Enter a 10-digit mobile number starting with 6, 7, 8 or 9" : undefined,
+    username: !username ? "Choose a username" : !USERNAME.test(username) ? "4 or more letters, numbers or . _ @ + - (no spaces)" : undefined,
+    password: checks.every(([, ok]) => ok) ? undefined : "Choose a stronger password",
+    again: !f.again ? "Type the password again" : f.again !== f.password ? "The two passwords are not the same" : undefined,
+  };
+  const shown = (k: string) => (tried || touched[k] ? errors[k] : undefined);
+  const box = (k: string) => `${field} ${shown(k) ? "!border-red-500 !ring-red-100" : ""}`;
   const create = async () => {
+    setTried(true);
+    if (Object.values(errors).some(Boolean)) { setTimeout(() => document.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(), 0); return; }
     setBusy(true); setErr(null);
     try {
-      if (f.password !== f.again) throw new Error("The two passwords are not the same");
       await call("POST", "register", { hospitalCode: hospital.trim(), mobile: digits, firstName: f.firstName.trim(), lastName: f.lastName.trim(), gender: f.gender, dateOfBirth: f.dateOfBirth, username, password: f.password });
       try { localStorage.setItem("medos_patient_hospital", hospital.trim()); } catch { /* fine */ }
       onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong"); } finally { setBusy(false); }
   };
+  const input = (k: keyof typeof f | "hospital") => ({ className: box(k), "aria-invalid": !!shown(k), onBlur: touch(k) });
   return (
-    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (!busy && complete) void create(); }}>
-      <label className="block text-sm font-medium text-slate-700">Hospital code<input className={`${field} mt-1.5`} value={hospital} onChange={(e) => setHospital(e.target.value)} autoCapitalize="none" autoComplete="off" placeholder="e.g. your hospital's code" /></label>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm font-medium text-slate-700">First name<input className={`${field} mt-1.5`} autoComplete="given-name" value={f.firstName} onChange={(e) => set("firstName", e.target.value)} /></label>
-        <label className="block text-sm font-medium text-slate-700">Last name<input className={`${field} mt-1.5`} autoComplete="family-name" value={f.lastName} onChange={(e) => set("lastName", e.target.value)} /></label>
-      </div>
-      <div>
-        <div className="text-sm font-medium text-slate-700">Gender</div>
-        <div className="mt-1.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Gender">
-          {GENDERS.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={f.gender === k} onClick={() => set("gender", k)} className={`min-h-12 rounded-xl border text-sm font-medium ${f.gender === k ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-100" : "border-slate-300 bg-white text-slate-700"}`}>{l}</button>)}
+    <form noValidate className="space-y-6" onSubmit={(e) => { e.preventDefault(); if (!busy) void create(); }}>
+      <Part title="Your details">
+        <Row label="Hospital code" error={shown("hospital")}><input {...input("hospital")} value={hospital} onChange={(e) => { setHospital(e.target.value); setErr(null); }} autoCapitalize="none" autoComplete="off" placeholder="e.g. your hospital's code" /></Row>
+        <div className="grid grid-cols-2 items-start gap-3">
+          <Row label="First name" error={shown("firstName")}><input {...input("firstName")} autoComplete="given-name" maxLength={60} value={f.firstName} onChange={(e) => set("firstName", e.target.value)} /></Row>
+          <Row label="Last name" error={shown("lastName")}><input {...input("lastName")} autoComplete="family-name" maxLength={60} value={f.lastName} onChange={(e) => set("lastName", e.target.value)} /></Row>
         </div>
-      </div>
-      <label className="block text-sm font-medium text-slate-700">Date of birth<input className={`${field} mt-1.5`} type="date" max={new Date().toISOString().slice(0, 10)} value={f.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} /></label>
-      <label className="block text-sm font-medium text-slate-700">Mobile number
-        <div className="mt-1.5 flex"><span className="flex min-h-12 items-center rounded-l-xl border border-r-0 border-slate-300 bg-slate-50 px-3.5 text-base text-slate-500" aria-hidden>+91</span><input className={`${field} rounded-l-none`} inputMode="numeric" autoComplete="tel" value={f.mobile} onChange={(e) => set("mobile", e.target.value)} placeholder="10-digit number" /></div>
-      </label>
-      <label className="block text-sm font-medium text-slate-700">Choose a username<input className={`${field} mt-1.5`} autoCapitalize="none" autoCorrect="off" autoComplete="off" value={f.username} onChange={(e) => set("username", e.target.value)} placeholder="e.g. nani.rupesh" /></label>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm font-medium text-slate-700">Password<input className={`${field} mt-1.5`} type="password" autoComplete="new-password" value={f.password} onChange={(e) => set("password", e.target.value)} /></label>
-        <label className="block text-sm font-medium text-slate-700">Type it again<input className={`${field} mt-1.5`} type="password" autoComplete="new-password" value={f.again} onChange={(e) => set("again", e.target.value)} /></label>
-      </div>
-      <p className="text-xs text-slate-500">Username: 4 or more letters, numbers or . _ @ + - (an email address is fine). Password: at least 8 characters, with letters and a number.</p>
+        <div>
+          <div className="text-sm font-medium text-slate-700">Gender</div>
+          <div className="mt-1.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Gender">
+            {GENDERS.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={f.gender === k} aria-invalid={!!shown("gender")} onClick={() => set("gender", k)} className={`min-h-12 rounded-xl border text-sm font-medium focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${f.gender === k ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-100" : shown("gender") ? "border-red-500 bg-white text-slate-700" : "border-slate-300 bg-white text-slate-700"}`}>{l}</button>)}
+          </div>
+          {shown("gender") && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{shown("gender")}</span>}
+        </div>
+        <Row label="Date of birth" error={shown("dateOfBirth")}><input {...input("dateOfBirth")} type="date" min={localDay(120)} max={localDay()} value={f.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} /></Row>
+        <Row label="Mobile number" error={shown("mobile")}>
+          <div className="flex"><span className="flex min-h-12 items-center rounded-l-xl border border-r-0 border-slate-300 bg-slate-50 px-3.5 text-base text-slate-500" aria-hidden>+91</span><input {...input("mobile")} className={`${box("mobile")} rounded-l-none`} inputMode="numeric" autoComplete="tel-national" maxLength={14} value={f.mobile} onChange={(e) => set("mobile", e.target.value.replace(/[^\d +]/g, ""))} placeholder="10-digit number" /></div>
+        </Row>
+      </Part>
+      <Part title="Your sign-in">
+        <Row label="Choose a username" error={shown("username")} hint="4 or more letters, numbers or . _ @ + - (an email address is fine)"><input {...input("username")} autoCapitalize="none" autoCorrect="off" autoComplete="off" maxLength={64} value={f.username} onChange={(e) => set("username", e.target.value)} placeholder="e.g. nani.rupesh" /></Row>
+        <Row label="Password" error={shown("password")}><input {...input("password")} type={show ? "text" : "password"} autoComplete="new-password" maxLength={128} value={f.password} onChange={(e) => set("password", e.target.value)} /></Row>
+        <ul className="!mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Password rules">
+          {checks.map(([l, ok]) => <li key={l} className={ok ? "font-medium text-emerald-700" : "text-slate-500"}><span aria-hidden>{ok ? "✓ " : "○ "}</span>{l}</li>)}
+        </ul>
+        <Row label="Type it again" error={shown("again")}><input {...input("again")} type={show ? "text" : "password"} autoComplete="new-password" maxLength={128} value={f.again} onChange={(e) => set("again", e.target.value)} /></Row>
+        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" className="h-4 w-4" checked={show} onChange={(e) => setShow(e.target.checked)} />Show password</label>
+      </Part>
+      {tried && Object.values(errors).some(Boolean) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">Please correct the fields marked in red.</p>}
       {err && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{err}</p>}
-      <div className="[&>button]:w-full"><Btn disabled={busy || !complete} onClick={() => void create()}>{busy ? "Creating…" : "Sign up"}</Btn></div>
+      <div className="[&>button]:w-full"><Btn disabled={busy} onClick={() => void create()}>{busy ? "Creating…" : "Sign up"}</Btn></div>
       <p className="text-center text-xs text-slate-500">The hospital's front desk will see you as a new patient.</p>
     </form>
   );
@@ -263,6 +306,9 @@ function VideoJoin({ video, appointmentId, patientId, onJoined }: { video: NonNu
 
 const TIMES: [string, string][] = [["ANY", "Any time"], ["MORNING", "Morning"], ["AFTERNOON", "Afternoon"], ["EVENING", "Evening"]];
 const REASONS = ["Follow-up", "Fever", "Check-up", "Report review"];
+/** A day counted from today in the phone's own time zone, as yyyy-mm-dd. */
+const localDayPlus = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const chip = (on: boolean) => `rounded-full border px-3 py-1.5 text-xs font-medium transition ${on ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`;
 
 function Appointments({ patientId }: { patientId: string }) {
   const [appts, setAppts] = useState<{ upcoming: Appt[]; past: Appt[] } | null>(null);
@@ -281,16 +327,16 @@ function Appointments({ patientId }: { patientId: string }) {
   const mustPay = fee?.amount != null && fee.online && payOpts?.available === true;
   const submit = async () => { setBusy(true); setErr(null); setSentNote(false); try { await call("POST", "data/appointment-requests", { patientId, mode: form.mode, preferredDate: form.preferredDate, timeOfDay: form.timeOfDay, reason: form.reason.trim(), ...(form.practitionerId ? { practitionerId: form.practitionerId } : {}) }); setForm({ ...form, reason: "" }); setSentNote(true); load(); } catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong"); } finally { setBusy(false); } };
   const cancel = async (id: string) => { try { await call("POST", `data/appointment-requests/${id}/cancel`, {}); load(); } catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong"); } };
-  const min = new Date().toISOString().slice(0, 10);
+  const min = localDayPlus(0);
   const [next, ...later] = appts?.upcoming ?? [];
   return (
     <div className="space-y-4">
       <Card title="Coming up">
         {!appts ? <p className="text-sm text-slate-500">Loading…</p> : !next ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400" aria-hidden><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v3m10-3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" /></svg></span>
-            <p className="text-sm font-medium text-slate-800">No appointments booked</p>
-            <p className="max-w-xs text-xs text-slate-500">Ask for one below. The hospital will call or message you to confirm a time.</p>
+          <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700" aria-hidden>{svg(ICON.calendar)}</span>
+            <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">No appointments booked</p><p className="text-xs text-slate-500">Ask for one below. The hospital will confirm a time.</p></div>
+            <button type="button" onClick={() => document.getElementById("ask")?.scrollIntoView({ behavior: "smooth" })} className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-sm ring-1 ring-slate-200">Book</button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -311,14 +357,18 @@ function Appointments({ patientId }: { patientId: string }) {
         )}
       </Card>
 
+      <div id="ask" className="scroll-mt-20">
       <Card title="Ask for an appointment">
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div role="radiogroup" aria-label="Type of visit" className="grid grid-cols-2 gap-2">
-            {([["IN_PERSON", "Visit the hospital"], ["VIDEO", "Video consultation"]] as const).map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={form.mode === k} onClick={() => setForm({ ...form, mode: k })} className={`min-h-12 rounded-xl border px-2 text-sm font-medium ${form.mode === k ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-100" : "border-slate-300 bg-white text-slate-700"}`}>{l}</button>)}
+            {([["IN_PERSON", "Visit the hospital", "See the doctor in person", ICON.hospital], ["VIDEO", "Video consultation", "Talk from home", ICON.video]] as const).map(([k, l, sub, icon]) => <button key={k} type="button" role="radio" aria-label={l} aria-checked={form.mode === k} onClick={() => setForm({ ...form, mode: k })} className={`flex flex-col items-start gap-1 rounded-2xl border p-3 text-left transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${form.mode === k ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}><span className={`mb-1 flex h-9 w-9 items-center justify-center rounded-lg ${form.mode === k ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`} aria-hidden>{svg(icon)}</span><span className={`text-sm font-semibold ${form.mode === k ? "text-blue-800" : "text-slate-800"}`}>{l}</span><span className="text-xs text-slate-500">{sub}</span></button>)}
           </div>
           {form.mode === "VIDEO" && <p className="rounded-xl bg-violet-50 p-3 text-xs text-violet-900">{fee === null ? "Checking the fee…" : fee.amount ? (fee.online ? `A video consultation is paid for online: ₹${fee.amount}. You pay, then the request is sent.` : `The video consultation fee is ₹${fee.amount}. Pay at the hospital counter.`) : "There is no fee for a video consultation."}</p>}
           <label className="block text-sm font-medium text-slate-700">Doctor <span className="font-normal text-slate-400">(optional)</span><select className={`${field} mt-1.5`} value={form.practitionerId} onChange={(e) => setForm({ ...form, practitionerId: e.target.value })}><option value="">Any doctor</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.name}{d.specialty ? ` · ${d.specialty}` : ""}</option>)}</select></label>
-          <label className="block text-sm font-medium text-slate-700">Preferred day<input type="date" min={min} className={`${field} mt-1.5`} value={form.preferredDate} onChange={(e) => setForm({ ...form, preferredDate: e.target.value })} /></label>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Preferred day<input type="date" min={min} className={`${field} mt-1.5`} value={form.preferredDate} onChange={(e) => setForm({ ...form, preferredDate: e.target.value })} /></label>
+            <div className="mt-2 flex gap-1.5">{([["Today", 0], ["Tomorrow", 1], ["In a week", 7]] as const).map(([l, n]) => <button key={l} type="button" aria-pressed={form.preferredDate === localDayPlus(n)} onClick={() => setForm({ ...form, preferredDate: localDayPlus(n) })} className={chip(form.preferredDate === localDayPlus(n))}>{l}</button>)}</div>
+          </div>
           <div>
             <span className="block text-sm font-medium text-slate-700">Time of day</span>
             <div className="mt-1.5 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Time of day">
@@ -326,8 +376,8 @@ function Appointments({ patientId }: { patientId: string }) {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Reason<input className={`${field} mt-1.5`} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="For example: follow-up for fever" /></label>
-            <div className="mt-2 flex flex-wrap gap-1.5">{REASONS.map((r) => <button key={r} type="button" onClick={() => setForm({ ...form, reason: r })} className={`rounded-full border px-3 py-1 text-xs ${form.reason === r ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}>{r}</button>)}</div>
+            <label className="block text-sm font-medium text-slate-700">Reason<textarea rows={2} maxLength={300} className={`${field} mt-1.5 resize-none py-3`} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="For example: follow-up for fever" /></label>
+            <div className="mt-2 flex flex-wrap gap-1.5">{REASONS.map((r) => <button key={r} type="button" onClick={() => setForm({ ...form, reason: r })} className={chip(form.reason === r)}>{r}</button>)}</div>
           </div>
           {err && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{err}</p>}
           {sentNote && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Your request was sent. The hospital will call or message you to confirm a time.</p>}
@@ -336,9 +386,10 @@ function Appointments({ patientId }: { patientId: string }) {
           ) : (
             <div className="[&>button]:w-full"><Btn disabled={busy || !form.preferredDate || form.reason.trim().length < 3} onClick={() => (mustPay ? setPaying(true) : void submit())}>{busy ? "Sending…" : mustPay ? `Pay ₹${fee!.amount} and send ${form.mode === "VIDEO" ? "video request" : "request"}` : "Send request"}</Btn></div>
           )}
-          <p className="text-center text-xs text-slate-500">This is a request, not a booking yet.</p>
+          <p className="text-center text-xs text-slate-500">{!form.preferredDate ? "Choose a day to continue." : form.reason.trim().length < 3 ? "Write a short reason to continue." : "This is a request, not a booking yet."}</p>
         </div>
       </Card>
+      </div>
 
       {reqs.length > 0 && (
         <Card title="Your requests">
@@ -367,7 +418,7 @@ function Empty({ icon, title, text }: { icon: ReactNode; title: string; text: st
   );
 }
 const svg = (d: string) => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
-const ICON = { pill: "M10.500 20.500a4.950 4.950 0 0 1-7-7l10-10a4.950 4.950 0 0 1 7 7zM8.500 8.500l7 7", flask: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.800 3h10.400a2 2 0 0 0 1.800-3l-5-9V3M7.500 15h9", bill: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6m-6 4h6m-6 4h3" };
+const ICON = { calendar: "M7 3v3m10-3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z", hospital: "M4 21V6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v15M3 21h18M12 8v6m-3-3h6M10 21v-3h4v3", video: "M4 7h11v10H4zM15 10l5-3v10l-5-3", pill: "M10.500 20.500a4.950 4.950 0 0 1-7-7l10-10a4.950 4.950 0 0 1 7 7zM8.500 8.500l7 7", flask: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.800 3h10.400a2 2 0 0 0 1.800-3l-5-9V3M7.500 15h9", bill: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6m-6 4h6m-6 4h3" };
 /** A small coloured label that tells how a value sits against its range. */
 const FLAG_LABEL: Record<string, string> = { NORMAL: "Normal", LOW: "Low", HIGH: "High", CRITICAL_LOW: "Very low", CRITICAL_HIGH: "Very high" };
 
@@ -593,17 +644,23 @@ export default function PatientApp() {
   const current = me.patients.find((p) => p.id === pid);
   return (
     <main className="mx-auto min-h-screen max-w-md space-y-4 bg-slate-50 p-4 pb-16">
-      <header className="flex items-center justify-between gap-3 pt-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-base font-semibold text-white shadow-sm" aria-hidden>{(current?.name ?? "P").split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("")}</span>
-          <div className="min-w-0"><div className="truncate text-xs text-slate-500">{me.hospital}</div><h1 className="truncate text-xl font-semibold text-slate-900">{current?.name ?? "Patient"}</h1>{current && !current.locked && <div className="text-xs text-slate-500">{current.mrn}{current.age !== null ? ` · ${current.age} yrs` : ""}</div>}</div>
+      <header className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 p-4 text-white shadow-md">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 truncate text-xs font-medium text-blue-100">{me.hospital}</div>
+          <button type="button" onClick={() => void signOut()} className="shrink-0 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/25 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40">Sign out</button>
         </div>
-        <Btn kind="plain" onClick={() => void signOut()}>Sign out</Btn>
+        <div className="mt-3 flex min-w-0 items-center gap-3">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-lg font-bold text-blue-700 shadow-sm" aria-hidden>{(current?.name ?? "P").split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("")}</span>
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-semibold">{current?.name ?? "Patient"}</h1>
+            {current && !current.locked && <div className="mt-1 flex flex-wrap gap-1.5 text-xs">{[current.mrn, current.age !== null ? `${current.age} yrs` : null].filter(Boolean).map((v) => <span key={v} className="rounded-full bg-white/15 px-2.5 py-0.5">{v}</span>)}</div>}
+          </div>
+        </div>
       </header>
       {me.patients.length > 1 && <label className="block text-sm">Showing records of<select className={field} value={pid} onChange={(e) => setPid(e.target.value)}>{me.patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mrn ? ` · ${p.mrn}` : ""}</option>)}</select></label>}
       {current?.locked && <Unlock profile={current} key={`u${current.id}`} onDone={load} />}
-      {!current?.locked && <nav className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-2xl bg-slate-200/80 p-1 text-[13px] backdrop-blur" role="tablist">
-        {([["appointments", "Visits to come"], ["visits", "Prescriptions"], ["reports", "Reports"], ["bills", "Bills"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-11 rounded-xl px-1 transition ${tab === k ? "bg-white font-semibold text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{l}</button>)}
+      {!current?.locked && <nav className="sticky top-0 z-10 grid grid-cols-4 gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 text-xs shadow-sm backdrop-blur" role="tablist">
+        {([["appointments", "Visits to come", ICON.calendar], ["visits", "Prescriptions", ICON.pill], ["reports", "Reports", ICON.flask], ["bills", "Bills", ICON.bill]] as const).map(([k, l, icon]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-0.5 transition ${tab === k ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}><span aria-hidden>{svg(icon)}</span>{l}</button>)}
       </nav>}
       {pid && !current?.locked && tab === "appointments" && <Appointments patientId={pid} key={`a${pid}`} />}
       {pid && !current?.locked && tab === "visits" && <Visits patientId={pid} key={`v${pid}`} />}

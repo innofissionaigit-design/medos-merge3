@@ -114,6 +114,13 @@ describe("patient app: username and password, self-registration, and paying for 
       assert.equal(await t.prisma.auditEvent.count({ where: { tenantId: a.tenantId, action: "PATIENT_APP_REGISTERED", entityId: patient.id } }), 1);
     });
 
+    it("refuses names with digits or symbols, a birth date over 120 years ago, a bad mobile number and a weak password", async () => {
+      for (const bad of [{ firstName: "Asha2" }, { lastName: "<b>Roy" }, { dateOfBirth: "1850-01-01" }, { dateOfBirth: "2999-01-01" }, { mobile: "1234567890" }, { password: "onlyletters" }, { username: "a b" }]) {
+        const r = await register(bad);
+        assert.equal(r.status, 400, `${JSON.stringify(bad)} ${JSON.stringify(r.body)}`);
+      }
+    });
+
     it("points a person with the same name and birth date as an existing patient to sign in instead of making a second record", async () => {
       const p = await registerPatient(t, rec.token, { firstName: "Kavita", lastName: "Menon" });
       assert.ok(p.id);

@@ -32,9 +32,10 @@ export const PASSWORD_MAX_FAILURES = 5;
 export const PASSWORD_LOCK_MINUTES = 15;
 export const passwordLoginSchema = z.object({ hospitalCode: z.string().trim().toLowerCase().min(2).max(32), username: z.string().trim().toLowerCase().min(1).max(40), password: z.string().min(1).max(128) }).strict();
 export const usernameRule = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9._@+-]{3,63}$/, "Username: 4 to 64 letters, numbers or . _ @ + -");
+const personName = (which: string) => z.string().trim().min(1, `Enter your ${which} name`).max(60).regex(/^\p{L}[\p{L}\p{M} .'’-]*$/u, `Use letters only in your ${which} name`);
 export const registerSchema = z.object({
   hospitalCode: z.string().trim().toLowerCase().min(2).max(32), mobile: z.string().trim().min(10).max(15),
-  firstName: z.string().trim().min(1, "Enter your first name").max(60), lastName: z.string().trim().min(1, "Enter your last name").max(60),
+  firstName: personName("first"), lastName: personName("last"),
   gender: z.enum(["MALE", "FEMALE", "OTHER", "UNKNOWN"]), dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your date of birth"),
   username: usernameRule,
   password: z.string().min(8, "Use at least 8 characters").max(128).refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), "Use letters and at least one number"),
@@ -173,7 +174,7 @@ export class PortalAuthService {
     const tenant = await this.tenantOf(input.hospitalCode);
     if (!mobile || !tenant) throw fail();
     const dob = new Date(`${input.dateOfBirth}T00:00:00Z`);
-    if (Number.isNaN(dob.getTime()) || dob.toISOString().slice(0, 10) !== input.dateOfBirth || dob.getTime() > Date.now()) throw new DomainError("VALIDATION_FAILED", "Enter a valid date of birth", 400);
+    if (Number.isNaN(dob.getTime()) || dob.toISOString().slice(0, 10) !== input.dateOfBirth || dob.getTime() > Date.now() || dob.getUTCFullYear() < new Date().getUTCFullYear() - 120) throw new DomainError("VALIDATION_FAILED", "Enter a valid date of birth", 400);
     return tenantScope.run(tenant.id, async () => {
       const now = new Date();
       const facility = await this.prisma.facility.findFirst({ where: { tenantId: tenant.id, status: "ACTIVE" }, orderBy: { createdAt: "asc" }, select: { id: true } });

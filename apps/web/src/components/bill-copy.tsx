@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/me";
-import { Badge, Button, Card, ErrorNote, Notice, Spinner, Table, Td } from "./ui";
+import { Badge, Button, Card, ErrorNote, Spinner, Table, Td } from "./ui";
 
 interface Delivery { id: string; channel: "EMAIL" | "WHATSAPP" | "SMS"; to: string; trigger: "AUTO" | "MANUAL"; status: "PENDING" | "SENT" | "FAILED"; attempts: number; createdAt: string; sentAt: string | null; sentForReal: boolean; error: string | null; by: string | null }
 interface Config { autoSend: boolean; channels: string[]; messagesConnected: boolean; emailConnected: boolean; emailEnabled: boolean }
@@ -25,14 +25,16 @@ export function BillCopyCard({ invoiceId }: { invoiceId: string }) {
   const nothingConnected = cfg.data && !cfg.data.messagesConnected && !cfg.data.emailConnected;
   return (
     <Card title="Soft copy of the bill">
-      <p className="mb-2 text-sm text-slate-600">
-        {cfg.data?.autoSend ? "When the bill is fully paid, the patient is sent a private link to it by" : "Send the patient a private link to the bill by"} {(cfg.data?.channels ?? []).map((c) => LABEL[c] ?? c).join(", ") || "message"} (each one the patient has an address or number for).
-      </p>
-      {nothingConnected && <Notice tone="warn">No email or message service is connected yet, so nothing leaves the server: each copy is only recorded as “not sent for real”.</Notice>}
-      <div className="my-2"><Button variant="secondary" loading={send.isPending} onClick={() => send.mutate()}>Send soft copy now</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-slate-600">
+          {cfg.data?.autoSend ? "When the bill is fully paid, the patient is sent a private link to it by" : "Send the patient a private link to the bill by"} {(cfg.data?.channels ?? []).map((c) => LABEL[c] ?? c).join(", ") || "message"} (each one the patient has an address or number for).
+        </p>
+        <Button variant="secondary" loading={send.isPending} onClick={() => send.mutate()}>Send soft copy now</Button>
+      </div>
+      {nothingConnected && <p className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">No email or message service is connected yet, so nothing leaves the server: each copy is only recorded as “not sent for real”.</p>}
       <ErrorNote error={send.error ?? retry.error} />
-      {list.isLoading ? <Spinner /> : (
-        <Table head={["Channel", "To", "How", "Status", "When"]} {...(rows.length === 0 ? { empty: "Nothing sent yet." } : {})}>
+      {list.isLoading ? <Spinner /> : rows.length === 0 ? <p className="mt-3 text-xs text-slate-500">Nothing sent yet.</p> : (
+        <Table head={["Channel", "To", "How", "Status", "When"]}>
           {rows.map((d) => (
             <tr key={d.id} data-testid="bill-copy-row">
               <Td>{LABEL[d.channel] ?? d.channel}</Td><Td>{d.to}</Td><Td>{d.trigger === "AUTO" ? "After payment" : `By ${d.by ?? "staff"}`}</Td>

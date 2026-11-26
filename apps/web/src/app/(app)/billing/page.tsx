@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gate } from "@/components/gate";
 import { PatientPicker, todayIn, type PickedPatient } from "@/components/pickers";
@@ -38,7 +38,10 @@ function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: Pic
   const tz = me.facility?.timezone ?? me.tenant.timezone;
   const visits = useQuery({ queryKey: ["bill-visits", patient?.id], queryFn: () => api.page<BillableVisit>(`/patients/${patient!.id}/encounters`, { type: "OPD", pageSize: 10 }), enabled: !!patient });
   const visit = visitForBill(visits.data?.data ?? [], todayIn(tz), tz);
+  // One bill per click: the dialog stays open while the next screen loads, so a second click must not make a second bill.
+  const sent = useRef(false);
   const create = useMutation({
+    onError: () => { sent.current = false; },
     mutationFn: () => api.post<{ id: string }>("/invoices", {
       patientId: patient!.id, kind,
       ...(visit && kind === "OPD" ? { encounterId: visit.id } : {}),
@@ -75,7 +78,7 @@ function NewBill({ initialPatient, fromPatient, onClose }: { initialPatient: Pic
         )}
         <div className="flex items-center justify-between">
           <span className="text-sm text-slate-500">Estimated total {money(total.toFixed(2))} — the final amount is calculated by the server.</span>
-          <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!patient || lines.length === 0 || lines.some((l) => !l.description || !l.unitPrice)} loading={create.isPending} onClick={() => create.mutate()}>Create bill</Button></div>
+          <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!patient || lines.length === 0 || lines.some((l) => !l.description || !l.unitPrice)} loading={create.isPending} onClick={() => { if (sent.current) return; sent.current = true; create.mutate(); }}>Create bill</Button></div>
         </div>
         <ErrorNote error={create.error} />
       </div>

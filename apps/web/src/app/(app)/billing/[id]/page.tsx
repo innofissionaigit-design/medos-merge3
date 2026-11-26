@@ -246,8 +246,7 @@ export default function InvoicePage() {
       )}
       <ErrorNote error={issue.error ?? cancel.error ?? emailReceipt.error} />
       {emailReceipt.data && <Notice tone={emailReceipt.data.queued ? "success" : "warn"}>{emailReceipt.data.queued ? "The receipt email is queued and will be sent shortly." : (notEmailed[emailReceipt.data.reason ?? ""] ?? "The receipt email was not queued.")}</Notice>}
-      {i.status !== "DRAFT" && i.status !== "CANCELLED" && <div className="mb-4"><BillCopyCard invoiceId={i.id} /></div>}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid items-start gap-4 lg:grid-cols-3">
         <Card title="Items" className="lg:col-span-2">
           <Table head={i.taxSplit ? ["#", "Item", "Qty", "Rate", "Tax", "CGST", "SGST", "Amount"] : ["#", "Item", "Qty", "Rate", "Tax", "Amount"]}>
             {i.lines.map((l) => <tr key={l.lineNo}><Td>{l.lineNo}</Td><Td>{l.description}</Td><Td>{l.quantity}</Td><Td>{money(l.unitPrice)}</Td><Td>{l.taxPercent}%</Td>{i.taxSplit && <><Td>{money(l.cgstAmount ?? "0")}</Td><Td>{money(l.sgstAmount ?? "0")}</Td></>}<Td>{money(l.lineTotal)}</Td></tr>)}
@@ -255,9 +254,13 @@ export default function InvoicePage() {
           {i.notes && <p className="mt-2 text-sm text-slate-600">{i.notes}</p>}
         </Card>
         <Card title="Totals">
+          <div className={`mb-4 rounded-lg px-4 py-3 ${Number(i.balanceDue) > 0 ? "bg-red-50" : "bg-green-50"}`}>
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Balance due</div>
+            <div className={`text-2xl font-semibold ${Number(i.balanceDue) > 0 ? "text-red-700" : "text-green-700"}`}>{money(i.balanceDue)}</div>
+          </div>
           <dl className="grid grid-cols-2 gap-3">
             <KV label="Subtotal">{money(i.subtotal)}</KV><KV label="Discount">{money(i.discountTotal)}</KV>{i.taxSplit ? <><KV label="CGST">{money(i.cgstTotal ?? "0")}</KV><KV label="SGST">{money(i.sgstTotal ?? "0")}</KV></> : <KV label="Tax">{money(i.taxTotal)}</KV>}{i.roundsToRupee && <KV label="Round off">{money(i.roundOff ?? "0")}</KV>}<KV label="Total"><b>{money(i.total)}</b></KV>
-            <KV label="Received">{money(i.netReceived)}</KV><KV label="Balance due"><b className={Number(i.balanceDue) > 0 ? "text-red-700" : "text-green-700"}>{money(i.balanceDue)}</b></KV>
+            <KV label="Received">{money(i.netReceived)}</KV>
           </dl>
           {live && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -297,6 +300,7 @@ export default function InvoicePage() {
             </Table>
           )}
         </Card>
+        {i.status !== "DRAFT" && i.status !== "CANCELLED" && <div className="lg:col-span-3"><BillCopyCard invoiceId={i.id} /></div>}
         {i.encounterId && ["OPD", "IPD"].includes(i.kind) && i.status !== "DRAFT" && can("EARNINGS_CONFIGURE", "REPORT_READ", "REPORT_FINANCE") && <DoctorShareCard encounterId={i.encounterId} />}
       </div>
       {i.status === "DRAFT" && <div className="mt-3"><Notice>This bill is a draft. Issue it to take payment; an issued bill cannot be edited, only credited or cancelled.</Notice></div>}
